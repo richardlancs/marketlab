@@ -159,6 +159,9 @@ const INDEX_SPECS: QuoteSpec[] = [
   { symbol: "DJI", name: "Dow Jones", price: 46190.6, dailyVolatility: 0.008 },
 ];
 
+/** Every stock symbol in the dataset. Cheap to read, for code that only needs to check a symbol exists. */
+export const STOCK_SYMBOLS: readonly string[] = STOCK_SPECS.map((spec) => spec.symbol);
+
 const WATCHLIST = ["AAPL", "NVDA", "TSLA", "META", "NFLX"];
 
 export const FEATURED_SYMBOL = "AAPL";

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { Card } from "@/components/ui/card";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
@@ -25,8 +26,9 @@ export async function PortfolioSummary() {
       gain: p.gain,
       gainPercent: p.gainPercent,
       color: seriesColor(i),
+      href: `/stocks/${p.symbol}`,
     })),
-    { label: "Cash", name: "Uninvested", value: portfolio.cash, gain: null, gainPercent: null, color: CASH_COLOR },
+    { label: "Cash", name: "Uninvested", value: portfolio.cash, gain: null, gainPercent: null, color: CASH_COLOR, href: null },
   ].map((slice) => ({ ...slice, weight: slice.value / portfolio.totalValue }));
 
   return (
@@ -94,7 +96,13 @@ export async function PortfolioSummary() {
               <th scope="row" className="py-2 text-left font-medium">
                 {/* The color key ties each row to its segment in the bar above. */}
                 <span aria-hidden className="mr-2 inline-block size-2.5 rounded-[3px] align-middle" style={{ background: slice.color }} />
-                <span title={slice.name}>{slice.label}</span>
+                {slice.href ? (
+                  <Link href={slice.href} title={slice.name} className="rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
+                    {slice.label}
+                  </Link>
+                ) : (
+                  <span title={slice.name}>{slice.label}</span>
+                )}
               </th>
               <td className="py-2 text-right">{formatCurrency(slice.value)}</td>
               <td className="py-2 text-right text-muted">{weightFormat.format(slice.weight)}</td>
