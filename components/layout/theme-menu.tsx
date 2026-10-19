@@ -15,10 +15,10 @@ const THEMES = [
  */
 const UNDERTONES = [
   { id: "sand", label: "Sand", swatch: "#f3eee6", accent: "#8a6748" },
-  { id: "sage", label: "Sage", swatch: "#ecf1ea", accent: "#4f6f59" },
-  { id: "mist", label: "Mist", swatch: "#ebf0f5", accent: "#52698a" },
+  { id: "sage", label: "Sage", swatch: "#ecf1ea", accent: "#357550" },
+  { id: "mist", label: "Mist", swatch: "#ebf0f5", accent: "#3f6596" },
   { id: "rose", label: "Rose", swatch: "#f5ecec", accent: "#94596a" },
-  { id: "lavender", label: "Lavender", swatch: "#efedf6", accent: "#675e8c" },
+  { id: "lavender", label: "Lavender", swatch: "#efedf6", accent: "#5f4fa0" },
 ] as const;
 
 type Theme = (typeof THEMES)[number]["id"];

@@ -39,7 +39,7 @@ export function AccountMenu() {
         type="button"
         popoverTarget={menuId}
         aria-label={`Account: ${name}`}
-        className="grid size-9 place-items-center rounded-full bg-linear-to-br from-sky-400 to-indigo-600 text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="grid size-9 place-items-center rounded-full bg-linear-to-br from-brand-start to-brand-end text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
         {name.trim().charAt(0).toUpperCase() || "?"}
       </button>

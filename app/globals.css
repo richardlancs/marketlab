@@ -35,6 +35,11 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
+  /* The logo and avatar gradient. */
+  --brand-start: #38bdf8;
+  --brand-mid: #3b82f6;
+  --brand-end: #4f46e5;
+  --brand-glow: rgb(59 130 246 / 0.3);
 }
 
 [data-theme="dark"] {
@@ -58,11 +63,22 @@
 /*
  * Pastel: a calm, light theme with softened colors. Not a dark theme, so
  * `dark:` utilities don't apply. The undertone (data-undertone on <html>)
- * tints the page, cards, text and accent; sand is the default. Every pairing
- * is checked against WCAG AA: text 4.5:1 on cards (white on the accent too),
- * chart colors 3:1. Gains, losses and chart colors are shared by all
- * undertones, so a green means the same thing whichever one is picked.
+ * tints everything: page, cards, text, accent, gains and losses (still
+ * clearly green and red), chart colors and the logo. Sand is the default.
+ *
+ * Every pairing is checked against WCAG AA: text 4.5:1 on cards (white on
+ * the accent too), chart colors 3:1. Each undertone's chart colors lead with
+ * its own hue and were chosen to stay apart for red-green colorblind eyes
+ * too, within soft, dusty tones.
  */
+[data-theme="pastel"] {
+  /* The logo and avatar gradient, from the undertone's accent. */
+  --brand-start: color-mix(in oklab, var(--accent) 65%, white);
+  --brand-mid: var(--accent);
+  --brand-end: color-mix(in oklab, var(--accent) 80%, black);
+  --brand-glow: color-mix(in oklab, var(--accent) 30%, transparent);
+}
+
 [data-theme="pastel"] {
   --background: #f3eee6;
   --surface: #fbf8f3;
@@ -71,14 +87,14 @@
   --muted: #6b6258;
   --border: rgb(58 51 44 / 0.1);
   --accent: #8a6748;
-  --gain: #3b7a57;
-  --loss: #ad4f47;
+  --gain: #4b7a4c;
+  --loss: #ad5040;
   --glow: rgb(138 103 72 / 0.1);
-  --series-1: #5b7fb0;
-  --series-2: #c27548;
-  --series-3: #4e9479;
-  --series-4: #a8832a;
-  --series-5: #b56a8c;
+  --series-1: #9b6b42;
+  --series-2: #4c877c;
+  --series-3: #8881b7;
+  --series-4: #495a93;
+  --series-5: #88455b;
 }
 
 [data-theme="pastel"][data-undertone="sage"] {
@@ -88,8 +104,15 @@
   --foreground: #2e3530;
   --muted: #5e6860;
   --border: rgb(46 53 48 / 0.1);
-  --accent: #4f6f59;
-  --glow: rgb(79 111 89 / 0.1);
+  --accent: #357550;
+  --gain: #3d7a57;
+  --loss: #ab5249;
+  --glow: rgb(53 117 80 / 0.1);
+  --series-1: #557a5f;
+  --series-2: #a07b9c;
+  --series-3: #4b6ca3;
+  --series-4: #a78241;
+  --series-5: #81476e;
 }
 
 [data-theme="pastel"][data-undertone="mist"] {
@@ -99,8 +122,15 @@
   --foreground: #2c333b;
   --muted: #5c6570;
   --border: rgb(44 51 59 / 0.1);
-  --accent: #52698a;
-  --glow: rgb(82 105 138 / 0.1);
+  --accent: #3f6596;
+  --gain: #367866;
+  --loss: #ad4f55;
+  --glow: rgb(63 101 150 / 0.1);
+  --series-1: #56739a;
+  --series-2: #b37964;
+  --series-3: #824a5c;
+  --series-4: #309b96;
+  --series-5: #8a7a3a;
 }
 
 [data-theme="pastel"][data-undertone="rose"] {
@@ -111,7 +141,14 @@
   --muted: #6c5f62;
   --border: rgb(58 47 49 / 0.1);
   --accent: #94596a;
+  --gain: #447a5c;
+  --loss: #b04a43;
   --glow: rgb(148 89 106 / 0.1);
+  --series-1: #a55f72;
+  --series-2: #4394b8;
+  --series-3: #a8843a;
+  --series-4: #545792;
+  --series-5: #5f7a4a;
 }
 
 [data-theme="pastel"][data-undertone="lavender"] {
@@ -121,8 +158,20 @@
   --foreground: #312e3b;
   --muted: #625c70;
   --border: rgb(49 46 59 / 0.1);
-  --accent: #675e8c;
-  --glow: rgb(103 94 140 / 0.1);
+  --accent: #5f4fa0;
+  --gain: #3b7a62;
+  --loss: #ad4d5c;
+  --glow: rgb(95 79 160 / 0.1);
+  --series-1: #6f63a0;
+  --series-2: #4394b8;
+  --series-3: #958867;
+  --series-4: #0c6c68;
+  --series-5: #884c28;
+}
+
+/* Selected text, tinted with the undertone instead of the browser's blue. */
+[data-theme="pastel"] ::selection {
+  background: color-mix(in oklab, var(--accent) 22%, transparent);
 }
 
 @theme inline {
@@ -135,6 +184,10 @@
   --color-accent: var(--accent);
   --color-gain: var(--gain);
   --color-loss: var(--loss);
+  --color-brand-start: var(--brand-start);
+  --color-brand-mid: var(--brand-mid);
+  --color-brand-end: var(--brand-end);
+  --color-brand-glow: var(--brand-glow);
   --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 

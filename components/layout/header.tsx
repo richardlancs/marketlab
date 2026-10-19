@@ -29,7 +29,7 @@ export function Header() {
         <Link href="/" className="flex h-14 items-center gap-2.5 font-semibold tracking-tight">
           <span
             aria-hidden
-            className="grid size-7 place-items-center rounded-lg bg-linear-to-br from-sky-400 via-blue-500 to-indigo-600 shadow-sm shadow-blue-500/30"
+            className="grid size-7 place-items-center rounded-lg bg-linear-to-br from-brand-start via-brand-mid to-brand-end shadow-sm shadow-brand-glow"
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4">
               <path d="M3 17l6-6 4 4 8-8" />
