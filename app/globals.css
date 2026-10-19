@@ -55,6 +55,76 @@
   --series-5: #d55181;
 }
 
+/*
+ * Pastel: a calm, light theme with softened colors. Not a dark theme, so
+ * `dark:` utilities don't apply. The undertone (data-undertone on <html>)
+ * tints the page, cards, text and accent; sand is the default. Every pairing
+ * is checked against WCAG AA: text 4.5:1 on cards (white on the accent too),
+ * chart colors 3:1. Gains, losses and chart colors are shared by all
+ * undertones, so a green means the same thing whichever one is picked.
+ */
+[data-theme="pastel"] {
+  --background: #f3eee6;
+  --surface: #fbf8f3;
+  --surface-raised: #fdfbf8;
+  --foreground: #3a332c;
+  --muted: #6b6258;
+  --border: rgb(58 51 44 / 0.1);
+  --accent: #8a6748;
+  --gain: #3b7a57;
+  --loss: #ad4f47;
+  --glow: rgb(138 103 72 / 0.1);
+  --series-1: #5b7fb0;
+  --series-2: #c27548;
+  --series-3: #4e9479;
+  --series-4: #a8832a;
+  --series-5: #b56a8c;
+}
+
+[data-theme="pastel"][data-undertone="sage"] {
+  --background: #ecf1ea;
+  --surface: #f8faf6;
+  --surface-raised: #fbfcfa;
+  --foreground: #2e3530;
+  --muted: #5e6860;
+  --border: rgb(46 53 48 / 0.1);
+  --accent: #4f6f59;
+  --glow: rgb(79 111 89 / 0.1);
+}
+
+[data-theme="pastel"][data-undertone="mist"] {
+  --background: #ebf0f5;
+  --surface: #f8fafc;
+  --surface-raised: #fbfcfd;
+  --foreground: #2c333b;
+  --muted: #5c6570;
+  --border: rgb(44 51 59 / 0.1);
+  --accent: #52698a;
+  --glow: rgb(82 105 138 / 0.1);
+}
+
+[data-theme="pastel"][data-undertone="rose"] {
+  --background: #f5ecec;
+  --surface: #fcf8f8;
+  --surface-raised: #fdfbfb;
+  --foreground: #3a2f31;
+  --muted: #6c5f62;
+  --border: rgb(58 47 49 / 0.1);
+  --accent: #94596a;
+  --glow: rgb(148 89 106 / 0.1);
+}
+
+[data-theme="pastel"][data-undertone="lavender"] {
+  --background: #efedf6;
+  --surface: #f9f8fc;
+  --surface-raised: #fbfbfd;
+  --foreground: #312e3b;
+  --muted: #625c70;
+  --border: rgb(49 46 59 / 0.1);
+  --accent: #675e8c;
+  --glow: rgb(103 94 140 / 0.1);
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);

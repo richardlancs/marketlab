@@ -25,9 +25,10 @@ export const metadata: Metadata = {
 };
 
 // Runs synchronously in <head>, before the browser paints anything.
-// Saved choice wins; otherwise follow the OS setting. If this script fails
-// (e.g. localStorage is blocked), the server default of "dark" stays.
-const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
+// Saved choice wins; otherwise follow the OS setting. The undertone only
+// matters for the pastel theme (see theme-menu.tsx for the options). If this
+// script fails (e.g. localStorage is blocked), the server default of "dark" stays.
+const themeScript = `(function(){try{var d=document.documentElement,t=localStorage.getItem("theme"),u=localStorage.getItem("undertone");if(t!=="light"&&t!=="dark"&&t!=="pastel"){t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}d.setAttribute("data-theme",t);if(u)d.setAttribute("data-undertone",u)}catch(e){}})()`;
 
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Today's prices for every stock, for the account features (watchlist,
