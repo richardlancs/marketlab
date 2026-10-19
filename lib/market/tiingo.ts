@@ -11,7 +11,7 @@
  * weeks; catalog stocks skip it) and one per hour for prices while people look
  * at it. ./budget.ts keeps those extras from crowding out the dashboard.
  */
-import type { DailyBar } from "../types";
+import type { CorporateAction, DailyBar } from "../types";
 import { createBudget, type Budget } from "./budget";
 import { CLOSE_OFFSET, DAY } from "./calendar";
 import { catalogEntry } from "./catalog";
@@ -73,6 +73,26 @@ export function parseTiingoMeta(symbol: string, data: unknown): Listing {
   return { symbol, name: name.trim(), sector: null };
 }
 
+/**
+ * Dividends and splits from the same price rows: Tiingo puts each one on its
+ * ex-date's row (`divCash`, and `splitFactor` other than 1), so they cost no
+ * extra request.
+ */
+export function parseTiingoActions(symbol: string, data: unknown): CorporateAction[] {
+  if (!Array.isArray(data)) return [];
+  const actions: CorporateAction[] = [];
+  for (const row of data) {
+    if (typeof row !== "object" || row === null) continue;
+    const { date, divCash, splitFactor } = row as Record<string, unknown>;
+    const parsed = typeof date === "string" ? Date.parse(date) : Number.NaN;
+    if (!Number.isFinite(parsed)) continue;
+    const time = Math.floor(parsed / DAY) * DAY + CLOSE_OFFSET;
+    if (typeof divCash === "number" && Number.isFinite(divCash) && divCash > 0) actions.push({ symbol, time, kind: "dividend", amount: divCash });
+    if (typeof splitFactor === "number" && Number.isFinite(splitFactor) && splitFactor > 0 && splitFactor !== 1) actions.push({ symbol, time, kind: "split", ratio: splitFactor });
+  }
+  return actions.sort((a, b) => a.time - b.time);
+}
+
 const isoDate = (time: number) => new Date(time).toISOString().slice(0, 10);
 
 /** The symbols the dashboard always needs: they go first in the request budget. */
@@ -90,7 +110,7 @@ const META_TTL = 7 * 24 * TTL;
 const MISSING_TTL = 24 * TTL;
 
 interface Memo {
-  bars: Map<string, { at: number; bars: DailyBar[] }>;
+  bars: Map<string, { at: number; bars: DailyBar[]; actions: CorporateAction[] }>;
   meta: Map<string, { at: number; listing: Listing | null }>;
   budget: Budget;
 }
@@ -120,14 +140,14 @@ export function createTiingoProvider(apiKey: string, fetchImpl: typeof fetch = f
     return response.json();
   }
 
-  async function fetchBars(symbol: string, now: number): Promise<DailyBar[]> {
+  async function fetchBars(symbol: string, now: number): Promise<{ bars: DailyBar[]; actions: CorporateAction[] }> {
     const cached = memo.bars.get(symbol);
-    if (cached && now - cached.at < TTL) return cached.bars;
+    if (cached && now - cached.at < TTL) return cached;
     const data = await request(symbol, `/prices?startDate=${isoDate(now - HISTORY_DAYS * DAY)}`, now);
     if (data === null) throw new TiingoError(`Tiingo has no prices for ${symbol}.`, 404);
-    const bars = parseTiingoPrices(data);
-    memo.bars.set(symbol, { at: now, bars });
-    return bars;
+    const entry = { at: now, bars: parseTiingoPrices(data), actions: parseTiingoActions(symbol, data) };
+    memo.bars.set(symbol, entry);
+    return entry;
   }
 
   return {
@@ -136,7 +156,8 @@ export function createTiingoProvider(apiKey: string, fetchImpl: typeof fetch = f
     indexSymbol: (index) => index.fund,
     async getSeries(symbol, now): Promise<Series> {
       // End-of-day data has no market cap or P/E.
-      return { bars: await fetchBars(symbol, now), marketCap: null, peRatio: null };
+      const { bars, actions } = await fetchBars(symbol, now);
+      return { bars, actions, marketCap: null, peRatio: null };
     },
     async getListing(symbol) {
       // Catalog stocks already have a name (and a sector), so they cost nothing.
@@ -159,3 +180,39 @@ export const clearTiingoMemo = () => {
   memo.meta.clear();
   memo.budget = createBudget();
 };
+
+export interface NewsItem {
+  title: string;
+  url: string;
+  source: string;
+  /** ISO timestamp. */
+  published: string;
+}
+
+/** Tiingo's /tiingo/news response, keeping only well-formed https links. */
+export function parseTiingoNews(data: unknown, limit = 6): NewsItem[] {
+  if (!Array.isArray(data)) return [];
+  const items: NewsItem[] = [];
+  for (const row of data) {
+    const { title, url, source, publishedDate } = (row ?? {}) as Record<string, unknown>;
+    if (typeof title !== "string" || typeof url !== "string" || !url.startsWith("https://") || typeof publishedDate !== "string") continue;
+    items.push({ title: title.trim(), url, source: typeof source === "string" ? source : "", published: publishedDate });
+    if (items.length >= limit) break;
+  }
+  return items;
+}
+
+/**
+ * Recent news for one ticker, from Tiingo (personal use only: only called
+ * with real data on). Counted in the same request budget as prices, and null
+ * if Tiingo refuses (the free plan may not include news at all).
+ */
+export async function fetchTiingoNews(apiKey: string, symbol: string, now: number, fetchImpl: typeof fetch = fetch): Promise<NewsItem[] | null> {
+  if (!memo.budget.take(false, now)) return null;
+  const response = await fetchImpl(`https://api.tiingo.com/tiingo/news?tickers=${encodeURIComponent(symbol.toLowerCase())}&limit=10`, {
+    headers: { Authorization: `Token ${apiKey}`, "Content-Type": "application/json" },
+  });
+  if (response.status === 429) memo.budget.exhaust(now);
+  if (!response.ok) return null;
+  return parseTiingoNews(await response.json());
+}

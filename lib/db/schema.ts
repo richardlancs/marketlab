@@ -116,6 +116,8 @@ export const portfolio = sqliteTable("portfolio", {
     .references(() => user.id, { onDelete: "cascade" }),
   cash: real("cash").notNull(),
   createdAt: createdAt(),
+  /** The last close the account was brought up to date with (lib/processing.ts). Null until the first time. */
+  processedThrough: integer("processed_through"),
 });
 
 export const holding = sqliteTable(
@@ -172,4 +174,58 @@ export const backtestRun = sqliteTable(
     createdAt: integer("created_at").notNull(),
   },
   (table) => [index("backtest_run_user_idx").on(table.userId, table.createdAt)],
+);
+
+/** Dividends and splits applied to the account. IDs are per user ("dividend:KO:<time>"), so the key includes the user. */
+export const accountEvent = sqliteTable(
+  "account_event",
+  {
+    userId: userId(),
+    id: text("id").notNull(),
+    kind: text("kind", { enum: ["dividend", "split"] }).notNull(),
+    symbol: text("symbol").notNull(),
+    time: integer("time").notNull(),
+    shares: integer("shares").notNull(),
+    value: real("value").notNull(),
+    cash: real("cash").notNull(),
+    sharesAfter: integer("shares_after"),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.id] }), index("account_event_user_time_idx").on(table.userId, table.time)],
+);
+
+/** Limit and stop orders: open ones, and recently closed ones to show what happened. */
+export const pendingOrder = sqliteTable(
+  "pending_order",
+  {
+    id: text("id").primaryKey(),
+    userId: userId(),
+    symbol: text("symbol").notNull(),
+    side: text("side", { enum: ["buy", "sell"] }).notNull(),
+    type: text("type", { enum: ["limit", "stop"] }).notNull(),
+    shares: integer("shares").notNull(),
+    price: real("price").notNull(),
+    duration: text("duration", { enum: ["day", "gtc"] }).notNull(),
+    createdAt: integer("created_at").notNull(),
+    status: text("status", { enum: ["open", "filled", "cancelled", "expired"] }).notNull(),
+    closedAt: integer("closed_at"),
+    fillPrice: real("fill_price"),
+    note: text("note"),
+  },
+  (table) => [index("pending_order_user_idx").on(table.userId, table.createdAt)],
+);
+
+export const priceAlert = sqliteTable(
+  "price_alert",
+  {
+    id: text("id").primaryKey(),
+    userId: userId(),
+    symbol: text("symbol").notNull(),
+    direction: text("direction", { enum: ["above", "below"] }).notNull(),
+    price: real("price").notNull(),
+    createdAt: integer("created_at").notNull(),
+    triggeredAt: integer("triggered_at"),
+    triggerPrice: real("trigger_price"),
+    seen: integer("seen", { mode: "boolean" }).notNull().default(false),
+  },
+  (table) => [index("price_alert_user_idx").on(table.userId, table.createdAt)],
 );

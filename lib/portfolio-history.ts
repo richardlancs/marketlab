@@ -12,7 +12,7 @@
  * changes with prices: the plain start-to-end return is already the fair
  * ("time-weighted") one. Pure functions, shared by guest and signed-in modes.
  */
-import { roundCents, type Account, type Trade } from "./trading";
+import { roundCents, type Account, type AccountEvent, type Trade } from "./trading";
 import type { PricePoint } from "./types";
 
 export interface DayState {
@@ -36,9 +36,14 @@ export const firstTradeTime = (account: Account): number | null =>
  * made, which is after that close. So it belongs to the latest point with
  * `time <= trade.time`: the state at a close includes the trades filled at
  * that close's price. That keeps the last point equal to today's value.
+ * Dividends and splits (stamped with their ex-date's close) are undone the
+ * same way, so a split doesn't look like a sudden loss.
  */
 export function holdingsTimeline(account: Account, times: number[]): DayState[] {
-  const trades: Trade[] = [...account.trades].sort((a, b) => b.time - a.time); // newest first
+  type Step = { time: number; trade?: Trade; event?: AccountEvent };
+  const steps: Step[] = [...account.trades.map((trade) => ({ time: trade.time, trade })), ...(account.events ?? []).map((event) => ({ time: event.time, event }))].sort(
+    (a, b) => b.time - a.time,
+  ); // newest first
   let cash = account.cash;
   const shares: Record<string, number> = Object.fromEntries(account.holdings.map((h) => [h.symbol, h.shares]));
   const states: DayState[] = new Array(times.length);
@@ -47,8 +52,15 @@ export function holdingsTimeline(account: Account, times: number[]): DayState[] 
   for (let i = times.length - 1; i >= 0; i--) {
     // Undo the trades that belong to later points than this one.
     const after = i + 1 < times.length ? times[i + 1] : Number.POSITIVE_INFINITY;
-    while (next < trades.length && trades[next].time >= after) {
-      const t = trades[next++];
+    while (next < steps.length && steps[next].time >= after) {
+      const { trade: t, event: e } = steps[next++];
+      if (e) {
+        // Before a dividend or split: without its cash, and (for a split) with the old share count.
+        cash -= e.cash;
+        if (e.kind === "split") shares[e.symbol] = e.shares;
+        continue;
+      }
+      if (!t) continue;
       const total = roundCents(t.shares * t.price);
       const held = shares[t.symbol] ?? 0;
       if (t.side === "buy") {
@@ -66,7 +78,8 @@ export function holdingsTimeline(account: Account, times: number[]): DayState[] 
 
 /**
  * The portfolio's total value at each of `times`. `history` has each relevant
- * symbol's daily closes. A day without a price for a symbol uses its last
+ * symbol's daily closes *as traded* (not adjusted): the share counts are real
+ * ones, so a day's value is shares × that day's actual price. A day without a price for a symbol uses its last
  * known one (or, before its first, its first). Throws if a symbol held at
  * some point has no prices at all.
  */

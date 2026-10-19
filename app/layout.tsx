@@ -64,7 +64,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         {/* The catalog's names (~100 stocks, a few KB) let search find any of them without an API call. */}
-        <AccountProvider quotes={quotes} listings={CATALOG} openTickers={marketMode() === "tiingo"}>
+        <AccountProvider quotes={quotes} listings={CATALOG} openTickers={marketMode() === "tiingo"} asOf={market.asOf}>
           <Header />
           <AccountNotices />
           {children}

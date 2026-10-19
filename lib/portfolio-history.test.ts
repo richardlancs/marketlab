@@ -90,3 +90,29 @@ describe("portfolio history", () => {
     expect(rebase([50, 75, 25])).toEqual([100, 150, 50]);
   });
 });
+
+describe("portfolio history with dividends and splits", () => {
+  it("undoes a split and a dividend, so the chart doesn't show a fake drop", async () => {
+    const { processAccount } = await import("./processing");
+    // A splits 2-for-1 on day 2 (its traded price halves), and pays $1 a share on day 3.
+    const raw = { A: prices([10, 11, 6, 6, 7]) };
+    const account = processAccount(
+      { ...start, processedThrough: times[0] },
+      {
+        raw,
+        actions: {
+          A: [
+            { symbol: "A", time: times[2], kind: "split", ratio: 2 },
+            { symbol: "A", time: times[3], kind: "dividend", amount: 1 },
+          ],
+        },
+        latest: times[4],
+      },
+    );
+    expect(account.holdings[0].shares).toBe(20);
+    expect(account.cash).toBe(1020);
+    const values = portfolioValueSeries(account, raw, times).map((p) => p.price);
+    // 10 × $10, 10 × $11, then 20 × $6, 20 × $6 + $20 dividend, 20 × $7 + $20, all plus $1,000 cash.
+    expect(values).toEqual([1100, 1110, 1120, 1140, 1160]);
+  });
+});

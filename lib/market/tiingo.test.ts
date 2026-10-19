@@ -139,3 +139,15 @@ describe("Tiingo listings", () => {
     await expect(createTiingoProvider("k", respond(200, SAMPLE)).getSeries("MSFT", now)).rejects.toThrow(/budget/);
   });
 });
+
+describe("parseTiingoActions", () => {
+  it("reads dividends and splits from the price rows", async () => {
+    const { parseTiingoActions } = await import("./tiingo");
+    const rows = [{ ...SAMPLE[0], divCash: 0.26 }, { ...SAMPLE[1], splitFactor: 4 }, { ...SAMPLE[1], date: "junk", divCash: 1 }];
+    expect(parseTiingoActions("AAPL", rows)).toEqual([
+      { symbol: "AAPL", time: Date.parse("2026-10-15T20:00:00Z"), kind: "dividend", amount: 0.26 },
+      { symbol: "AAPL", time: Date.parse("2026-10-16T20:00:00Z"), kind: "split", ratio: 4 },
+    ]);
+    expect(parseTiingoActions("AAPL", SAMPLE)).toEqual([]);
+  });
+});

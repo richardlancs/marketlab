@@ -16,6 +16,12 @@ describe("tradesToCsv", () => {
     expect(tradesToCsv([])).toBe("Date,Time (UTC),Symbol,Side,Shares,Price,Total,Realized gain\r\n");
   });
 
+  it("includes dividends and splits, newest first", () => {
+    const rows = tradesToCsv([trade], [{ id: "d", kind: "dividend", symbol: "AAPL", time: Date.UTC(2026, 9, 20, 20), shares: 2, value: 0.25, cash: 0.5 }]).split("\r\n");
+    expect(rows[1]).toBe("2026-10-20,20:00:00,AAPL,dividend,2,0.25,0.5,");
+    expect(rows[2]).toContain(",sell,");
+  });
+
   it("quotes and guards text a spreadsheet could misread, but not negative numbers", () => {
     const row = tradesToCsv([{ ...trade, symbol: '=HYPERLINK("x"),1' }]).split("\r\n")[1];
     expect(row).toContain(`"'=HYPERLINK(""x""),1"`);

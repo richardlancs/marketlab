@@ -99,12 +99,12 @@ describe("parseHistoryQuery", async () => {
   const params = (entries: [string, string][]) => new URLSearchParams(entries);
 
   it("reads symbols, indices and a start date", () => {
-    expect(parseHistoryQuery(params([["symbol", "ko"], ["symbol", "KO"], ["indices", "all"], ["from", "1000"]]))).toEqual({ symbols: ["KO"], allIndices: true, from: 1000 });
+    expect(parseHistoryQuery(params([["symbol", "ko"], ["symbol", "KO"], ["indices", "all"], ["from", "1000"]]))).toEqual({ symbols: ["KO"], allIndices: true, from: 1000, raw: false, actions: false });
   });
 
   it("needs a stock unless all indices are asked for", () => {
     expect(parseHistoryQuery(params([]))).toBeNull();
-    expect(parseHistoryQuery(params([["indices", "all"]]))).toEqual({ symbols: [], allIndices: true, from: null });
+    expect(parseHistoryQuery(params([["indices", "all"]]))).toEqual({ symbols: [], allIndices: true, from: null, raw: false, actions: false });
   });
 
   it("rejects too many symbols, a malformed one, or a bad date", () => {

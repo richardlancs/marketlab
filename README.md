@@ -4,6 +4,9 @@ A stock dashboard, portfolio simulator and strategy backtester, built with Next.
 
 - **Dashboard, stocks table, stock pages and ⌘K search**, all pre-rendered and refreshed about once an hour. Ten featured stocks fill the dashboard; about 85 more well-known US stocks can be searched, opened, watched, traded and backtested. With real prices (Tiingo), any other ticker works too.
 - **Watchlist and simulated trading.** Without an account, everything is saved in your browser (guest mode). With an account, it's saved in a database and follows you between devices. On your first sign-in you can import your guest data.
+- **Realistic trading.** Market, limit and stop orders (filled at a daily close), dividends paid into your cash, and stock splits (with cash for any fraction of a share). Start over with a starter portfolio or cash only ($10k, $25k or $100k).
+- **Price alerts.** "Tell me when KO closes above $70", with a badge in the header and, if you turn them on, browser notifications while the site is open.
+- **Filings and news.** Each stock page lists the company's real recent SEC filings (earnings, annual reports, leadership changes). With your own Tiingo key, it also shows news headlines.
 - **Portfolio analytics.** Your portfolio's value over time, rebuilt from your trades, as growth of $100 against the S&P 500, Nasdaq or Dow, with return, drawdown, volatility and Sharpe ratio; a breakdown by sector; and your trades as a CSV file.
 - **Backtesting.** Try buy and hold, a moving-average crossover, dollar-cost averaging, rebalancing, or your own rules (RSI, moving averages, crossovers) on up to five stocks over five years of daily prices, with trading costs, compared with a benchmark. See returns month by month, test a range of settings at once (a parameter sweep), save runs and compare up to four.
 
@@ -15,6 +18,21 @@ Prices come from one of two sources:
 - **Tiingo (real end-of-day prices).** Used when `TIINGO_API_KEY` is set. Get a free key at [tiingo.com](https://www.tiingo.com). The free plan allows 50 requests an hour and 1,000 a day. The dashboard's 13 symbols cost one request each per hourly refresh. Any other stock costs one request an hour while someone looks at it, plus one (cached for a week) to look up a ticker that isn't in the catalog. A request budget (`lib/market/budget.ts`) stops extra tickers before they could crowd out the dashboard.
 
 > **Licensing:** Tiingo's free plan is for **personal use only**: its terms forbid showing the data to anyone else. Use your key on your own machine or a private deployment. A public deployment must leave `TIINGO_API_KEY` unset, so it uses the mock market. As a safety net, on Vercel the key is ignored (with a warning in the logs) unless `MARKET_DATA_PRIVATE=1` is also set.
+
+### How orders, dividends and alerts work
+
+Prices are end-of-day, so everything waiting for a price is checked once a day, at the close:
+
+- **Limit orders** buy at a close at or below your price, or sell at a close at or above it. **Stop orders** sell once a close falls to your level (or buy once it rises to it). They fill *at that close*: possibly better than a limit, or, after a jump, much worse than a stop. An order lasts until the next close, or up to 90 days. Cash and shares are checked when it fills, not set aside.
+- **Dividends and splits** apply on their ex-date to the shares you held at the previous close. A split's fraction of a share is paid out in cash. The mock market's dividends and splits start on Oct 19, 2026, so the five years before stay as they were.
+- **Alerts** trigger on the first close past their level.
+
+All of this is applied when you next open the site (or before your next trade): one shared function (`lib/processing.ts`) catches the account up, in the browser for guests and on the server for signed-in users. It's safe to run twice: nothing is paid or filled twice.
+
+### Filings and news
+
+- **SEC filings** come from the SEC's free EDGAR API. They're public records, so they're shown on the public site too. Set `SEC_USER_AGENT` (a name and a contact email; the SEC requires it) to turn them on. Lookups are cached for hours, far below the SEC's 10-requests-a-second limit.
+- **News headlines** come from Tiingo, only with your own key (personal use), and are hidden if your plan doesn't include news.
 
 ### Which stocks exist
 
@@ -77,6 +95,7 @@ MarketLab runs on [Vercel](https://vercel.com) with a [Turso](https://turso.tech
    | `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | the prod database | the preview database |
    | `TIINGO_API_KEY` | **not set** | **not set** |
    | `MARKET_DATA_SOURCE` | optionally `mock`, as a second safety | the same |
+   | `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings | the same |
 
 6. **Deploy, then test the preview** before production:
    - `/`, `/stocks`, `/stocks/AAPL`; `/stocks/KO` (a skeleton on the first visit, instant after); `/stocks/ZZZZ` gives 404; `/stocks/aapl` redirects.
@@ -100,7 +119,9 @@ If you self-host on more than one server instance (not needed on Vercel), also s
 - `lib/account-actions.ts`: Server Actions for signed-in users. They check the session and validate every input.
 - `lib/market/`: market data. `provider.ts` is the interface; `mock.ts` and `tiingo.ts` implement it; `mode.ts` picks one; `index.ts` caches the core market for an hour, and every other stock on its own. `catalog.ts` lists the stocks beyond the core, and `symbols.ts` says what a valid ticker looks like.
 - `lib/backtest/`: the backtesting engine (`engine.ts`), the strategies, custom rules (`rules.ts`), run settings (`config.ts`), monthly returns (`periods.ts`) and parameter sweeps (`sweep.ts`, run in a Web Worker by `sweep.worker.ts`). Pure functions, run in the browser.
-- `lib/portfolio-history.ts`: rebuilds the portfolio's past values by undoing its trades, newest first.
+- `lib/portfolio-history.ts`: rebuilds the portfolio's past values by undoing its trades, dividends and splits, newest first.
+- `lib/orders.ts`, `lib/alerts.ts`, `lib/processing.ts`: limit and stop orders, price alerts, and catching an account up with the market.
+- `lib/market/filings.ts`: SEC filings; `lib/market/tiingo.ts` also has Tiingo news.
 
 ### Saved backtests and versions
 

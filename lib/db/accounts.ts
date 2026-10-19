@@ -2,37 +2,47 @@
  * Reading and changing signed-in users' simulated accounts in the database.
  *
  * Every change runs as one write transaction (see ./transaction.ts) that reads the account, applies
- * the same rules guest mode uses (lib/trading.ts), and writes the result. So
- * two orders sent at once (say, from two tabs) can't both spend the same cash:
- * the second waits for the first, then sees its result.
+ * the same rules guest mode uses (lib/trading.ts, lib/orders.ts, lib/processing.ts), and writes
+ * what changed. So two orders sent at once (say, from two tabs) can't both spend the same cash:
+ * the second waits for the first, then sees its result. And because the account is brought up to
+ * date (dividends, fills…) inside the same transaction as each trade, nothing can be applied twice.
  *
  * This takes the database as a parameter so tests can use an in-memory one.
  * App code uses the instance from ./index.ts, which is server-only.
  */
-import { and, count, desc, eq, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import { startingAccount } from "../starting-account";
-import { MAX_TRADES, MAX_WATCHLIST, placeOrder, type Account, type Order, type TradeResult } from "../trading";
+import { processAccount, type MarketData } from "../processing";
+import { startingAccount, type StartingPreset } from "../starting-account";
+import { MAX_ALERTS, MAX_EVENTS, MAX_TRADES, MAX_WATCHLIST, placeOrder, type Account, type Order, type TradeResult } from "../trading";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
 
-const { portfolio, holding, watchlistItem, trade } = schema;
+const { portfolio, holding, watchlistItem, trade, accountEvent, pendingOrder, priceAlert } = schema;
 
 // SQLite numbers every row in insertion order (the hidden `rowid`). Holdings
 // are listed in the order they were first bought, like lib/trading.ts does:
 // an update keeps a row's rowid, and selling out then rebuying appends it.
 const insertionOrder = sql`rowid`;
 
+/** Drops the user column and null columns, so a row reads back exactly like the object that was saved. */
+const defined = <T extends Record<string, unknown>>(row: T) =>
+  Object.fromEntries(Object.entries(row).filter(([k, v]) => k !== "userId" && v !== null && v !== undefined)) as { [K in Exclude<keyof T, "userId">]: Exclude<T[K], null> };
+
 async function read(ex: Executor, userId: string): Promise<Account | null> {
   const [row] = await ex.select().from(portfolio).where(eq(portfolio.userId, userId));
   if (!row) return null;
-  const [holdings, watchlist, trades] = await Promise.all([
+  const [holdings, watchlist, trades, events, orders, alerts] = await Promise.all([
     ex.select().from(holding).where(eq(holding.userId, userId)).orderBy(insertionOrder),
     ex.select().from(watchlistItem).where(eq(watchlistItem.userId, userId)).orderBy(watchlistItem.position),
     ex.select().from(trade).where(eq(trade.userId, userId)).orderBy(desc(trade.time), desc(insertionOrder)).limit(MAX_TRADES),
+    ex.select().from(accountEvent).where(eq(accountEvent.userId, userId)).orderBy(desc(accountEvent.time)).limit(MAX_EVENTS),
+    ex.select().from(pendingOrder).where(eq(pendingOrder.userId, userId)).orderBy(desc(pendingOrder.createdAt)),
+    ex.select().from(priceAlert).where(eq(priceAlert.userId, userId)).orderBy(desc(priceAlert.createdAt)).limit(MAX_ALERTS),
   ]);
+  const openFirst = [...orders.filter((o) => o.status === "open"), ...orders.filter((o) => o.status !== "open").sort((a, b) => (b.closedAt ?? 0) - (a.closedAt ?? 0))];
   return {
     cash: row.cash,
     holdings: holdings.map(({ symbol, shares, averageCost }) => ({ symbol, shares, averageCost })),
@@ -46,21 +56,72 @@ async function read(ex: Executor, userId: string): Promise<Account | null> {
       time,
       ...(realizedGain !== null && { realizedGain }),
     })),
+    // Phase 7 fields, only when there's something in them (as guest accounts store them).
+    ...(events.length && { events: events.map(defined) }),
+    ...(orders.length && { orders: openFirst.map(defined) }),
+    ...(alerts.length && { alerts: alerts.map(({ seen, ...a }) => ({ ...defined(a), ...(seen && { seen }) })) }),
+    ...(row.processedThrough !== null && { processedThrough: row.processedThrough }),
   };
 }
 
 async function write(ex: Executor, userId: string, account: Account) {
-  await ex.insert(portfolio).values({ userId, cash: account.cash });
+  await ex.insert(portfolio).values({ userId, cash: account.cash, processedThrough: account.processedThrough ?? null });
   if (account.holdings.length) await ex.insert(holding).values(account.holdings.map((h) => ({ userId, ...h })));
   if (account.watchlist.length) await ex.insert(watchlistItem).values(account.watchlist.map((symbol, position) => ({ userId, symbol, position })));
   if (account.trades.length) await ex.insert(trade).values(account.trades.map((t) => ({ userId, ...t, realizedGain: t.realizedGain ?? null })));
+  if (account.events?.length) await ex.insert(accountEvent).values(account.events.map((e) => ({ userId, ...e })));
+  if (account.orders?.length) await ex.insert(pendingOrder).values(account.orders.map((o) => ({ userId, ...o })));
+  if (account.alerts?.length) await ex.insert(priceAlert).values(account.alerts.map((a) => ({ userId, ...a, seen: a.seen ?? false })));
 }
 
 async function remove(ex: Executor, userId: string) {
-  await ex.delete(trade).where(eq(trade.userId, userId));
-  await ex.delete(watchlistItem).where(eq(watchlistItem.userId, userId));
-  await ex.delete(holding).where(eq(holding.userId, userId));
+  for (const table of [trade, watchlistItem, holding, accountEvent, pendingOrder, priceAlert]) await ex.delete(table).where(eq(table.userId, userId));
   await ex.delete(portfolio).where(eq(portfolio.userId, userId));
+}
+
+const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+
+/** Saves what changed between two versions of an account: new rows inserted, changed rows updated, dropped rows deleted. */
+async function persist(ex: Executor, userId: string, before: Account, after: Account) {
+  if (before.cash !== after.cash || before.processedThrough !== after.processedThrough) {
+    await ex.update(portfolio).set({ cash: after.cash, processedThrough: after.processedThrough ?? null }).where(eq(portfolio.userId, userId));
+  }
+  if (!same(before.holdings, after.holdings)) {
+    // Rewritten in order, so the insertion order (and the holdings' order) is kept.
+    await ex.delete(holding).where(eq(holding.userId, userId));
+    if (after.holdings.length) await ex.insert(holding).values(after.holdings.map((h) => ({ userId, ...h })));
+  }
+  if (!same(before.watchlist, after.watchlist)) {
+    await ex.delete(watchlistItem).where(eq(watchlistItem.userId, userId));
+    if (after.watchlist.length) await ex.insert(watchlistItem).values(after.watchlist.map((symbol, position) => ({ userId, symbol, position })));
+  }
+  const oldTrades = new Set(before.trades.map((t) => t.id));
+  const newTrades = after.trades.filter((t) => !oldTrades.has(t.id));
+  if (newTrades.length) await ex.insert(trade).values(newTrades.map((t) => ({ userId, ...t, realizedGain: t.realizedGain ?? null })));
+  const oldEvents = new Set((before.events ?? []).map((e) => e.id));
+  const newEvents = (after.events ?? []).filter((e) => !oldEvents.has(e.id));
+  if (newEvents.length) await ex.insert(accountEvent).values(newEvents.map((e) => ({ userId, ...e })));
+
+  // Orders and alerts: insert, update or delete each one by ID.
+  const sync = async <T extends { id: string }>(
+    table: typeof pendingOrder | typeof priceAlert,
+    was: T[] = [],
+    now: T[] = [],
+    toRow: (item: T) => Record<string, unknown>,
+  ) => {
+    const previous = new Map(was.map((x) => [x.id, x]));
+    for (const item of now) {
+      const old = previous.get(item.id);
+      if (!old) await ex.insert(table).values({ userId, ...toRow(item) } as never);
+      else if (!same(old, item)) await ex.update(table).set(toRow(item) as never).where(and(eq(table.userId, userId), eq(table.id, item.id)));
+    }
+    const kept = new Set(now.map((x) => x.id));
+    const dropped = was.filter((x) => !kept.has(x.id)).map((x) => x.id);
+    if (dropped.length) await ex.delete(table).where(and(eq(table.userId, userId), inArray(table.id, dropped)));
+  };
+  // Optional fields default to null, so a field that was cleared is cleared in the row too.
+  await sync(pendingOrder, before.orders, after.orders, (o) => ({ closedAt: null, fillPrice: null, note: null, ...o }));
+  await sync(priceAlert, before.alerts, after.alerts, (a) => ({ triggeredAt: null, triggerPrice: null, ...a, seen: a.seen ?? false }));
 }
 
 /** Loads the account, creating it from the starting account if this user has none yet. */
@@ -72,8 +133,24 @@ async function ensure(ex: Executor, userId: string): Promise<Account> {
   return fresh;
 }
 
+export type ChangeResult<T> = { ok: true; account: Account; value?: T } | { ok: false; message: string };
+
 export function createAccountRepository(db: Db) {
   const transaction = <T>(fn: (tx: Executor) => Promise<T>) => writeTransaction(db, fn);
+
+  /**
+   * The general way to change an account: in one transaction, read it, bring
+   * it up to date with `market` (if given), apply `change`, and save the
+   * difference. A refusal saves only the bringing up to date.
+   */
+  const update = <T = undefined>(userId: string, market: MarketData | null, change: (account: Account) => ChangeResult<T>) =>
+    transaction(async (tx): Promise<ChangeResult<T>> => {
+      const before = await ensure(tx, userId);
+      const processed = market ? processAccount(before, market) : before;
+      const result = change(processed);
+      await persist(tx, userId, before, result.ok ? result.account : processed);
+      return result;
+    });
 
   return {
     /** The user's account, or null if they haven't got one yet. */
@@ -81,6 +158,8 @@ export function createAccountRepository(db: Db) {
 
     /** The user's account, created from the starting account if needed. */
     ensure: (userId: string) => transaction((tx) => ensure(tx, userId)),
+
+    update,
 
     /**
      * Creates the account from `account` (a guest account being imported).
@@ -93,25 +172,15 @@ export function createAccountRepository(db: Db) {
         return true;
       }),
 
-    /** Applies an order with the shared rules, and saves the result if it's allowed. */
-    placeOrder: (userId: string, order: Order): Promise<TradeResult> =>
-      transaction(async (tx) => {
-        const result = placeOrder(await ensure(tx, userId), order);
-        if (!result.ok) return result;
-
-        const { account, trade: filled } = result;
-        await tx.update(portfolio).set({ cash: account.cash }).where(eq(portfolio.userId, userId));
-        const after = account.holdings.find((h) => h.symbol === filled.symbol);
-        const where = and(eq(holding.userId, userId), eq(holding.symbol, filled.symbol));
-        if (!after) await tx.delete(holding).where(where);
-        else
-          await tx
-            .insert(holding)
-            .values({ userId, ...after })
-            .onConflictDoUpdate({ target: [holding.userId, holding.symbol], set: { shares: after.shares, averageCost: after.averageCost } });
-        await tx.insert(trade).values({ userId, ...filled, realizedGain: filled.realizedGain ?? null });
-        return result;
-      }),
+    /** Brings the account up to date, then applies an order with the shared rules, saving the result if it's allowed. */
+    placeOrder: async (userId: string, order: Order, market: MarketData | null = null): Promise<TradeResult> => {
+      let outcome: TradeResult = { ok: false, error: "invalid-price", message: "That order couldn't be placed." };
+      await update(userId, market, (account) => {
+        outcome = placeOrder(account, order);
+        return outcome.ok ? { ok: true, account: outcome.account } : { ok: false, message: outcome.message };
+      });
+      return outcome;
+    },
 
     /** Adds the symbol to the end of the watchlist, or removes it. Returns whether it's now watched, or "full". */
     toggleWatchlist: (userId: string, symbol: string) =>
@@ -132,11 +201,11 @@ export function createAccountRepository(db: Db) {
         return true;
       }),
 
-    /** Replaces the account with the starting account. */
-    reset: (userId: string) =>
+    /** Replaces the account with a starting account. */
+    reset: (userId: string, preset: StartingPreset = "starter") =>
       transaction(async (tx) => {
         await remove(tx, userId);
-        await write(tx, userId, startingAccount());
+        await write(tx, userId, startingAccount(preset));
       }),
   };
 }

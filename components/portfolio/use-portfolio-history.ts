@@ -17,7 +17,8 @@ export type PortfolioHistory =
   | { status: "ready"; history: Record<string, PricePoint[]>; indices: IndexHistory[] };
 
 /**
- * Daily prices for every stock the account holds or has traded, plus the
+ * Daily prices (as traded, not adjusted: they value real share counts) for
+ * every stock the account holds or has traded, plus the
  * three indices to compare with. Loaded from /api/history (which reads the
  * server's hourly cache, so it costs no extra data-source requests) and only
  * on the portfolio page, so other pages stay light. Fetched again only when
@@ -30,7 +31,7 @@ export function usePortfolioHistory(account: Account | null): PortfolioHistory {
   useEffect(() => {
     if (key === null) return;
     let cancelled = false;
-    const query = [...(key ? key.split(",").map((s) => `symbol=${encodeURIComponent(s)}`) : []), "indices=all"].join("&");
+    const query = [...(key ? key.split(",").map((s) => `symbol=${encodeURIComponent(s)}`) : []), "indices=all", "raw=1"].join("&");
     fetch(`/api/history?${query}`)
       .then(async (response) => {
         const body = await response.json().catch(() => null);

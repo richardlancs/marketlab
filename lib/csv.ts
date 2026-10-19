@@ -2,7 +2,7 @@
  * Trades as a CSV file (RFC 4180), for spreadsheets. Pure, so the escaping
  * rules are unit-tested.
  */
-import type { Trade } from "./trading";
+import type { AccountEvent, Trade } from "./trading";
 
 /**
  * Quotes a text field when it needs it (commas, quotes, line breaks), doubling
@@ -18,11 +18,22 @@ function field(value: string | number): string {
 
 const HEADER = ["Date", "Time (UTC)", "Symbol", "Side", "Shares", "Price", "Total", "Realized gain"];
 
-/** Newest first, like the trade history. Dates are ISO (YYYY-MM-DD) so every spreadsheet reads them the same way. */
-export function tradesToCsv(trades: readonly Trade[]): string {
-  const rows = trades.map((t) => {
-    const iso = new Date(t.time).toISOString();
-    return [iso.slice(0, 10), iso.slice(11, 19), t.symbol, t.side, t.shares, t.price, Math.round(t.shares * t.price * 100) / 100, t.realizedGain ?? ""];
-  });
+/**
+ * Trades, dividends and splits, newest first, like the activity list. Dates
+ * are ISO (YYYY-MM-DD) so every spreadsheet reads them the same way. For a
+ * dividend, Price is per share and Total is the cash paid; for a split, Price
+ * is the ratio and Total is any cash paid for a fraction of a share.
+ */
+export function tradesToCsv(trades: readonly Trade[], events: readonly AccountEvent[] = []): string {
+  const at = (time: number) => {
+    const iso = new Date(time).toISOString();
+    return [iso.slice(0, 10), iso.slice(11, 19)];
+  };
+  const rows = [
+    ...trades.map((t) => ({ time: t.time, row: [...at(t.time), t.symbol, t.side, t.shares, t.price, Math.round(t.shares * t.price * 100) / 100, t.realizedGain ?? ""] })),
+    ...events.map((e) => ({ time: e.time, row: [...at(e.time), e.symbol, e.kind, e.shares, e.value, e.cash, ""] })),
+  ]
+    .sort((a, b) => b.time - a.time)
+    .map((r) => r.row);
   return [HEADER, ...rows].map((row) => row.map(field).join(",")).join("\r\n") + "\r\n";
 }

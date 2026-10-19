@@ -23,6 +23,56 @@ export interface Trade {
   realizedGain?: number;
 }
 
+/** Something that happened to a holding without a trade: a dividend paid, or a split. */
+export interface AccountEvent {
+  id: string;
+  kind: "dividend" | "split";
+  symbol: string;
+  /** The close of the ex-date: the event counts from that day. */
+  time: number;
+  /** Shares held when it happened. */
+  shares: number;
+  /** Dividend: dollars per share. Split: the ratio (2 = 2-for-1). */
+  value: number;
+  /** Cash it added: the dividend, or for a split the payout for a fraction of a share. */
+  cash: number;
+  /** Splits only: shares held afterward. */
+  sharesAfter?: number;
+}
+
+/** An order that waits for a price: see lib/orders.ts for how it fills. */
+export interface PendingOrder {
+  id: string;
+  symbol: string;
+  side: "buy" | "sell";
+  /** Limit: at this price or better. Stop: once the price passes this level. */
+  type: "limit" | "stop";
+  shares: number;
+  price: number;
+  /** "day": only the next close; "gtc": good till cancelled (up to 90 days). */
+  duration: "day" | "gtc";
+  createdAt: number;
+  status: "open" | "filled" | "cancelled" | "expired";
+  /** When it stopped being open, and why (for cancellations). */
+  closedAt?: number;
+  fillPrice?: number;
+  note?: string;
+}
+
+/** "Tell me when KO closes above $70." */
+export interface PriceAlert {
+  id: string;
+  symbol: string;
+  direction: "above" | "below";
+  price: number;
+  createdAt: number;
+  /** The close it triggered on, once it has. */
+  triggeredAt?: number;
+  triggerPrice?: number;
+  /** True once the user has seen it triggered. */
+  seen?: boolean;
+}
+
 export interface Account {
   cash: number;
   holdings: Holding[];
@@ -30,6 +80,15 @@ export interface Account {
   watchlist: string[];
   /** Newest first. */
   trades: Trade[];
+  // The fields below were added in Phase 7. They're optional, so accounts
+  // saved before then still load (and mean "none yet").
+  /** Dividends and splits, newest first. */
+  events?: AccountEvent[];
+  /** Open orders, then recently closed ones (newest first). */
+  orders?: PendingOrder[];
+  alerts?: PriceAlert[];
+  /** The last close the account has been brought up to date with (dividends, splits, fills, alerts). */
+  processedThrough?: number;
 }
 
 export interface Order {
@@ -139,6 +198,84 @@ const isPositiveInt = (value: unknown): value is number => Number.isInteger(valu
 
 /** The most trades kept in history. Older ones are dropped when loading. */
 export const MAX_TRADES = 500;
+/** Dividends and splits kept, newest first. */
+export const MAX_EVENTS = 200;
+/** Open orders at once, and closed ones kept to show what happened to them. */
+export const MAX_OPEN_ORDERS = 20;
+export const MAX_CLOSED_ORDERS = 50;
+export const MAX_ALERTS = 20;
+
+const isTime = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
+const isPrice = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+const isOptional = <T>(v: unknown, check: (x: unknown) => x is T) => v === undefined || check(v);
+
+function parseEvent(e: unknown, known: (s: unknown) => s is string): AccountEvent | null {
+  if (!isRecord(e) || typeof e.id !== "string" || (e.kind !== "dividend" && e.kind !== "split") || !known(e.symbol)) return null;
+  if (!isTime(e.time) || !isPositiveInt(e.shares) || !isPrice(e.value) || !isMoney(e.cash)) return null;
+  if (e.kind === "split" && !isMoney(e.sharesAfter)) return null;
+  return {
+    id: e.id,
+    kind: e.kind,
+    symbol: e.symbol,
+    time: e.time,
+    shares: e.shares,
+    value: e.value,
+    cash: e.cash,
+    ...(e.kind === "split" && { sharesAfter: e.sharesAfter as number }),
+  };
+}
+
+/** Checks a stored order (one the user is placing is checked again, more strictly, in lib/orders.ts). */
+export function parsePendingOrder(o: unknown, known: (s: unknown) => s is string): PendingOrder | null {
+  if (!isRecord(o) || typeof o.id !== "string" || !known(o.symbol)) return null;
+  if ((o.side !== "buy" && o.side !== "sell") || (o.type !== "limit" && o.type !== "stop") || (o.duration !== "day" && o.duration !== "gtc")) return null;
+  if (!isPositiveInt(o.shares) || !isPrice(o.price) || !isTime(o.createdAt)) return null;
+  if (o.status !== "open" && o.status !== "filled" && o.status !== "cancelled" && o.status !== "expired") return null;
+  if (!isOptional(o.closedAt, isTime) || !isOptional(o.fillPrice, isPrice) || !isOptional(o.note, (x): x is string => typeof x === "string" && x.length <= 200)) return null;
+  return {
+    id: o.id,
+    symbol: o.symbol,
+    side: o.side,
+    type: o.type,
+    shares: o.shares,
+    price: o.price,
+    duration: o.duration,
+    createdAt: o.createdAt,
+    status: o.status,
+    ...(o.closedAt !== undefined && { closedAt: o.closedAt as number }),
+    ...(o.fillPrice !== undefined && { fillPrice: o.fillPrice as number }),
+    ...(o.note !== undefined && { note: o.note as string }),
+  };
+}
+
+export function parsePriceAlert(a: unknown, known: (s: unknown) => s is string): PriceAlert | null {
+  if (!isRecord(a) || typeof a.id !== "string" || !known(a.symbol) || (a.direction !== "above" && a.direction !== "below")) return null;
+  if (!isPrice(a.price) || !isTime(a.createdAt) || !isOptional(a.triggeredAt, isTime) || !isOptional(a.triggerPrice, isPrice)) return null;
+  if (a.seen !== undefined && typeof a.seen !== "boolean") return null;
+  return {
+    id: a.id,
+    symbol: a.symbol,
+    direction: a.direction,
+    price: a.price,
+    createdAt: a.createdAt,
+    ...(a.triggeredAt !== undefined && { triggeredAt: a.triggeredAt as number }),
+    ...(a.triggerPrice !== undefined && { triggerPrice: a.triggerPrice as number }),
+    ...(a.seen !== undefined && { seen: a.seen as boolean }),
+  };
+}
+
+/** Parses an optional list: absent is fine (an account from before it existed); present must be all valid. */
+function parseList<T>(value: unknown, parse: (item: unknown) => T | null, max: number): T[] | null | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value)) return null;
+  const out: T[] = [];
+  for (const item of value.slice(0, max)) {
+    const parsed = parse(item);
+    if (!parsed) return null;
+    out.push(parsed);
+  }
+  return out;
+}
 
 /** Returns a clean Account if `value` is a valid one, with every symbol passing `isKnown`, otherwise null. */
 export function parseAccount(value: unknown, isKnown: (symbol: string) => boolean): Account | null {
@@ -172,5 +309,19 @@ export function parseAccount(value: unknown, isKnown: (symbol: string) => boolea
     });
   }
 
-  return { cash: value.cash, holdings: cleanHoldings, watchlist: [...watchlist], trades: cleanTrades };
+  const events = parseList(value.events, (e) => parseEvent(e, known), MAX_EVENTS);
+  const orders = parseList(value.orders, (o) => parsePendingOrder(o, known), MAX_OPEN_ORDERS + MAX_CLOSED_ORDERS);
+  const alerts = parseList(value.alerts, (a) => parsePriceAlert(a, known), MAX_ALERTS);
+  if (events === null || orders === null || alerts === null || !isOptional(value.processedThrough, isTime)) return null;
+
+  return {
+    cash: value.cash,
+    holdings: cleanHoldings,
+    watchlist: [...watchlist],
+    trades: cleanTrades,
+    ...(events && { events }),
+    ...(orders && { orders }),
+    ...(alerts && { alerts }),
+    ...(value.processedThrough !== undefined && { processedThrough: value.processedThrough as number }),
+  };
 }

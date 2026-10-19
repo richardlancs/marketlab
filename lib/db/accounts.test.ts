@@ -139,4 +139,45 @@ describe("account repository", () => {
     await db.delete(schema.user).where((await import("drizzle-orm")).eq(schema.user.id, userId));
     expect(await repo.load(userId)).toBeNull();
   });
+
+  it("saves dividends, orders and alerts, and reads them back exactly", async () => {
+    await repo.ensure(userId);
+    const day = (d: number) => 1_760_000_000_000 + d * 86_400_000;
+    const market = (latest: number) => ({
+      raw: {
+        // Every stock the account holds needs prices, or processing waits for them.
+        ...Object.fromEntries(["MSFT", "NVDA", "AMZN", "JPM", "KO"].map((s) => [s, [1, 2, 3].map((d) => ({ time: day(d), price: 60 }))])),
+        AAPL: [1, 2, 3].map((d) => ({ time: day(d), price: 200 - d })),
+      },
+      actions: { AAPL: [{ symbol: "AAPL", time: day(2), kind: "dividend" as const, amount: 0.25 }] },
+      latest,
+    });
+    // The first processing only starts tracking.
+    await repo.update(userId, market(day(0)), (a) => ({ ok: true, account: a }));
+    const { placePendingOrder } = await import("../orders");
+    const { addAlert } = await import("../alerts");
+    await repo.update(userId, null, (a) => {
+      const placed = placePendingOrder(a, { symbol: "AAPL", side: "buy", type: "limit", shares: 2, price: 198.5, duration: "gtc" }, `${userId}-o1`, day(0) + 1);
+      if (!placed.ok) return placed;
+      const alerted = addAlert(placed.account, { symbol: "KO", direction: "above", price: 59 }, `${userId}-a1`, day(0) + 1);
+      return alerted.ok ? { ok: true, account: alerted.account } : alerted;
+    });
+    const result = await repo.update(userId, market(day(3)), (a) => ({ ok: true, account: a }));
+    if (!result.ok) throw new Error(result.message);
+    const saved = await repo.load(userId);
+    expect(saved).toEqual(result.account);
+    expect(saved?.events?.[0]).toMatchObject({ kind: "dividend", shares: 40, cash: 10 });
+    expect(saved?.orders?.[0]).toMatchObject({ status: "filled", fillPrice: 198 });
+    expect(saved?.alerts?.[0]).toMatchObject({ triggeredAt: day(1) });
+    expect(saved?.trades[0]).toMatchObject({ id: `${userId}-o1`, shares: 2, price: 198 });
+    // Processing again (another tab, a retry) changes nothing.
+    await repo.update(userId, market(day(3)), (a) => ({ ok: true, account: a }));
+    expect(await repo.load(userId)).toEqual(saved);
+  });
+
+  it("resets to a cash-only start", async () => {
+    await repo.ensure(userId);
+    await repo.reset(userId, "cash25k");
+    expect(await repo.load(userId)).toEqual(startingAccount("cash25k"));
+  });
 });

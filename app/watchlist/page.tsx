@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { StorageLabel } from "@/components/account/storage-label";
+import { AlertsPanel } from "@/components/alerts/alerts-panel";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { WatchlistTable } from "@/components/stocks/watchlist-table";
 import { Card } from "@/components/ui/card";
@@ -28,6 +29,10 @@ export default async function WatchlistPage() {
         <Card aria-label="Your watchlist" className="overflow-x-auto py-2">
           <WatchlistTable rows={rows} />
         </Card>
+      </div>
+
+      <div style={{ animationDelay: "120ms" }} className="mt-4 animate-fade-up lg:mt-6">
+        <AlertsPanel />
       </div>
     </main>
   );

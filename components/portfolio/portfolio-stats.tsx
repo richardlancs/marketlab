@@ -7,12 +7,14 @@ import { ChangeBadge } from "@/components/ui/change-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatSignedCurrency } from "@/lib/format";
 import { summarizePortfolio } from "@/lib/portfolio";
+import { STARTING_PRESETS, type StartingPreset } from "@/lib/starting-account";
 import { totalRealizedGain } from "@/lib/trading";
 
 /** Where the money is (cash vs invested), gains so far, and the reset button. */
 export function PortfolioStats() {
   const { account, quotes, reset } = useAccount();
   const [confirming, setConfirming] = useState(false);
+  const [preset, setPreset] = useState<StartingPreset>("starter");
 
   if (!account) {
     return (
@@ -65,13 +67,22 @@ export function PortfolioStats() {
         {confirming ? (
           // An inline "are you sure?" instead of a pop-up. role="alert" announces it.
           <div role="alert" className="text-sm">
-            <p>Reset to the starting portfolio? Your trades and watchlist changes will be lost.</p>
+            <p>Start over? Your trades, orders, alerts and watchlist changes will be lost.</p>
+            <fieldset className="mt-3 space-y-1.5">
+              <legend className="mb-1 text-xs text-muted">Start with</legend>
+              {(Object.keys(STARTING_PRESETS) as StartingPreset[]).map((key) => (
+                <label key={key} className="flex cursor-pointer items-center gap-2">
+                  <input type="radio" name="preset" value={key} checked={preset === key} onChange={() => setPreset(key)} className="accent-accent" />
+                  {STARTING_PRESETS[key]}
+                </label>
+              ))}
+            </fieldset>
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
                 autoFocus
                 onClick={async () => {
-                  await reset();
+                  await reset(preset);
                   setConfirming(false);
                 }}
                 className="rounded-full bg-loss px-4 py-1.5 font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
@@ -93,7 +104,7 @@ export function PortfolioStats() {
             onClick={() => setConfirming(true)}
             className="text-sm text-muted transition-colors hover:text-loss focus-visible:outline-2 focus-visible:outline-accent"
           >
-            Reset to starting portfolio…
+            Start over…
           </button>
         )}
       </div>

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { AlertsBadge } from "@/components/alerts/alerts-badge";
 import { AccountMenu } from "@/components/auth/account-menu";
 import { SearchDialog } from "@/components/search/search-dialog";
 import { NavLinks, NavLinksFallback, type NavItem } from "./nav-links";
@@ -53,6 +54,7 @@ export function Header() {
 
         <div className="ml-auto flex items-center gap-2">
           <SearchDialog />
+          <AlertsBadge />
           <ThemeToggle />
           <AccountMenu />
         </div>

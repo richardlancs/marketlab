@@ -2,7 +2,7 @@
  * What a market-data source must provide. The rest of the app depends only on
  * this, so the mock market and the real one (Tiingo) are interchangeable.
  */
-import type { DailyBar } from "../types";
+import type { CorporateAction, DailyBar } from "../types";
 import type { IndexListing } from "./universe";
 
 export interface Series {
@@ -11,6 +11,8 @@ export interface Series {
   /** Fundamentals, when the source has them. */
   marketCap: number | null;
   peRatio: number | null;
+  /** Dividends and splits in the same period, oldest first. */
+  actions: CorporateAction[];
 }
 
 /** What a source knows about a stock besides its prices. */

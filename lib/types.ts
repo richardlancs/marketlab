@@ -39,6 +39,15 @@ export interface DailyBar {
   adjClose: number;
 }
 
+/**
+ * A dividend or a split, as of the close of its ex-date: the first day the
+ * stock trades without it. Holders at the previous close get the dividend or
+ * the extra shares.
+ */
+export type CorporateAction =
+  | { symbol: string; time: number; kind: "dividend"; /** Dollars per share. */ amount: number }
+  | { symbol: string; time: number; kind: "split"; /** New shares per old share: 2 = 2-for-1, 0.5 = a 1-for-2 reverse split. */ ratio: number };
+
 /** Fields shared by anything with a price: stocks and market indices. */
 export interface Quote {
   symbol: string;
@@ -54,6 +63,13 @@ export interface Quote {
   volume: number | null;
   /** Daily adjusted closes, oldest first, up to 5 years. */
   history: PricePoint[];
+  /**
+   * Daily closes as they were traded, not adjusted: what orders fill at and
+   * alerts compare with. Same days as `history`.
+   */
+  raw: PricePoint[];
+  /** Dividends and splits, oldest first. */
+  actions: CorporateAction[];
 }
 
 export interface Stock extends Quote {

@@ -4,7 +4,7 @@ import { startingAccount } from "../starting-account";
 import { parseAccount } from "../trading";
 import { buildMarket, toQuote } from "./build";
 import { DAY, isTradingDay, latestClosedTradingDay, tradingDaysAfter, tradingDaysEndingAt } from "./calendar";
-import { ANCHOR_DAY, HISTORY_BARS, mockProvider, mockSeries } from "./mock";
+import { ACTIONS_START, ANCHOR_DAY, HISTORY_BARS, mockProvider, mockSeries } from "./mock";
 import { INDICES, STOCK_SYMBOLS } from "./universe";
 
 /** A moment in New York time during daylight saving (UTC−4). */
@@ -148,5 +148,42 @@ describe("sliceTimeframe", () => {
   it("keeps a short history whole", () => {
     expect(sliceTimeframe(history.slice(-5), "1Y")).toHaveLength(5);
     expect(sliceTimeframe([], "1M")).toEqual([]);
+  });
+});
+
+describe("mock dividends and splits", () => {
+  const later = newYork(2027, 6, 1, 18);
+
+  it("only happen from ACTIONS_START on, so earlier closes never change", () => {
+    const before = mockSeries("NFLX", newYork(2026, 10, 16, 18)).bars;
+    const after = mockSeries("NFLX", later);
+    expect(after.actions.every((a) => a.time >= ACTIONS_START)).toBe(true);
+    const closes = new Map(after.bars.map((b) => [b.time, b.close]));
+    for (const bar of before.slice(-100)) expect(closes.get(bar.time)).toBe(bar.close);
+  });
+
+  it("split an expensive stock: the close drops by the ratio, the adjusted history doesn't jump", () => {
+    const { bars, actions } = mockSeries("NFLX", later); // $1,184 at the anchor, so it splits right away
+    const split = actions.find((a) => a.kind === "split");
+    if (split?.kind !== "split") throw new Error("expected a split");
+    const i = bars.findIndex((b) => b.time === split.time);
+    expect(bars[i].close / bars[i - 1].close).toBeLessThan(0.6);
+    expect(bars[i].adjClose / bars[i - 1].adjClose).toBeGreaterThan(0.85);
+    expect(bars[i].adjClose / bars[i - 1].adjClose).toBeLessThan(1.15);
+  });
+
+  it("pay quarterly dividends on some stocks, deterministically, and never on indices", () => {
+    const payers = STOCK_SYMBOLS.filter((s) => mockSeries(s, later).actions.some((a) => a.kind === "dividend"));
+    expect(payers.length).toBeGreaterThan(2);
+    expect(payers.length).toBeLessThan(STOCK_SYMBOLS.length);
+    expect(mockSeries("SPX", later).actions).toEqual([]);
+    expect(mockSeries(payers[0], later)).toEqual(mockSeries(payers[0], later));
+    // About four a year, and adjusted closes before one are scaled down by it.
+    const { bars, actions } = mockSeries(payers[0], later);
+    const dividend = actions.find((a) => a.kind === "dividend")!;
+    const i = bars.findIndex((b) => b.time === dividend.time);
+    expect(bars[i - 1].adjClose).toBeLessThan(bars[i - 1].close);
+    // Across the ex-date, the adjusted change is the price change with the dividend added back.
+    expect(bars[i].adjClose / bars[i - 1].adjClose).toBeCloseTo(bars[i].close / (bars[i - 1].close - dividend.amount), 3);
   });
 });

@@ -2,19 +2,28 @@
 
 import { createContext, startTransition, use, useEffect, useMemo, useOptimistic, useState, useSyncExternalStore, type ReactNode } from "react";
 import {
+  addAlertAction,
+  cancelOrderAction,
   importGuestAccountAction,
+  markAlertsSeenAction,
   placeOrderAction,
+  placePendingOrderAction,
+  processAccountAction,
+  removeAlertAction,
   resetAccountAction,
   startFreshAction,
   toggleWatchlistAction,
   type ActionResult,
 } from "@/lib/account-actions";
+import { addAlert as applyAddAlert, markAlertsSeen as applySeen, removeAlert as applyRemoveAlert } from "@/lib/alerts";
+import { cancelPendingOrder, placePendingOrder as applyPendingOrder, type NewOrder } from "@/lib/orders";
+import { needsProcessing, processAccount, symbolsToProcess, type MarketData } from "@/lib/processing";
 import type { StockTableRow } from "@/components/stocks/stock-table-rows";
 import { createLocalAccountStore } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
 import type { StockListing } from "@/lib/market/universe";
-import { isStartingAccount, startingAccount } from "@/lib/starting-account";
-import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order } from "@/lib/trading";
+import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
+import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert } from "@/lib/trading";
 import type { StockQuote } from "@/lib/types";
 
 /** What every action resolves to: success, or a message to show. */
@@ -52,8 +61,15 @@ interface AccountContextValue {
   toggleWatchlist(symbol: string): Promise<Outcome>;
   /** Trades at the quote's price in guest mode; signed in, the server uses its own price. */
   placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number): Promise<Outcome>;
-  /** Back to the starting holdings, cash and watchlist, with no trade history. */
-  reset(): Promise<Outcome>;
+  /** A limit or stop order, filled later at a close (lib/orders.ts). */
+  placePendingOrder(order: NewOrder): Promise<Outcome>;
+  cancelOrder(id: string): Promise<Outcome>;
+  addAlert(alert: { symbol: string; direction: PriceAlert["direction"]; price: number }): Promise<Outcome>;
+  removeAlert(id: string): Promise<Outcome>;
+  /** The user has seen their triggered alerts: clears the header badge. */
+  markAlertsSeen(): Promise<Outcome>;
+  /** Back to a starting account (holdings, cash and watchlist), with no history. */
+  reset(preset?: StartingPreset): Promise<Outcome>;
   /** For importOffer: copy the guest data into the account, or start fresh. */
   resolveImport(choice: "import" | "fresh"): Promise<Outcome>;
 }
@@ -79,11 +95,14 @@ export function AccountProvider({
   quotes,
   listings,
   openTickers,
+  asOf,
   children,
 }: {
   quotes: StockQuote[];
   listings: readonly StockListing[];
   openTickers: boolean;
+  /** The market's latest close: accounts are brought up to date to here (lib/processing.ts). */
+  asOf: number;
   children: ReactNode;
 }) {
   const coreQuotes = useMemo(() => Object.fromEntries(quotes.map((q) => [q.symbol, q])), [quotes]);
@@ -175,6 +194,48 @@ export function AccountProvider({
   const account = mode === "guest" ? guestAccount : mode === "signed-in" ? optimisticAccount : null;
   const importOffer = needsSetup && guestAccount && !guestIsUntouched ? guestAccount : null;
 
+  /**
+   * Guest mode: brings the browser's account up to date with the market
+   * (dividends, splits, order fills, alerts since the last visit), using
+   * traded closes from /api/history. Signed in, the server does the same in
+   * processAccountAction. Resolves once the account is current (or the data
+   * couldn't be loaded, in which case it's tried again next time).
+   */
+  async function processGuest(): Promise<void> {
+    const current = store.getSnapshot();
+    if (!needsProcessing(current, asOf)) return;
+    const symbols = symbolsToProcess(current);
+    let market: MarketData = { raw: {}, actions: {}, latest: asOf };
+    if (current.processedThrough !== undefined && symbols.length) {
+      const query = [...symbols.map((s) => `symbol=${encodeURIComponent(s)}`), `from=${current.processedThrough}`, "raw=1", "actions=1"].join("&");
+      try {
+        const response = await fetch(`/api/history?${query}`);
+        if (!response.ok) return;
+        const data: { history: MarketData["raw"]; actions: MarketData["actions"] } = await response.json();
+        market = { raw: data.history, actions: data.actions, latest: asOf };
+      } catch {
+        return;
+      }
+    }
+    // Re-read: another tab may have processed (or traded) meanwhile.
+    const latest = store.getSnapshot();
+    const processed = processAccount(latest, market);
+    if (processed !== latest) store.set(processed);
+  }
+
+  const guestStale = mode === "guest" && guestAccount !== null && needsProcessing(guestAccount, asOf);
+  useEffect(() => {
+    if (guestStale) void processGuest();
+    // processGuest reads the store directly; it only needs to run when the account falls behind.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [guestStale, asOf]);
+
+  const serverStale = mode === "signed-in" && serverAccount != null && needsProcessing(serverAccount, asOf);
+  useEffect(() => {
+    if (serverStale && userId) void runRemote(userId, null, processAccountAction, { quiet: true });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [serverStale, userId]);
+
   // Prices for held or watched stocks outside the core, which the layout
   // doesn't send. Fetched again only when that set of symbols changes; a
   // symbol whose prices are unavailable is simply left out (shown as "—").
@@ -237,15 +298,71 @@ export function AccountProvider({
         // quiet: the trade form shows its own errors.
         return runRemote(userId, optimistic, () => placeOrderAction(symbol, side, shares), { quiet: true });
       }
+      await processGuest(); // a dividend or a fill since the last visit may have changed the cash
       const result = applyOrder(store.getSnapshot(), order);
       if (!result.ok) return { ok: false, message: result.message };
       store.set(result.account);
       return { ok: true };
     },
 
-    async reset() {
-      if (userId) return runRemote(userId, () => startingAccount(), resetAccountAction);
-      store.set(startingAccount());
+    async placePendingOrder(input) {
+      // The ID and time are made here, in an event handler, so the rules stay pure.
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      if (userId) {
+        const optimistic = (a: Account) => {
+          const result = applyPendingOrder(a, input, id, now);
+          return result.ok ? result.account : a;
+        };
+        return runRemote(userId, optimistic, () => placePendingOrderAction(input), { quiet: true });
+      }
+      await processGuest();
+      const result = applyPendingOrder(store.getSnapshot(), input, id, now);
+      if (!result.ok) return { ok: false, message: result.message };
+      store.set(result.account);
+      return { ok: true };
+    },
+
+    async cancelOrder(id) {
+      const now = Date.now();
+      if (userId) return runRemote(userId, (a) => cancelPendingOrder(a, id, now), () => cancelOrderAction(id));
+      await processGuest(); // it may have filled already
+      store.set(cancelPendingOrder(store.getSnapshot(), id, now));
+      return { ok: true };
+    },
+
+    async addAlert(input) {
+      const id = crypto.randomUUID();
+      const now = Date.now();
+      if (userId) {
+        const optimistic = (a: Account) => {
+          const result = applyAddAlert(a, input, id, now);
+          return result.ok ? result.account : a;
+        };
+        return runRemote(userId, optimistic, () => addAlertAction(input), { quiet: true });
+      }
+      await processGuest();
+      const result = applyAddAlert(store.getSnapshot(), input, id, now);
+      if (!result.ok) return { ok: false, message: result.message };
+      store.set(result.account);
+      return { ok: true };
+    },
+
+    async removeAlert(id) {
+      if (userId) return runRemote(userId, (a) => applyRemoveAlert(a, id), () => removeAlertAction(id));
+      store.set(applyRemoveAlert(store.getSnapshot(), id));
+      return { ok: true };
+    },
+
+    async markAlertsSeen() {
+      if (userId) return runRemote(userId, applySeen, markAlertsSeenAction, { quiet: true });
+      store.set(applySeen(store.getSnapshot()));
+      return { ok: true };
+    },
+
+    async reset(preset = "starter") {
+      if (userId) return runRemote(userId, () => startingAccount(preset), () => resetAccountAction(preset));
+      store.set(startingAccount(preset));
       return { ok: true };
     },
 

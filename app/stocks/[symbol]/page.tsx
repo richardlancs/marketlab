@@ -2,9 +2,12 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
+import { AlertCard } from "@/components/alerts/alert-card";
 import { PriceChart } from "@/components/charts/price-chart";
+import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PositionCard } from "@/components/stocks/position-card";
 import { RangeBar } from "@/components/stocks/range-bar";
+import { StockNews } from "@/components/stocks/stock-news";
 import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
 import { WatchToggle } from "@/components/stocks/watch-toggle";
@@ -92,6 +95,12 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
           />
           <StockStats stock={stock} className="mt-6" />
         </Card>
+        {/* Filings and news come from other sources; the page doesn't wait for them. */}
+        <div className="mt-4 lg:mt-6">
+          <Suspense fallback={null}>
+            <StockNews symbol={stock.symbol} />
+          </Suspense>
+        </div>
       </div>
 
       <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
@@ -110,8 +119,10 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
           <TradeCard quote={quote} />
         </div>
 
-        <div style={{ animationDelay: "240ms" }} className="animate-fade-up">
+        <div style={{ animationDelay: "240ms" }} className="flex flex-col gap-4 animate-fade-up lg:gap-6">
+          <OpenOrders symbol={stock.symbol} />
           <PositionCard quote={quote} />
+          <AlertCard symbol={stock.symbol} price={stock.price} />
         </div>
       </div>
     </div>

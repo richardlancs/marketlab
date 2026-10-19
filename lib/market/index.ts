@@ -10,17 +10,21 @@
  */
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
+import type { MarketData } from "../processing";
 import type { MarketIndex, Stock } from "../types";
 import { buildMarket, toQuote, type Market } from "./build";
 import { mockProvider } from "./mock";
 import { isTiingoBlocked, marketMode } from "./mode";
 import type { Listing, MarketDataProvider } from "./provider";
 import { isSymbolFormat, normalizeSymbol } from "./symbols";
-import { createTiingoProvider } from "./tiingo";
+import { parseFilings, parseTickerMap, type Filing } from "./filings";
+import { createTiingoProvider, fetchTiingoNews, type NewsItem } from "./tiingo";
 import { STOCK_SYMBOLS } from "./universe";
 
 export type { Market } from "./build";
 export type { Listing } from "./provider";
+export type { Filing } from "./filings";
+export type { NewsItem } from "./tiingo";
 export { FEATURED_SYMBOL, STOCK_SYMBOLS } from "./universe";
 
 let warnedBlocked = false;
@@ -108,7 +112,7 @@ async function cachedExtraStock(listing: Listing): Promise<Stock | null> {
   try {
     const series = await selectProvider().getSeries(listing.symbol, Date.now());
     cacheLife("hours");
-    return { ...toQuote(listing.symbol, listing.name, series.bars), sector: listing.sector, marketCap: series.marketCap, peRatio: series.peRatio };
+    return { ...toQuote(listing.symbol, listing.name, series.bars, series.actions), sector: listing.sector, marketCap: series.marketCap, peRatio: series.peRatio };
   } catch (error) {
     // Unlike the core market, there's no mock fallback here: made-up prices
     // next to a real ticker would mislead. Retried after a minute.
@@ -116,6 +120,24 @@ async function cachedExtraStock(listing: Listing): Promise<Stock | null> {
     cacheLife("minutes");
     return null;
   }
+}
+
+/**
+ * What lib/processing.ts needs to bring an account up to date: traded closes
+ * and dividends/splits for these stocks, up to the market's latest close. A
+ * stock whose prices are unavailable right now is left out, and processing
+ * waits for it rather than skipping its closes.
+ */
+export async function getProcessingData(symbols: string[]): Promise<MarketData> {
+  const [market, details] = await Promise.all([getMarket(), Promise.all(symbols.map(getStockDetail))]);
+  const raw: MarketData["raw"] = {};
+  const actions: MarketData["actions"] = {};
+  details.forEach((detail, i) => {
+    if (detail?.status !== "ok") return;
+    raw[symbols[i]] = detail.stock.raw;
+    actions[symbols[i]] = detail.stock.actions;
+  });
+  return { raw, actions, latest: market.asOf };
 }
 
 export type StockDetail = { status: "ok"; stock: Stock } | { status: "unavailable"; listing: Listing };
@@ -152,4 +174,79 @@ export async function getTopMovers(count = 3): Promise<{ gainers: Stock[]; loser
     gainers: byChange.filter((s) => s.changePercent >= MIN_MOVE).slice(0, count),
     losers: byChange.filter((s) => s.changePercent <= -MIN_MOVE).reverse().slice(0, count),
   };
+}
+
+// ---------------------------------------------------------------------------
+// Filings (SEC, public) and news (Tiingo, personal use only)
+// ---------------------------------------------------------------------------
+
+/** Who's asking, as the SEC requires ("MarketLab you@example.com"). Null hides filings. */
+const secUserAgent = () => process.env.SEC_USER_AGENT?.trim() || null;
+
+async function secJson(url: string, userAgent: string): Promise<unknown> {
+  const response = await fetch(url, { headers: { "User-Agent": userAgent, Accept: "application/json" } });
+  if (!response.ok) throw new Error(`SEC request failed: HTTP ${response.status}`);
+  return response.json();
+}
+
+async function cachedTickerMap(userAgent: string): Promise<Record<string, number>> {
+  "use cache";
+  cacheTag("sec-tickers");
+  try {
+    const map = parseTickerMap(await secJson("https://www.sec.gov/files/company_tickers.json", userAgent));
+    cacheLife("weeks");
+    return map;
+  } catch (error) {
+    console.error("[filings] Couldn't load the SEC ticker list:", error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return {};
+  }
+}
+
+async function cachedFilings(symbol: string, userAgent: string): Promise<Filing[] | null> {
+  "use cache";
+  cacheTag(`filings:${symbol}`);
+  const cik = (await cachedTickerMap(userAgent))[symbol];
+  if (!cik) {
+    cacheLife("days");
+    return null;
+  }
+  try {
+    const filings = parseFilings(cik, await secJson(`https://data.sec.gov/submissions/CIK${String(cik).padStart(10, "0")}.json`, userAgent));
+    cacheLife("hours");
+    return filings;
+  } catch (error) {
+    console.error(`[filings] Couldn't load filings for ${symbol}:`, error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return null;
+  }
+}
+
+/** A stock's recent SEC filings, or null if there are none to show (no SEC_USER_AGENT, unknown company, SEC unavailable). */
+export async function getFilings(input: string): Promise<Filing[] | null> {
+  const userAgent = secUserAgent();
+  const symbol = normalizeSymbol(input);
+  if (!userAgent || !isSymbolFormat(symbol)) return null;
+  return cachedFilings(symbol, userAgent);
+}
+
+async function cachedNews(symbol: string): Promise<NewsItem[] | null> {
+  "use cache";
+  cacheTag(`news:${symbol}`);
+  try {
+    const news = await fetchTiingoNews(process.env.TIINGO_API_KEY as string, symbol, Date.now());
+    if (news) cacheLife("hours");
+    else cacheLife("days"); // refused (no news on this plan) or over budget: don't keep asking
+    return news;
+  } catch {
+    cacheLife("minutes");
+    return null;
+  }
+}
+
+/** News headlines, only with real data on (Tiingo's data is for personal use); otherwise null. */
+export async function getNews(input: string): Promise<NewsItem[] | null> {
+  const symbol = normalizeSymbol(input);
+  if (marketMode() !== "tiingo" || !isSymbolFormat(symbol)) return null;
+  return cachedNews(symbol);
 }

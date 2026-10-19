@@ -7,6 +7,7 @@ import { startingAccount } from "./starting-account";
 const session = vi.hoisted(() => ({ current: null as { user: { id: string } } | null }));
 const accounts = vi.hoisted(() => ({
   load: vi.fn(),
+  update: vi.fn(),
   ensure: vi.fn(),
   toggleWatchlist: vi.fn(),
   placeOrder: vi.fn(),
@@ -20,6 +21,7 @@ vi.mock("./db", () => ({ accounts }));
 // AAPL and KO exist; KO's prices are unavailable right now.
 const listing = (symbol: string) => (["AAPL", "KO", "V", "MSFT", "NVDA", "AMZN", "JPM", "TSLA", "META", "NFLX"].includes(symbol) ? { symbol, name: symbol, sector: null } : null);
 vi.mock("./market", async () => ({
+  getProcessingData: async () => ({ raw: {}, actions: {}, latest: 0 }),
   getListing: async (symbol: string) => listing(symbol),
   getStockDetail: async (symbol: string) =>
     symbol === "AAPL" ? { status: "ok", stock: { symbol, price: 248.3 } } : listing(symbol) ? { status: "unavailable", listing: listing(symbol) } : null,
@@ -106,6 +108,25 @@ describe("account actions", () => {
   it("explain when a stock's prices are unavailable instead of trading at a made-up price", async () => {
     expect(await placeOrderAction("KO", "buy", 1)).toMatchObject({ ok: false, message: expect.stringContaining("unavailable") });
     expect(accounts.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it("validate pending orders, alerts and reset presets before touching the database", async () => {
+    const { placePendingOrderAction, addAlertAction } = await import("./account-actions");
+    expect(await placePendingOrderAction({ symbol: "ZZZZ", side: "buy", type: "limit", shares: 1, price: 1, duration: "gtc" })).toEqual({ ok: false, message: "Unknown stock." });
+    expect(await placePendingOrderAction("buy everything")).toMatchObject({ ok: false });
+    expect(await addAlertAction({ symbol: "AAPL", direction: "sideways", price: 1 })).toMatchObject({ ok: false });
+    expect(await resetAccountAction("cash1billion")).toMatchObject({ ok: false });
+    expect(accounts.update).not.toHaveBeenCalled();
+    expect(accounts.reset).not.toHaveBeenCalled();
+  });
+
+  it("run pending-order changes through the shared rules, on the up-to-date account", async () => {
+    const { placePendingOrderAction } = await import("./account-actions");
+    accounts.update.mockImplementation(async (_user: string, _market: unknown, fn: (a: unknown) => unknown) => fn(startingAccount()));
+    const result = await placePendingOrderAction({ symbol: "AAPL", side: "buy", type: "limit", shares: 1, price: 200, duration: "day" });
+    expect(result).toMatchObject({ ok: true, account: { orders: [{ symbol: "AAPL", type: "limit", status: "open" }] } });
+    const tooBig = await placePendingOrderAction({ symbol: "AAPL", side: "buy", type: "limit", shares: 1000, price: 200, duration: "day" });
+    expect(tooBig).toMatchObject({ ok: false, message: expect.stringContaining("cash") });
   });
 
   it("won't import over an existing account", async () => {
