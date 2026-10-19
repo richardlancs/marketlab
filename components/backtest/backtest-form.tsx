@@ -5,6 +5,7 @@ import { CONFIG_VERSION, LIMITS, parseConfig, STRATEGY_NAMES, type BacktestConfi
 import { parseRuleSet, RULE_LIMITS, RULE_PRESETS } from "@/lib/backtest/rules";
 import { DAY } from "@/lib/market/calendar";
 import { normalizeSymbol } from "@/lib/market/symbols";
+import { Explain } from "@/components/ui/explain";
 import { fromDraft, RuleSetEditor, toDraft, type RuleSetDraft } from "./rule-builder";
 
 /** The form as typed: strings, so half-finished numbers (and tickers) don't throw. */
@@ -358,6 +359,11 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
             <RuleSetEditor title="Buy" value={form.entry} onChange={(entry) => set({ entry })} />
             <RuleSetEditor title="Sell" value={form.exit} onChange={(exit) => set({ exit })} />
             <p className="text-xs text-muted">Each stock is judged on its own, using closing prices up to the day before each trade.</p>
+            <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
+              <span className="inline-flex items-center gap-1">Moving average <Explain term="sma" /></span>
+              <span className="inline-flex items-center gap-1">Exponential average <Explain term="ema" /></span>
+              <span className="inline-flex items-center gap-1">RSI <Explain term="rsi" /></span>
+            </p>
           </div>
         )}
         {form.strategy === "rebalancing" && (

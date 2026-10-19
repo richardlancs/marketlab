@@ -94,3 +94,19 @@ describe("backtest repository", () => {
     expect(traded.ok).toBe(true);
   });
 });
+
+describe("leaderboard repository", async () => {
+  const { createLeaderboardRepository } = await import("./leaderboard");
+  it("joins once per user, keeps names unique ignoring case, and leaves", async () => {
+    const board = createLeaderboardRepository(db);
+    const other = `${userId}-b`;
+    await db.insert(schema.user).values({ id: other, name: "B", email: `${other}@example.com` });
+    expect(await board.join(userId, { displayName: "Ann", nameKey: `ann-${userId}`, joinedAt: 1, startValue: 100 })).toBe("joined");
+    expect(await board.join(userId, { displayName: "Ann 2", nameKey: `ann2-${userId}`, joinedAt: 2, startValue: 100 })).toBe("member");
+    expect(await board.join(other, { displayName: "ANN", nameKey: `ann-${userId}`, joinedAt: 3, startValue: 100 })).toBe("taken");
+    expect(await board.get(userId)).toEqual({ displayName: "Ann", joinedAt: 1, startValue: 100 });
+    expect((await board.members()).find((m) => m.displayName === "Ann")).toMatchObject({ startValue: 100, cash: 0, holdings: [] });
+    await board.leave(userId);
+    expect(await board.get(userId)).toBeNull();
+  });
+});

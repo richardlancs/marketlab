@@ -6,7 +6,9 @@ import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib
 import type { Metrics } from "@/lib/backtest/engine";
 import { describeRuleSet } from "@/lib/backtest/rules";
 import { ReturnHeatmap } from "./return-heatmap";
+import { Explain } from "@/components/ui/explain";
 import { formatCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
+import type { TermKey } from "@/lib/glossary";
 
 export const benchmarkName = (config: BacktestConfig) => (config.benchmark === "market" ? "S&P 500" : "Buy and hold");
 
@@ -16,19 +18,20 @@ export const holdingsLabel = (config: BacktestConfig) =>
 
 const tone = (value: number) => (value > 0.00005 ? "text-gain" : value < -0.00005 ? "text-loss" : "");
 
-export const ROWS: { label: string; help?: string; cell: (m: Metrics) => { text: string; className?: string } }[] = [
+/** Each measure's ⓘ explanation comes from the glossary (lib/glossary.ts). */
+export const ROWS: { label: string; term?: TermKey; cell: (m: Metrics) => { text: string; className?: string } }[] = [
   { label: "Final value", cell: (m) => ({ text: formatCurrency(m.finalValue) }) },
-  { label: "Total return", cell: (m) => ({ text: formatPercent(m.totalReturn), className: tone(m.totalReturn) }) },
-  { label: "Annual return", help: "The steady yearly return that would end at the same value (CAGR).", cell: (m) => ({ text: formatPercent(m.cagr), className: tone(m.cagr) }) },
+  { label: "Total return", term: "totalReturn", cell: (m) => ({ text: formatPercent(m.totalReturn), className: tone(m.totalReturn) }) },
+  { label: "Annual return", term: "cagr", cell: (m) => ({ text: formatPercent(m.cagr), className: tone(m.cagr) }) },
   {
     label: "Max drawdown",
-    help: "The biggest fall from a peak to a later low.",
+    term: "maxDrawdown",
     cell: (m) => ({ text: m.maxDrawdown > 0 ? `-${formatShare(m.maxDrawdown)}` : formatShare(0), className: m.maxDrawdown > 0 ? "text-loss" : "" }),
   },
-  { label: "Volatility", help: "How much daily returns swing, per year. Higher is bumpier.", cell: (m) => ({ text: formatShare(m.volatility) }) },
-  { label: "Sharpe ratio", help: "Return per unit of volatility, with a 0% risk-free rate. Higher is better.", cell: (m) => ({ text: m.sharpe === null ? "—" : m.sharpe.toFixed(2) }) },
+  { label: "Volatility", term: "volatility", cell: (m) => ({ text: formatShare(m.volatility) }) },
+  { label: "Sharpe ratio", term: "sharpe", cell: (m) => ({ text: m.sharpe === null ? "—" : m.sharpe.toFixed(2) }) },
   { label: "Trades", cell: (m) => ({ text: String(m.trades) }) },
-  { label: "Time invested", help: "Share of days with money in the market.", cell: (m) => ({ text: formatShare(m.exposure) }) },
+  { label: "Time invested", term: "exposure", cell: (m) => ({ text: formatShare(m.exposure) }) },
 ];
 
 const TRADES_SHOWN = 20;
@@ -92,8 +95,10 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
               return (
                 <tr key={row.label}>
                   <th scope="row" className="py-2 text-left font-normal">
-                    {row.label}
-                    {row.help && <span className="block text-xs text-muted">{row.help}</span>}
+                    <span className="inline-flex items-center gap-1.5">
+                      {row.label}
+                      {row.term && <Explain term={row.term} />}
+                    </span>
                   </th>
                   <td className={`py-2 pl-4 text-right font-medium ${a.className ?? ""}`}>{a.text}</td>
                   <td className={`py-2 pl-4 text-right ${b.className ?? ""}`}>{b.text}</td>

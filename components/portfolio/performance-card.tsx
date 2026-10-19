@@ -6,6 +6,7 @@ import { ROWS } from "@/components/backtest/backtest-results";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { TimeframePicker } from "@/components/charts/timeframe-picker";
 import { Card } from "@/components/ui/card";
+import { Explain } from "@/components/ui/explain";
 import { Skeleton } from "@/components/ui/skeleton";
 import { computeMetrics } from "@/lib/backtest/engine";
 import { sliceTimeframe } from "@/lib/chart";
@@ -154,8 +155,10 @@ export function PerformanceCard() {
               return (
                 <tr key={row.label}>
                   <th scope="row" className="py-2 text-left font-normal">
-                    {row.label}
-                    {row.help && <span className="block text-xs text-muted">{row.help}</span>}
+                    <span className="inline-flex items-center gap-1.5">
+                      {row.label}
+                      {row.term && <Explain term={row.term} />}
+                    </span>
                   </th>
                   <td className={`py-2 pl-4 text-right font-medium ${a.className ?? ""}`}>{a.text}</td>
                   <td className={`py-2 pl-4 text-right ${b.className ?? ""}`}>{b.text}</td>

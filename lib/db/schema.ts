@@ -229,3 +229,22 @@ export const priceAlert = sqliteTable(
   },
   (table) => [index("price_alert_user_idx").on(table.userId, table.createdAt)],
 );
+
+/**
+ * Users who chose to appear on the leaderboard, under a display name (never
+ * their email). `startValue` is their account's total value when they joined:
+ * they're ranked by their return since then.
+ */
+export const leaderboardEntry = sqliteTable(
+  "leaderboard_entry",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    /** The name in lower case, so "Ann" and "ann" can't both be taken. */
+    nameKey: text("name_key").notNull().unique(),
+    joinedAt: integer("joined_at").notNull(),
+    startValue: real("start_value").notNull(),
+  },
+);

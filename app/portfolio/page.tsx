@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { StorageLabel } from "@/components/account/storage-label";
 import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
+import { LeaderboardCard } from "@/components/portfolio/leaderboard-card";
 import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PerformanceCard } from "@/components/portfolio/performance-card";
 import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
@@ -27,6 +28,7 @@ export default function PortfolioPage() {
           <PortfolioStats />
           <OpenOrders />
           <SectorCard />
+          <LeaderboardCard />
         </div>
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up lg:col-span-12">
           <PerformanceCard />

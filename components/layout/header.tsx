@@ -12,6 +12,8 @@ const pages: NavItem[] = [
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/backtest", label: "Backtest" },
+  { href: "/leaderboard", label: "Leaderboard" },
+  { href: "/learn", label: "Learn" },
 ];
 
 

@@ -3,6 +3,7 @@
 import { useId, useState, type FormEvent } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
+import { Explain } from "@/components/ui/explain";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
 import { describeOrder, placePendingOrder as previewPending, type NewOrder } from "@/lib/orders";
@@ -144,8 +145,9 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
               </option>
             ))}
           </select>
-          <p id={`${hintId}-kind-help`} className="mt-1 text-xs text-muted">
-            {KINDS.find((k) => k.value === kind)?.help}
+          <p id={`${hintId}-kind-help`} className="mt-1 flex items-start gap-1.5 text-xs text-muted">
+            <span>{KINDS.find((k) => k.value === kind)?.help}</span>
+            {kind !== "market" && <Explain term={kind === "limit" ? "limitOrder" : "stopOrder"} className="mt-px" />}
           </p>
         </div>
 

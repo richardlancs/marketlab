@@ -7,6 +7,7 @@ import { createClient } from "@libsql/client";
 import { drizzle } from "drizzle-orm/libsql";
 import { createAccountRepository } from "./accounts";
 import { createBacktestRepository } from "./backtests";
+import { createLeaderboardRepository } from "./leaderboard";
 import * as schema from "./schema";
 
 /**
@@ -25,3 +26,4 @@ const client = createClient({
 export const db = drizzle(client, { schema });
 export const accounts = createAccountRepository(db);
 export const backtests = createBacktestRepository(db);
+export const leaderboard = createLeaderboardRepository(db);

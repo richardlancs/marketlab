@@ -7,6 +7,8 @@ A stock dashboard, portfolio simulator and strategy backtester, built with Next.
 - **Realistic trading.** Market, limit and stop orders (filled at a daily close), dividends paid into your cash, and stock splits (with cash for any fraction of a share). Start over with a starter portfolio or cash only ($10k, $25k or $100k).
 - **Price alerts.** "Tell me when KO closes above $70", with a badge in the header and, if you turn them on, browser notifications while the site is open.
 - **Filings and news.** Each stock page lists the company's real recent SEC filings (earnings, annual reports, leadership changes). With your own Tiingo key, it also shows news headlines.
+- **Learn as you go.** An ⓘ next to measures and terms (Sharpe ratio, drawdown, RSI, limit orders, P/E…) explains them in plain English; `/learn` has them all.
+- **Share and compare.** "Copy link" on a backtest makes a link that opens the same backtest for anyone (the settings travel in the link, nothing is stored). Signed-in users can join the opt-in leaderboard under a display name, ranked by their return since joining.
 - **Portfolio analytics.** Your portfolio's value over time, rebuilt from your trades, as growth of $100 against the S&P 500, Nasdaq or Dow, with return, drawdown, volatility and Sharpe ratio; a breakdown by sector; and your trades as a CSV file.
 - **Backtesting.** Try buy and hold, a moving-average crossover, dollar-cost averaging, rebalancing, or your own rules (RSI, moving averages, crossovers) on up to five stocks over five years of daily prices, with trading costs, compared with a benchmark. See returns month by month, test a range of settings at once (a parameter sweep), save runs and compare up to four.
 
@@ -126,6 +128,9 @@ If you self-host on more than one server instance (not needed on Vercel), also s
 - `lib/portfolio-history.ts`: rebuilds the portfolio's past values by undoing its trades, dividends and splits, newest first.
 - `lib/orders.ts`, `lib/alerts.ts`, `lib/processing.ts`: limit and stop orders, price alerts, and catching an account up with the market.
 - `lib/market/filings.ts`: SEC filings; `lib/market/tiingo.ts` also has Tiingo news.
+- `lib/glossary.ts`: every explained term (the ⓘ popovers and `/learn`).
+- `lib/backtest/share.ts`: backtest share links (`/backtest#run=…`).
+- `lib/leaderboard.ts`, `lib/leaderboard-data.ts`, `lib/leaderboard-actions.ts`: display-name rules and standings, the cached public standings, and joining or leaving.
 
 ### Saved backtests and versions
 

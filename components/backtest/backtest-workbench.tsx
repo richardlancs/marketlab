@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { runConfig, STRATEGY_NAMES, summarize, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
@@ -14,6 +14,7 @@ import { SavedRuns } from "./saved-runs";
 import { SweepPanel, SweepResults, type Measure } from "./sweep-panel";
 import { useSavedRuns } from "./use-saved-runs";
 import { useSweep } from "./use-sweep";
+import { parseShareFragment, shareFragment } from "@/lib/backtest/share";
 import type { Axis } from "@/lib/backtest/sweep";
 
 interface History {
@@ -106,6 +107,25 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
   }
   const open = (run: SavedRun) => openConfig(run.config);
 
+  // Opened from a share link (/backtest#run=…), on arrival or when a link is
+  // pasted into the address bar: load and run those settings.
+  useEffect(() => {
+    function openFromLink() {
+      if (!location.hash.startsWith("#run=")) return;
+      const shared = parseShareFragment(location.hash, isKnown);
+      if (shared) openConfig(shared);
+      else setError("That share link isn't valid, so it couldn't be opened.");
+    }
+    const arrival = setTimeout(openFromLink, 0); // after the first render, like any other event
+    window.addEventListener("hashchange", openFromLink);
+    return () => {
+      clearTimeout(arrival);
+      window.removeEventListener("hashchange", openFromLink);
+    };
+    // openConfig and isKnown only read state through setters and the account's stock list.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   function runSweep(axes: Axis[], measure: Measure) {
     if (!sweepBase) return;
     const base = sweepBase;
@@ -157,7 +177,12 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             <h2 id="results" className="text-lg font-semibold tracking-tight">
               {view.kind === "compare" ? "Comparison" : view.kind === "sweep" ? "Sweep" : "Results"}
             </h2>
-            {view.kind === "result" && <SaveRun key={JSON.stringify(view.config)} view={view} save={saved.save} canSave={saved.runs !== null} />}
+            {view.kind === "result" && (
+              <div className="flex flex-wrap items-center gap-2">
+                <CopyLink key={`link-${JSON.stringify(view.config)}`} config={view.config} />
+                <SaveRun key={JSON.stringify(view.config)} view={view} save={saved.save} canSave={saved.runs !== null} />
+              </div>
+            )}
           </div>
           <div className="mt-3">
             {view.kind === "result" && note && <p className="mb-3 text-sm text-muted">{note}</p>}
@@ -238,5 +263,32 @@ function SaveRun({
         </p>
       )}
     </form>
+  );
+}
+
+/**
+ * Copies a link that opens this backtest for anyone: the settings are in the
+ * link itself (lib/backtest/share.ts), so nothing is saved anywhere.
+ */
+function CopyLink({ config }: { config: BacktestConfig }) {
+  const [copied, setCopied] = useState<boolean | null>(null);
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const url = `${location.origin}/backtest#${shareFragment(config)}`;
+        try {
+          await navigator.clipboard.writeText(url);
+          setCopied(true);
+        } catch {
+          // Clipboard blocked: put the link in the address bar instead, to copy from there.
+          history.replaceState(null, "", url);
+          setCopied(false);
+        }
+      }}
+      className="h-9 rounded-full px-4 text-sm font-medium text-accent transition-colors hover:bg-accent/10 focus-visible:outline-2 focus-visible:outline-accent"
+    >
+      {copied === null ? "Copy link" : copied ? "Link copied" : "Link is in the address bar"}
+    </button>
   );
 }

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { HeatTable } from "@/components/charts/heat-table";
 import { Card } from "@/components/ui/card";
+import { Explain } from "@/components/ui/explain";
 import type { BacktestConfig } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
 import { SWEEP_LIMITS, sweepableParams, type Axis, type SweepResult } from "@/lib/backtest/sweep";
@@ -213,7 +214,9 @@ export function SweepResults({ result, measure, onOpen }: { result: SweepResult;
       />
       {invalid > 0 && <p className="text-xs text-muted">Empty cells: {invalid} combinations aren&apos;t valid (like a short average that isn&apos;t shorter than the long one) or couldn&apos;t run.</p>}
       <p className="rounded-lg bg-foreground/[0.04] p-3 text-xs text-muted">
-        <span className="font-medium text-foreground">The best cell is probably luck.</span> Settings that did best in the past usually just fit that period&apos;s ups and downs, and rarely stay best. A strategy is more convincing when a whole neighborhood of settings does well, not one cell.
+        <span className="inline-flex items-center gap-1 font-medium text-foreground">
+          The best cell is probably luck. <Explain term="overfitting" />
+        </span> Settings that did best in the past usually just fit that period&apos;s ups and downs, and rarely stay best. A strategy is more convincing when a whole neighborhood of settings does well, not one cell.
       </p>
     </div>
   );
