@@ -19,7 +19,7 @@ function Cell({ order, className, children }: { order: number; className: string
 
 export default function Home() {
   return (
-    <main className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
+    <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="animate-fade-up">
         <p className="text-sm font-medium text-accent">Mock data</p>
         <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
