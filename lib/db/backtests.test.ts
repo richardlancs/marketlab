@@ -41,6 +41,7 @@ const run = (name: string, createdAt: number): SavedRun => ({
   name,
   createdAt,
   config: {
+    version: 2,
     holdings: [{ symbol: "AAPL", weight: 1 }],
     strategy: { kind: "buy-and-hold" },
     start: 1,

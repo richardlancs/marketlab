@@ -1,7 +1,9 @@
 import type { Metadata } from "next";
 import { StorageLabel } from "@/components/account/storage-label";
 import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
+import { PerformanceCard } from "@/components/portfolio/performance-card";
 import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
+import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
 
 export const metadata: Metadata = { title: "Portfolio — MarketLab" };
@@ -20,10 +22,14 @@ export default function PortfolioPage() {
         <div style={{ animationDelay: "60ms" }} className="animate-fade-up lg:col-span-8">
           <PortfolioSummary showDetailsLink={false} />
         </div>
-        <div style={{ animationDelay: "120ms" }} className="animate-fade-up lg:col-span-4">
+        <div style={{ animationDelay: "120ms" }} className="flex flex-col gap-4 animate-fade-up lg:col-span-4 lg:gap-6">
           <PortfolioStats />
+          <SectorCard />
         </div>
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up lg:col-span-12">
+          <PerformanceCard />
+        </div>
+        <div style={{ animationDelay: "240ms" }} className="animate-fade-up lg:col-span-12">
           <TradeHistory />
         </div>
       </div>

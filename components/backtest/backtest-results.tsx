@@ -4,6 +4,8 @@ import { useState } from "react";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
+import { describeRuleSet } from "@/lib/backtest/rules";
+import { ReturnHeatmap } from "./return-heatmap";
 import { formatCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
 
 export const benchmarkName = (config: BacktestConfig) => (config.benchmark === "market" ? "S&P 500" : "Buy and hold");
@@ -52,6 +54,11 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
         {other.toLowerCase() === "buy and hold" ? "buying and holding" : "the S&P 500"} at {formatCurrency(benchmark.metrics.finalValue)} (
         {formatPercent(benchmark.metrics.totalReturn)}), from {formatDate(times[0])} to {formatDate(times[times.length - 1])}.
       </p>
+      {config.strategy.kind === "rules" && (
+        <p className="-mt-3 text-sm text-muted">
+          Buy when {describeRuleSet(config.strategy.entry)}. Sell when {describeRuleSet(config.strategy.exit)}.
+        </p>
+      )}
 
       <ComparisonChart
         label={`Portfolio value: ${strategyName} compared with ${other}`}
@@ -101,6 +108,8 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
           </p>
         )}
       </div>
+
+      <ReturnHeatmap run={run} benchmark={benchmark} strategyName={strategyName} benchmarkName={other} />
 
       {/* The chart's numbers as a table, for screen readers and for reading exact values. */}
       <details className="group text-sm">

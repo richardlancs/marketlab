@@ -5,15 +5,31 @@
  */
 import type { PricePoint } from "../types";
 import { runBacktest, type BacktestRun, type Costs, type Series } from "./engine";
+import { parseRuleSet, ruleStrategy, type RuleSet } from "./rules";
 import { buyAndHold, dollarCostAveraging, movingAverageCrossover, rebalancing, type Weights } from "./strategies";
 
 export type StrategyConfig =
   | { kind: "buy-and-hold" }
   | { kind: "moving-average"; fast: number; slow: number }
   | { kind: "dollar-cost-averaging"; installments: number }
-  | { kind: "rebalancing"; frequency: "monthly" | "quarterly" };
+  | { kind: "rebalancing"; frequency: "monthly" | "quarterly" }
+  | { kind: "rules"; entry: RuleSet; exit: RuleSet };
+
+/**
+ * The version of the config format. Version 1 (Phase 4) had no `version`
+ * field; version 2 added custom rules. Older configs are upgraded when read
+ * (so far that only means stamping the version, since 2 only *added* things),
+ * and configs from a newer version than this code knows are refused rather
+ * than misread.
+ *
+ * This is separate from the version on the browser's saved-runs list
+ * (saved-local.ts). Don't bump that one for config changes: a mismatch there
+ * makes every guest's saved runs disappear.
+ */
+export const CONFIG_VERSION = 2;
 
 export interface BacktestConfig {
+  version: number;
   /** 1 to 5 stocks, with weights that add up to 1. */
   holdings: { symbol: string; weight: number }[];
   strategy: StrategyConfig;
@@ -31,6 +47,7 @@ export const STRATEGY_NAMES: Record<StrategyConfig["kind"], string> = {
   "moving-average": "Moving-average crossover",
   "dollar-cost-averaging": "Dollar-cost averaging",
   rebalancing: "Rebalancing",
+  rules: "Custom rules",
 };
 
 export const LIMITS = {
@@ -57,6 +74,8 @@ function strategyFor(config: BacktestConfig) {
       return dollarCostAveraging(weights, s.installments);
     case "rebalancing":
       return rebalancing(weights, s.frequency);
+    case "rules":
+      return ruleStrategy(weights, s.entry, s.exit);
   }
 }
 
@@ -71,16 +90,28 @@ export interface BacktestOutcome {
  * S&P 500 (or the fund tracking it).
  */
 export function runConfig(config: BacktestConfig, history: Record<string, PricePoint[]>, market: PricePoint[]): BacktestOutcome {
-  const series: Series[] = config.holdings.map((h) => ({ symbol: h.symbol, points: history[h.symbol] ?? [] }));
-  const options = { start: config.start, end: config.end, initialCash: config.initialCash, costs: config.costs };
-  const run = runBacktest(series, strategyFor(config), options);
+  const run = runStrategy(config, history);
+  return { run, benchmark: runBenchmark(config, run, history, market) };
+}
+
+const seriesOf = (config: BacktestConfig, history: Record<string, PricePoint[]>): Series[] =>
+  config.holdings.map((h) => ({ symbol: h.symbol, points: history[h.symbol] ?? [] }));
+const optionsOf = (config: BacktestConfig) => ({ start: config.start, end: config.end, initialCash: config.initialCash, costs: config.costs });
+
+/** Just the strategy, without its benchmark: what a parameter sweep runs for each point (the benchmark is the same for all). */
+export function runStrategy(config: BacktestConfig, history: Record<string, PricePoint[]>): BacktestRun {
+  return runBacktest(seriesOf(config, history), strategyFor(config), optionsOf(config));
+}
+
+/** The benchmark for a run: the same days, the same money. */
+export function runBenchmark(config: BacktestConfig, run: BacktestRun, history: Record<string, PricePoint[]>, market: PricePoint[]): BacktestRun {
+  const series = seriesOf(config, history);
+  const options = optionsOf(config);
   // The benchmark runs on exactly the days the strategy did.
   const days = { ...options, start: run.equity[0].time, end: run.equity[run.equity.length - 1].time };
-  const benchmark =
-    config.benchmark === "market"
-      ? runBacktest([{ symbol: "MARKET", points: market }], buyAndHold({ MARKET: 1 }), days)
-      : runBacktest(series, buyAndHold(weightsOf(config)), days);
-  return { run, benchmark };
+  return config.benchmark === "market"
+    ? runBacktest([{ symbol: "MARKET", points: market }], buyAndHold({ MARKET: 1 }), days)
+    : runBacktest(series, buyAndHold(weightsOf(config)), days);
 }
 
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -94,6 +125,8 @@ const inRange = (v: unknown, min: number, max: number): v is number => isNumber(
 export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean): BacktestConfig | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
+  const version = v.version === undefined ? 1 : v.version;
+  if (!Number.isInteger(version) || (version as number) < 1 || (version as number) > CONFIG_VERSION) return null;
 
   if (!Array.isArray(v.holdings) || v.holdings.length < 1 || v.holdings.length > LIMITS.maxHoldings) return null;
   const holdings: BacktestConfig["holdings"] = [];
@@ -113,7 +146,12 @@ export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean
   else if (s.kind === "dollar-cost-averaging" && Number.isInteger(s.installments) && inRange(s.installments, 1, LIMITS.maxInstallments))
     strategy = { kind: "dollar-cost-averaging", installments: s.installments as number };
   else if (s.kind === "rebalancing" && (s.frequency === "monthly" || s.frequency === "quarterly")) strategy = { kind: "rebalancing", frequency: s.frequency };
-  else return null;
+  else if (s.kind === "rules") {
+    const entry = parseRuleSet(s.entry);
+    const exit = parseRuleSet(s.exit);
+    if (!entry || !exit) return null;
+    strategy = { kind: "rules", entry, exit };
+  } else return null;
 
   if (!isNumber(v.start) || !isNumber(v.end) || v.start >= v.end) return null;
   if (!inRange(v.initialCash, LIMITS.minCash, LIMITS.maxCash)) return null;
@@ -122,6 +160,7 @@ export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean
   if (v.benchmark !== "same-stocks" && v.benchmark !== "market") return null;
 
   return {
+    version: CONFIG_VERSION, // read as any older version, now in the current format
     holdings,
     strategy,
     start: v.start,

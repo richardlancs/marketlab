@@ -4,7 +4,8 @@ A stock dashboard, portfolio simulator and strategy backtester, built with Next.
 
 - **Dashboard, stocks table, stock pages and ⌘K search**, all pre-rendered and refreshed about once an hour. Ten featured stocks fill the dashboard; about 85 more well-known US stocks can be searched, opened, watched, traded and backtested. With real prices (Tiingo), any other ticker works too.
 - **Watchlist and simulated trading.** Without an account, everything is saved in your browser (guest mode). With an account, it's saved in a database and follows you between devices. On your first sign-in you can import your guest data.
-- **Backtesting.** Try buy and hold, a moving-average crossover, dollar-cost averaging or rebalancing on up to five stocks over five years of daily prices, with trading costs, compared with a benchmark. Save runs and compare up to four.
+- **Portfolio analytics.** Your portfolio's value over time, rebuilt from your trades, as growth of $100 against the S&P 500, Nasdaq or Dow, with return, drawdown, volatility and Sharpe ratio; a breakdown by sector; and your trades as a CSV file.
+- **Backtesting.** Try buy and hold, a moving-average crossover, dollar-cost averaging, rebalancing, or your own rules (RSI, moving averages, crossovers) on up to five stocks over five years of daily prices, with trading costs, compared with a benchmark. See returns month by month, test a range of settings at once (a parameter sweep), save runs and compare up to four.
 
 ## Market data
 
@@ -98,6 +99,11 @@ If you self-host on more than one server instance (not needed on Vercel), also s
 - `lib/trading.ts`: the trading rules. The browser (guest mode) and the server (signed in) both use them.
 - `lib/account-actions.ts`: Server Actions for signed-in users. They check the session and validate every input.
 - `lib/market/`: market data. `provider.ts` is the interface; `mock.ts` and `tiingo.ts` implement it; `mode.ts` picks one; `index.ts` caches the core market for an hour, and every other stock on its own. `catalog.ts` lists the stocks beyond the core, and `symbols.ts` says what a valid ticker looks like.
-- `lib/backtest/`: the backtesting engine (`engine.ts`), the strategies, and run settings (`config.ts`). Pure functions, run in the browser.
+- `lib/backtest/`: the backtesting engine (`engine.ts`), the strategies, custom rules (`rules.ts`), run settings (`config.ts`), monthly returns (`periods.ts`) and parameter sweeps (`sweep.ts`, run in a Web Worker by `sweep.worker.ts`). Pure functions, run in the browser.
+- `lib/portfolio-history.ts`: rebuilds the portfolio's past values by undoing its trades, newest first.
+
+### Saved backtests and versions
+
+A saved run stores its settings as JSON. Settings carry a `version` (now 2: custom rules were added). Older settings are upgraded when they're read, and settings from a newer version are refused rather than misread, so adding a strategy never needs a database migration. Don't change the `VERSION` in `lib/backtest/saved-local.ts` for this: that one covers the browser's list of saved runs, and changing it hides every guest's saved runs.
 - `lib/db/`: the database schema (Drizzle), and the code that reads and writes accounts and saved backtests.
 - `lib/auth.ts`: Better Auth configuration (email and password sign-in, rate limits).

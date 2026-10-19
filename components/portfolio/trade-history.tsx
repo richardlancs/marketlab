@@ -4,7 +4,24 @@ import Link from "next/link";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { tradesToCsv } from "@/lib/csv";
 import { formatCurrency, formatDate, formatSignedCurrency, formatTime } from "@/lib/format";
+import { MAX_TRADES, type Trade } from "@/lib/trading";
+
+/**
+ * Saves the trades as a .csv file. Runs in a click handler, so reading the
+ * clock for the file name is fine (it never happens while rendering). The
+ * file is made in the browser from the account it already has, so this works
+ * the same signed in or not.
+ */
+function downloadCsv(trades: readonly Trade[]) {
+  const url = URL.createObjectURL(new Blob([tradesToCsv(trades)], { type: "text/csv" }));
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `marketlab-trades-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
+}
 
 /** Every buy and sell, newest first. */
 export function TradeHistory() {
@@ -12,9 +29,23 @@ export function TradeHistory() {
 
   return (
     <Card aria-labelledby="history" aria-busy={!account} className="overflow-x-auto">
-      <h2 id="history" className="text-lg font-semibold tracking-tight">
-        Trade history
-      </h2>
+      <div className="flex flex-wrap items-baseline justify-between gap-2">
+        <h2 id="history" className="text-lg font-semibold tracking-tight">
+          Trade history
+        </h2>
+        {account && account.trades.length > 0 && (
+          <span className="flex items-baseline gap-3 text-xs text-muted">
+            {account.trades.length >= MAX_TRADES && <span>Your latest {MAX_TRADES} trades are kept.</span>}
+            <button
+              type="button"
+              onClick={() => downloadCsv(account.trades)}
+              className="text-sm font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              Download CSV
+            </button>
+          </span>
+        )}
+      </div>
       {!account ? (
         <>
           <span className="sr-only">Loading…</span>

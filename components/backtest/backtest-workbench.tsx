@@ -11,7 +11,10 @@ import { BacktestForm, defaultForm, formFromConfig, toConfig, type FormState } f
 import { BacktestResults, holdingsLabel } from "./backtest-results";
 import { RunComparison } from "./run-comparison";
 import { SavedRuns } from "./saved-runs";
+import { SweepPanel, SweepResults, type Measure } from "./sweep-panel";
 import { useSavedRuns } from "./use-saved-runs";
+import { useSweep } from "./use-sweep";
+import type { Axis } from "@/lib/backtest/sweep";
 
 interface History {
   history: Record<string, PricePoint[]>;
@@ -21,7 +24,8 @@ interface History {
 type View =
   | { kind: "empty" }
   | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome }
-  | { kind: "compare"; runs: SavedRun[]; outcomes: BacktestOutcome[] };
+  | { kind: "compare"; runs: SavedRun[]; outcomes: BacktestOutcome[] }
+  | { kind: "sweep"; measure: Measure };
 
 /**
  * The backtest page's interactive part: the settings form, saved runs, and
@@ -40,6 +44,10 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
   const saved = useSavedRuns();
+  const sweep = useSweep();
+  // The form as a config, for the sweep panel (null while the form has a mistake).
+  const parsedForm = toConfig(form, isKnown);
+  const sweepBase = "config" in parsedForm ? parsedForm.config : null;
   // Prices already fetched, by symbol, so re-running with other settings is instant.
   const cache = useRef<History>({ history: {}, market: [] });
 
@@ -91,9 +99,22 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
     else void runWith(parsed.config);
   }
 
-  function open(run: SavedRun) {
-    setForm(formFromConfig(run.config));
-    void runWith(run.config);
+  /** Loads settings into the form and runs them: a saved run, or a cell of a sweep. */
+  function openConfig(config: BacktestConfig) {
+    setForm(formFromConfig(config));
+    void runWith(config);
+  }
+  const open = (run: SavedRun) => openConfig(run.config);
+
+  function runSweep(axes: Axis[], measure: Measure) {
+    if (!sweepBase) return;
+    const base = sweepBase;
+    setNote(null);
+    void busy(async () => {
+      const { history, market } = await load(base.holdings.map((h) => h.symbol));
+      setView({ kind: "sweep", measure });
+      sweep.start({ base, axes, history, market });
+    });
   }
 
   function compare() {
@@ -114,6 +135,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
           </h2>
           <BacktestForm form={form} onChange={setForm} onRun={run} stocks={listings} openTickers={openTickers} firstDate={firstDate} lastDate={lastDate} running={running} error={error} />
         </Card>
+        <SweepPanel base={sweepBase} state={sweep.state} onRun={runSweep} onCancel={sweep.cancel} />
         <SavedRuns
           runs={saved.runs}
           signedIn={saved.signedIn}
@@ -133,7 +155,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
         <Card aria-labelledby="results" aria-live="polite" aria-busy={running}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h2 id="results" className="text-lg font-semibold tracking-tight">
-              {view.kind === "compare" ? "Comparison" : "Results"}
+              {view.kind === "compare" ? "Comparison" : view.kind === "sweep" ? "Sweep" : "Results"}
             </h2>
             {view.kind === "result" && <SaveRun key={JSON.stringify(view.config)} view={view} save={saved.save} canSave={saved.runs !== null} />}
           </div>
@@ -141,6 +163,18 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             {view.kind === "result" && note && <p className="mb-3 text-sm text-muted">{note}</p>}
             {view.kind === "result" && <BacktestResults config={view.config} outcome={view.outcome} />}
             {view.kind === "compare" && <RunComparison runs={view.runs} outcomes={view.outcomes} />}
+            {view.kind === "sweep" &&
+              (sweep.state.status === "done" ? (
+                <SweepResults result={sweep.state.result} measure={view.measure} onOpen={openConfig} />
+              ) : (
+                <p className="py-16 text-center text-sm text-muted">
+                  {sweep.state.status === "running"
+                    ? `Running ${sweep.state.done} of ${sweep.state.total || "…"} backtests…`
+                    : sweep.state.status === "error"
+                      ? sweep.state.message
+                      : "The sweep was cancelled."}
+                </p>
+              ))}
             {view.kind === "empty" && (
               <p className="py-16 text-center text-sm text-muted">Choose your settings and run a backtest to see how the strategy would have done.</p>
             )}

@@ -25,7 +25,18 @@ export interface ComparisonSeries {
  * series' value on a day. Identity never rests on color alone: there's a
  * legend, a label at the end of each line, and dashes on the second line.
  */
-export function ComparisonChart({ times, series, label }: { times: number[]; series: ComparisonSeries[]; label: string }) {
+export function ComparisonChart({
+  times,
+  series,
+  label,
+  marker,
+}: {
+  times: number[];
+  series: ComparisonSeries[];
+  label: string;
+  /** A labeled vertical line at one day, e.g. "First trade". */
+  marker?: { index: number; label: string };
+}) {
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const last = times.length - 1;
 
@@ -96,6 +107,23 @@ export function ComparisonChart({ times, series, label }: { times: number[]; ser
               />
             ))}
           </svg>
+
+          {marker && (
+            <>
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 border-l border-dashed border-foreground/30"
+                style={{ left: percentX(lines[0][marker.index][0]) }}
+              />
+              <span
+                aria-hidden
+                className="pointer-events-none absolute top-0 ml-1 rounded bg-surface/85 px-1 text-[11px] text-muted"
+                style={{ left: percentX(lines[0][marker.index][0]) }}
+              >
+                {marker.label}
+              </span>
+            </>
+          )}
 
           {activeIndex === null &&
             endLabels.map((l) => (

@@ -1,9 +1,11 @@
 "use client";
 
 import { useId } from "react";
-import { LIMITS, parseConfig, STRATEGY_NAMES, type BacktestConfig, type StrategyConfig } from "@/lib/backtest/config";
+import { CONFIG_VERSION, LIMITS, parseConfig, STRATEGY_NAMES, type BacktestConfig, type StrategyConfig } from "@/lib/backtest/config";
+import { parseRuleSet, RULE_LIMITS, RULE_PRESETS } from "@/lib/backtest/rules";
 import { DAY } from "@/lib/market/calendar";
 import { normalizeSymbol } from "@/lib/market/symbols";
+import { fromDraft, RuleSetEditor, toDraft, type RuleSetDraft } from "./rule-builder";
 
 /** The form as typed: strings, so half-finished numbers (and tickers) don't throw. */
 export interface FormState {
@@ -14,6 +16,9 @@ export interface FormState {
   slow: string;
   installments: string;
   frequency: "monthly" | "quarterly";
+  /** Custom rules: when to buy each stock, and when to sell it. */
+  entry: RuleSetDraft;
+  exit: RuleSetDraft;
   /** YYYY-MM-DD, as date inputs use. */
   start: string;
   end: string;
@@ -43,6 +48,8 @@ export function defaultForm(lastDate: number): FormState {
     slow: "200",
     installments: "12",
     frequency: "quarterly",
+    entry: toDraft(RULE_PRESETS[0].entry),
+    exit: toDraft(RULE_PRESETS[0].exit),
     start: toInput(yearsBefore(lastDate, 5)),
     end: toInput(lastDate),
     cash: "10000",
@@ -62,6 +69,8 @@ export function formFromConfig(config: BacktestConfig): FormState {
     slow: s.kind === "moving-average" ? String(s.slow) : "200",
     installments: s.kind === "dollar-cost-averaging" ? String(s.installments) : "12",
     frequency: s.kind === "rebalancing" ? s.frequency : "quarterly",
+    entry: toDraft(s.kind === "rules" ? s.entry : RULE_PRESETS[0].entry),
+    exit: toDraft(s.kind === "rules" ? s.exit : RULE_PRESETS[0].exit),
     start: toInput(config.start),
     end: toInput(config.end),
     cash: String(config.initialCash),
@@ -97,6 +106,16 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
     return { error: `Choose between 1 and ${LIMITS.maxInstallments} monthly purchases.` };
   }
 
+  if (form.strategy === "rules") {
+    for (const [name, draft] of [["buy", form.entry], ["sell", form.exit]] as const) {
+      if (!parseRuleSet(fromDraft(draft))) {
+        return {
+          error: `Check the ${name} rules: averages take ${RULE_LIMITS.minDays} to ${RULE_LIMITS.maxAverageDays} days, RSI ${RULE_LIMITS.minDays} to ${RULE_LIMITS.maxRsiDays} days, and a number (0 to 100) can only be compared with RSI.`,
+        };
+      }
+    }
+  }
+
   const start = fromInput(form.start);
   const end = fromInput(form.end);
   if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return { error: "The start date must be before the end date." };
@@ -115,10 +134,13 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
         ? { kind: "dollar-cost-averaging", installments }
         : form.strategy === "rebalancing"
           ? { kind: "rebalancing", frequency: form.frequency }
-          : { kind: "buy-and-hold" };
+          : form.strategy === "rules"
+            ? { kind: "rules", entry: fromDraft(form.entry), exit: fromDraft(form.exit) }
+            : { kind: "buy-and-hold" };
 
   const config = parseConfig(
     {
+      version: CONFIG_VERSION,
       holdings: symbols.map((symbol, i) => ({ symbol, weight: percents[i] / total })),
       strategy,
       start,
@@ -137,6 +159,7 @@ const STRATEGY_HELP: Record<StrategyConfig["kind"], string> = {
   "moving-average": "Hold each stock while its short-term average price is above its long-term one (an uptrend), and cash otherwise.",
   "dollar-cost-averaging": "Spread the starting cash over equal monthly purchases instead of investing it all at once.",
   rebalancing: "Invest at the weights below, then reset to them regularly by selling what grew and buying what shrank.",
+  rules: "Build your own: buy each stock when your conditions are met, sell it when others are.",
 };
 
 const input =
@@ -315,6 +338,26 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
               onChange={(e) => set({ installments: e.target.value })}
               className={`${input} mt-1`}
             />
+          </div>
+        )}
+        {form.strategy === "rules" && (
+          <div className="space-y-3">
+            <div className="flex flex-wrap items-center gap-2 text-xs" role="group" aria-label="Start from a preset">
+              <span className="text-muted">Start from:</span>
+              {RULE_PRESETS.map((preset) => (
+                <button
+                  key={preset.name}
+                  type="button"
+                  onClick={() => set({ entry: toDraft(preset.entry), exit: toDraft(preset.exit) })}
+                  className="rounded-full bg-foreground/5 px-3 py-1 font-medium text-muted transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent"
+                >
+                  {preset.name}
+                </button>
+              ))}
+            </div>
+            <RuleSetEditor title="Buy" value={form.entry} onChange={(entry) => set({ entry })} />
+            <RuleSetEditor title="Sell" value={form.exit} onChange={(exit) => set({ exit })} />
+            <p className="text-xs text-muted">Each stock is judged on its own, using closing prices up to the day before each trade.</p>
           </div>
         )}
         {form.strategy === "rebalancing" && (

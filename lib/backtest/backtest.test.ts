@@ -143,6 +143,7 @@ describe("computeMetrics", () => {
 describe("config", () => {
   const symbols = (s: string) => ["AAPL", "MSFT", "V"].includes(s);
   const valid: BacktestConfig = {
+    version: 2,
     holdings: [
       { symbol: "AAPL", weight: 0.6 },
       { symbol: "MSFT", weight: 0.4 },
@@ -168,6 +169,8 @@ describe("config", () => {
     ["end before start", { ...valid, start: 5, end: 1 }],
     ["absurd cash", { ...valid, initialCash: 1e12 }],
     ["negative costs", { ...valid, costs: { commission: -1, slippageBps: 0 } }],
+    ["a version from a newer app", { ...valid, version: 3 }],
+    ["a nonsense version", { ...valid, version: "2" }],
   ])("rejects %s", (_, config) => {
     expect(parseConfig(config, symbols)).toBeNull();
   });
