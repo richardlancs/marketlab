@@ -6,6 +6,7 @@ import { startingAccount } from "./starting-account";
 // lookup, the database, the market, and Next's request headers.
 const session = vi.hoisted(() => ({ current: null as { user: { id: string } } | null }));
 const accounts = vi.hoisted(() => ({
+  load: vi.fn(),
   ensure: vi.fn(),
   toggleWatchlist: vi.fn(),
   placeOrder: vi.fn(),
@@ -16,9 +17,12 @@ vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("./auth", () => ({ auth: { api: { getSession: async () => session.current } } }));
 vi.mock("./db", () => ({ accounts }));
 // A fixed market, so prices don't depend on the date (or on Next's cache).
+// AAPL and KO exist; KO's prices are unavailable right now.
+const listing = (symbol: string) => (["AAPL", "KO", "V", "MSFT", "NVDA", "AMZN", "JPM", "TSLA", "META", "NFLX"].includes(symbol) ? { symbol, name: symbol, sector: null } : null);
 vi.mock("./market", async () => ({
-  STOCK_SYMBOLS: (await import("./market/universe")).STOCK_SYMBOLS,
-  getStock: async (symbol: string) => (symbol === "AAPL" ? { symbol, price: 248.3 } : undefined),
+  getListing: async (symbol: string) => listing(symbol),
+  getStockDetail: async (symbol: string) =>
+    symbol === "AAPL" ? { status: "ok", stock: { symbol, price: 248.3 } } : listing(symbol) ? { status: "unavailable", listing: listing(symbol) } : null,
 }));
 
 const { importGuestAccountAction, placeOrderAction, resetAccountAction, toggleWatchlistAction } = await import("./account-actions");
@@ -82,6 +86,26 @@ describe("account actions", () => {
     const [userId, imported] = accounts.create.mock.calls[0];
     expect(userId).toBe("user-1");
     expect(imported.trades[0].id).not.toBe("someone-elses-id");
+  });
+
+  it("refuse imports naming a stock that doesn't exist, or too many stocks", async () => {
+    accounts.create.mockResolvedValue(true);
+    expect(await importGuestAccountAction({ ...startingAccount(), watchlist: ["ZZZZ"] })).toMatchObject({ ok: false, message: expect.stringContaining("doesn't exist") });
+    const many = Array.from({ length: 61 }, (_, i) => ({ id: `t${i}`, symbol: `S${i}`, side: "buy", shares: 1, price: 1, time: 1 }));
+    expect(await importGuestAccountAction({ ...startingAccount(), trades: many })).toMatchObject({ ok: false });
+    expect(accounts.create).not.toHaveBeenCalled();
+  });
+
+  it("watch any stock that exists, and explain a full watchlist", async () => {
+    accounts.toggleWatchlist.mockResolvedValue(true);
+    expect(await toggleWatchlistAction("KO")).toMatchObject({ ok: true });
+    accounts.toggleWatchlist.mockResolvedValue("full");
+    expect(await toggleWatchlistAction("V")).toMatchObject({ ok: false, message: expect.stringContaining("up to 30") });
+  });
+
+  it("explain when a stock's prices are unavailable instead of trading at a made-up price", async () => {
+    expect(await placeOrderAction("KO", "buy", 1)).toMatchObject({ ok: false, message: expect.stringContaining("unavailable") });
+    expect(accounts.placeOrder).not.toHaveBeenCalled();
   });
 
   it("won't import over an existing account", async () => {

@@ -3,25 +3,27 @@
  * as the account store (lib/account-store.ts): shaped for useSyncExternalStore,
  * with the parsed list cached until the stored text changes.
  */
+import { isSymbolFormat } from "../market/symbols";
 import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun } from "./config";
 
 export const SAVED_RUNS_KEY = "marketlab:backtests";
 const VERSION = 1;
 const EMPTY: SavedRun[] = [];
 
-export function decodeSavedRuns(raw: string | null, symbols: readonly string[]): SavedRun[] {
+/** Symbols are only checked for their format, so a run on a stock missing from today's data isn't dropped. */
+export function decodeSavedRuns(raw: string | null, isKnown: (symbol: string) => boolean = isSymbolFormat): SavedRun[] {
   if (raw === null) return EMPTY;
   try {
     const data = JSON.parse(raw) as { version?: unknown; runs?: unknown };
     if (data?.version !== VERSION || !Array.isArray(data.runs)) return EMPTY;
     // Invalid entries are dropped one by one, so one bad run doesn't lose the rest.
-    return data.runs.map((r) => parseSavedRun(r, symbols)).filter((r): r is SavedRun => r !== null).slice(0, MAX_SAVED_RUNS);
+    return data.runs.map((r) => parseSavedRun(r, isKnown)).filter((r): r is SavedRun => r !== null).slice(0, MAX_SAVED_RUNS);
   } catch {
     return EMPTY;
   }
 }
 
-export function createSavedRunsStore(symbols: readonly string[]) {
+export function createSavedRunsStore() {
   let cachedRaw: string | null | undefined;
   let cached: SavedRun[] = EMPTY;
   const listeners = new Set<() => void>();
@@ -40,7 +42,7 @@ export function createSavedRunsStore(symbols: readonly string[]) {
       }
       if (raw !== cachedRaw) {
         cachedRaw = raw;
-        cached = decodeSavedRuns(raw, symbols);
+        cached = decodeSavedRuns(raw);
       }
       return cached;
     },

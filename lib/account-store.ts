@@ -7,6 +7,7 @@
  * or React would re-render forever. So the parsed account is cached and only
  * re-parsed when the raw stored string differs from last time.
  */
+import { isSymbolFormat } from "./market/symbols";
 import { startingAccount } from "./starting-account";
 import { parseAccount, type Account } from "./trading";
 
@@ -24,12 +25,12 @@ export interface AccountStore {
 }
 
 /** Reads the saved account, or null if there is none or it isn't valid. */
-export function decodeAccount(raw: string | null, symbols: readonly string[]): Account | null {
+export function decodeAccount(raw: string | null, isKnown: (symbol: string) => boolean = isSymbolFormat): Account | null {
   if (raw === null) return null;
   try {
     const data: unknown = JSON.parse(raw);
     if (typeof data !== "object" || data === null || (data as { version?: unknown }).version !== VERSION) return null;
-    return parseAccount((data as { account?: unknown }).account, symbols);
+    return parseAccount((data as { account?: unknown }).account, isKnown);
   } catch {
     return null; // not JSON
   }
@@ -37,8 +38,11 @@ export function decodeAccount(raw: string | null, symbols: readonly string[]): A
 
 export const encodeAccount = (account: Account) => JSON.stringify({ version: VERSION, account });
 
-/** `symbols` are the stocks that exist, so saved data naming any other is rejected. */
-export function createLocalAccountStore(symbols: readonly string[]): AccountStore {
+/**
+ * Symbols are only checked for their format, so an account holding a stock
+ * that's missing from today's data still loads (see lib/trading.ts).
+ */
+export function createLocalAccountStore(): AccountStore {
   let cachedRaw: string | null | undefined; // undefined: not read yet
   let cached: Account = startingAccount();
   const listeners = new Set<() => void>();
@@ -61,7 +65,7 @@ export function createLocalAccountStore(symbols: readonly string[]): AccountStor
       }
       if (raw !== cachedRaw) {
         cachedRaw = raw;
-        cached = decodeAccount(raw, symbols) ?? startingAccount();
+        cached = decodeAccount(raw) ?? startingAccount();
       }
       return cached;
     },

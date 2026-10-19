@@ -5,7 +5,7 @@
 import { and, count, desc, eq } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun } from "../backtest/config";
-import { STOCK_SYMBOLS } from "../market/universe";
+import { isSymbolFormat } from "../market/symbols";
 import * as schema from "./schema";
 import { writeTransaction } from "./transaction";
 
@@ -14,13 +14,17 @@ const { backtestRun } = schema;
 
 export function createBacktestRepository(db: Db) {
   return {
-    /** The user's saved runs, newest first. Rows that no longer validate (a removed stock, say) are skipped. */
+    /**
+     * The user's saved runs, newest first. Symbols are only checked for their
+     * format, so a run on a stock missing from today's data still lists; rows
+     * that are malformed are skipped.
+     */
     async list(userId: string): Promise<SavedRun[]> {
       const rows = await db.select().from(backtestRun).where(eq(backtestRun.userId, userId)).orderBy(desc(backtestRun.createdAt));
       return rows
         .map((row) => {
           try {
-            return parseSavedRun({ ...row, config: JSON.parse(row.config), summary: JSON.parse(row.summary) }, STOCK_SYMBOLS);
+            return parseSavedRun({ ...row, config: JSON.parse(row.config), summary: JSON.parse(row.summary) }, isSymbolFormat);
           } catch {
             return null;
           }

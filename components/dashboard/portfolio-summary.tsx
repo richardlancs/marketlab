@@ -37,8 +37,9 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
       label: p.symbol,
       name: p.name,
       value: p.marketValue,
-      gain: p.gain,
-      gainPercent: p.gainPercent,
+      // A stock whose price hasn't loaded is valued at cost; its gain shows as "—", not 0%.
+      gain: p.priced ? p.gain : null,
+      gainPercent: p.priced ? p.gainPercent : null,
       color: seriesColor(i),
       href: `/stocks/${p.symbol}`,
     })),
@@ -131,7 +132,7 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
               <td className="py-2 text-right">{formatCurrency(slice.value)}</td>
               <td className="py-2 text-right text-muted">{weightFormat.format(slice.weight)}</td>
               <td className="py-2 text-right">
-                {slice.gain === null ? (
+                {slice.gain === null || slice.gainPercent === null ? (
                   <span className="text-muted">—</span>
                 ) : (
                   <ChangeBadge change={slice.gain} percent={slice.gainPercent} variant="pill" />

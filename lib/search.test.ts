@@ -49,3 +49,13 @@ describe("searchStocks", () => {
     expect(search("zzz")).toEqual([]);
   });
 });
+
+describe("searchStocks over the catalog", () => {
+  const catalog = [...stocks, { symbol: "BRK-B", name: "Berkshire Hathaway Inc. (Class B)" }, { symbol: "KO", name: "Coca-Cola Co." }];
+
+  it("finds a share class however it's typed, and companies by name", () => {
+    expect(searchStocks("brk.b", catalog).map((s) => s.symbol)).toEqual(["BRK-B"]);
+    expect(searchStocks("brk-b", catalog).map((s) => s.symbol)).toEqual(["BRK-B"]);
+    expect(searchStocks("coca", catalog).map((s) => s.symbol)).toEqual(["KO"]);
+  });
+});

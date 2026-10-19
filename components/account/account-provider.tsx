@@ -9,10 +9,12 @@ import {
   toggleWatchlistAction,
   type ActionResult,
 } from "@/lib/account-actions";
+import type { StockTableRow } from "@/components/stocks/stock-table-rows";
 import { createLocalAccountStore } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
+import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount } from "@/lib/starting-account";
-import { placeOrder as applyOrder, toggleWatchlist as applyToggle, type Account, type Order } from "@/lib/trading";
+import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order } from "@/lib/trading";
 import type { StockQuote } from "@/lib/types";
 
 /** What every action resolves to: success, or a message to show. */
@@ -36,10 +38,20 @@ interface AccountContextValue {
   /** A problem talking to the server, for the status banner. */
   error: string | null;
   dismissError(): void;
-  /** Today's price for every stock, by symbol. */
+  /**
+   * Today's price for every core stock, plus any other stock the account
+   * holds or watches once it has loaded, by symbol.
+   */
   quotes: Record<string, StockQuote>;
+  /** Table rows (with a month of history) for held or watched stocks outside the core, by symbol. */
+  extraRows: Record<string, StockTableRow>;
+  /** Every catalog stock's name and sector, for search. */
+  listings: readonly StockListing[];
+  /** True when any real ticker can be opened (Tiingo), not just catalog ones. */
+  openTickers: boolean;
   toggleWatchlist(symbol: string): Promise<Outcome>;
-  placeOrder(symbol: string, side: Order["side"], shares: number): Promise<Outcome>;
+  /** Trades at the quote's price in guest mode; signed in, the server uses its own price. */
+  placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number): Promise<Outcome>;
   /** Back to the starting holdings, cash and watchlist, with no trade history. */
   reset(): Promise<Outcome>;
   /** For importOffer: copy the guest data into the account, or start fresh. */
@@ -63,10 +75,20 @@ const OFFLINE: Failure = { ok: false, message: "Couldn't reach the server. Check
  * Both paths apply the same rules (lib/trading.ts), so components don't need
  * to know which one they're using.
  */
-export function AccountProvider({ quotes, children }: { quotes: StockQuote[]; children: ReactNode }) {
-  const quoteMap = useMemo(() => Object.fromEntries(quotes.map((q) => [q.symbol, q])), [quotes]);
+export function AccountProvider({
+  quotes,
+  listings,
+  openTickers,
+  children,
+}: {
+  quotes: StockQuote[];
+  listings: readonly StockListing[];
+  openTickers: boolean;
+  children: ReactNode;
+}) {
+  const coreQuotes = useMemo(() => Object.fromEntries(quotes.map((q) => [q.symbol, q])), [quotes]);
   // useState's initializer runs once, so the store is created once per page load.
-  const [store] = useState(() => createLocalAccountStore(quotes.map((q) => q.symbol)));
+  const [store] = useState(() => createLocalAccountStore());
   // The third argument is what the server (and hydration) sees: null, "not loaded".
   const guestAccount = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
 
@@ -153,6 +175,35 @@ export function AccountProvider({ quotes, children }: { quotes: StockQuote[]; ch
   const account = mode === "guest" ? guestAccount : mode === "signed-in" ? optimisticAccount : null;
   const importOffer = needsSetup && guestAccount && !guestIsUntouched ? guestAccount : null;
 
+  // Prices for held or watched stocks outside the core, which the layout
+  // doesn't send. Fetched again only when that set of symbols changes; a
+  // symbol whose prices are unavailable is simply left out (shown as "—").
+  const extraKey = account
+    ? [...new Set([...account.holdings.map((h) => h.symbol), ...account.watchlist])].filter((s) => !coreQuotes[s]).sort().join(",")
+    : "";
+  // Rows from an earlier set of symbols are kept: they still help while the new set loads.
+  const [extraRows, setExtraRows] = useState<Record<string, StockTableRow>>({});
+  useEffect(() => {
+    if (!extraKey) return;
+    let cancelled = false;
+    const query = extraKey
+      .split(",")
+      .map((s) => `symbol=${encodeURIComponent(s)}`)
+      .join("&");
+    fetch(`/api/quotes?${query}`)
+      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
+      .then((data: { rows: StockTableRow[] }) => {
+        if (!cancelled) setExtraRows(Object.fromEntries(data.rows.map((row) => [row.symbol, row])));
+      })
+      .catch(() => {
+        // Positions without a price are valued at cost until the next try.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [extraKey]);
+  const quoteMap = useMemo(() => ({ ...extraRows, ...coreQuotes }), [extraRows, coreQuotes]);
+
   const value: AccountContextValue = {
     account,
     mode,
@@ -160,15 +211,21 @@ export function AccountProvider({ quotes, children }: { quotes: StockQuote[]; ch
     error,
     dismissError: () => setError(null),
     quotes: quoteMap,
+    extraRows,
+    listings,
+    openTickers,
 
     async toggleWatchlist(symbol) {
+      if (account && watchlistIsFull(account, symbol)) {
+        setError(WATCHLIST_FULL);
+        return { ok: false, message: WATCHLIST_FULL };
+      }
       if (userId) return runRemote(userId, (a) => applyToggle(a, symbol), () => toggleWatchlistAction(symbol));
       store.set(applyToggle(store.getSnapshot(), symbol));
       return { ok: true };
     },
 
-    async placeOrder(symbol, side, shares) {
-      const price = quoteMap[symbol]?.price ?? Number.NaN;
+    async placeOrder({ symbol, price }, side, shares) {
       // The ID and time are made here, in an event handler, so the rules in
       // lib/trading.ts stay pure. (Signed in, the server makes its own.)
       const order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now() };

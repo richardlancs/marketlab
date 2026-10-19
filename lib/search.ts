@@ -23,8 +23,10 @@ function startsAWord(text: string, query: string): boolean {
 function rank({ symbol, name }: Searchable, query: string): Rank | undefined {
   const s = symbol.toLowerCase();
   const n = name.toLowerCase();
-  if (s === query) return Rank.ExactSymbol;
-  if (s.startsWith(query)) return Rank.SymbolPrefix;
+  // Symbols are stored as "brk-b"; people also type "brk.b".
+  const asSymbol = query.replace(/\./g, "-");
+  if (s === asSymbol) return Rank.ExactSymbol;
+  if (s.startsWith(asSymbol)) return Rank.SymbolPrefix;
   if (startsAWord(n, query)) return Rank.NameWordPrefix;
   if (s.includes(query) || n.includes(query)) return Rank.Contains;
   return undefined;

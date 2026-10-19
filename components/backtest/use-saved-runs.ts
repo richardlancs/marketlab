@@ -14,12 +14,12 @@ export type SaveOutcome = { ok: true } | { ok: false; message: string };
  * for signed-in users (the same split as the account itself).
  * `runs` is null while it isn't known yet.
  */
-export function useSavedRuns(symbols: readonly string[]) {
+export function useSavedRuns() {
   const { mode } = useAccount();
   const { data: session } = authClient.useSession();
   const userId = session?.user.id ?? null;
 
-  const [store] = useState(() => createSavedRunsStore(symbols));
+  const [store] = useState(() => createSavedRunsStore());
   const localRuns = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
 
   const [remote, setRemote] = useState<{ userId: string; runs: SavedRun[] } | null>(null);

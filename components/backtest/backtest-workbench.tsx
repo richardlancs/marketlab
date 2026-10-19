@@ -1,10 +1,13 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { runConfig, STRATEGY_NAMES, summarize, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
+import { formatDate } from "@/lib/format";
+import { isSymbolFormat } from "@/lib/market/symbols";
 import type { PricePoint } from "@/lib/types";
-import { BacktestForm, defaultForm, formFromConfig, toConfig, type FormState, type StockOption } from "./backtest-form";
+import { BacktestForm, defaultForm, formFromConfig, toConfig, type FormState } from "./backtest-form";
 import { BacktestResults, holdingsLabel } from "./backtest-results";
 import { RunComparison } from "./run-comparison";
 import { SavedRuns } from "./saved-runs";
@@ -24,15 +27,19 @@ type View =
  * The backtest page's interactive part: the settings form, saved runs, and
  * the results of the last run or comparison. Prices come from /api/history;
  * backtests themselves run right here in the browser (they take milliseconds).
+ * The stocks to pick from are the catalog's, from the account provider; with
+ * real data any other ticker can be typed too.
  */
-export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: StockOption[]; firstDate: number; lastDate: number }) {
-  const symbols = stocks.map((s) => s.symbol);
+export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; lastDate: number }) {
+  const { listings, openTickers } = useAccount();
+  const isKnown = (symbol: string) => (openTickers ? isSymbolFormat(symbol) : listings.some((l) => l.symbol === symbol));
+  const [note, setNote] = useState<string | null>(null);
   const [form, setForm] = useState<FormState>(() => defaultForm(lastDate));
   const [view, setView] = useState<View>({ kind: "empty" });
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
-  const saved = useSavedRuns(symbols);
+  const saved = useSavedRuns();
   // Prices already fetched, by symbol, so re-running with other settings is instant.
   const cache = useRef<History>({ history: {}, market: [] });
 
@@ -41,7 +48,11 @@ export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: Sto
     if (missing.length > 0 || cache.current.market.length === 0) {
       const query = (missing.length ? missing : needed).map((s) => `symbol=${encodeURIComponent(s)}`).join("&");
       const response = await fetch(`/api/history?${query}`);
-      if (!response.ok) throw new Error("Couldn't load prices. Check your connection and try again.");
+      if (!response.ok) {
+        // The route explains unknown stocks and unavailable prices; anything else is likely the connection.
+        const body = (await response.json().catch(() => null)) as { error?: string } | null;
+        throw new Error(body?.error ?? "Couldn't load prices. Check your connection and try again.");
+      }
       const data: History = await response.json();
       cache.current = { history: { ...cache.current.history, ...data.history }, market: data.market };
     }
@@ -64,11 +75,18 @@ export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: Sto
   const runWith = (config: BacktestConfig) =>
     busy(async () => {
       const { history, market } = await load(config.holdings.map((h) => h.symbol));
+      // A stock listed recently has a shorter history. The run then starts on
+      // the first day all the stocks have prices; say so instead of leaving it
+      // a mystery why the chart starts later.
+      const latestStart = config.holdings
+        .map((h) => ({ symbol: h.symbol, first: history[h.symbol]?.[0]?.time ?? 0 }))
+        .reduce((a, b) => (b.first > a.first ? b : a));
+      setNote(latestStart.first > config.start ? `${latestStart.symbol}'s prices start on ${formatDate(latestStart.first)}, so the run starts there.` : null);
       setView({ kind: "result", config, outcome: runConfig(config, history, market) });
     });
 
   function run() {
-    const parsed = toConfig(form, symbols);
+    const parsed = toConfig(form, isKnown);
     if ("error" in parsed) setError(parsed.error);
     else void runWith(parsed.config);
   }
@@ -79,6 +97,7 @@ export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: Sto
   }
 
   function compare() {
+    setNote(null);
     const runs = (saved.runs ?? []).filter((r) => selected.includes(r.id));
     void busy(async () => {
       const { history, market } = await load([...new Set(runs.flatMap((r) => r.config.holdings.map((h) => h.symbol)))]);
@@ -93,7 +112,7 @@ export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: Sto
           <h2 id="settings" className="mb-4 text-lg font-semibold tracking-tight">
             Settings
           </h2>
-          <BacktestForm form={form} onChange={setForm} onRun={run} stocks={stocks} firstDate={firstDate} lastDate={lastDate} running={running} error={error} />
+          <BacktestForm form={form} onChange={setForm} onRun={run} stocks={listings} openTickers={openTickers} firstDate={firstDate} lastDate={lastDate} running={running} error={error} />
         </Card>
         <SavedRuns
           runs={saved.runs}
@@ -119,6 +138,7 @@ export function BacktestWorkbench({ stocks, firstDate, lastDate }: { stocks: Sto
             {view.kind === "result" && <SaveRun key={JSON.stringify(view.config)} view={view} save={saved.save} canSave={saved.runs !== null} />}
           </div>
           <div className="mt-3">
+            {view.kind === "result" && note && <p className="mb-3 text-sm text-muted">{note}</p>}
             {view.kind === "result" && <BacktestResults config={view.config} outcome={view.outcome} />}
             {view.kind === "compare" && <RunComparison runs={view.runs} outcomes={view.outcomes} />}
             {view.kind === "empty" && (

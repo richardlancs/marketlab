@@ -3,7 +3,9 @@ import { Geist, Geist_Mono } from "next/font/google";
 import { AccountNotices } from "@/components/account/account-notices";
 import { AccountProvider } from "@/components/account/account-provider";
 import { Header } from "@/components/layout/header";
-import { getStocks } from "@/lib/market";
+import { getMarket } from "@/lib/market";
+import { CATALOG } from "@/lib/market/catalog";
+import { marketMode } from "@/lib/market/mode";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -29,7 +31,8 @@ const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t!==
 export default async function RootLayout({ children }: LayoutProps<"/">) {
   // Today's prices for every stock, for the account features (watchlist,
   // portfolio, trading). Names and prices only, no history, so it stays small.
-  const quotes = (await getStocks()).map(({ symbol, name, price, change, changePercent }) => ({
+  const market = await getMarket();
+  const quotes = market.stocks.map(({ symbol, name, price, change, changePercent }) => ({
     symbol,
     name,
     price,
@@ -60,10 +63,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
-        <AccountProvider quotes={quotes}>
+        {/* The catalog's names (~100 stocks, a few KB) let search find any of them without an API call. */}
+        <AccountProvider quotes={quotes} listings={CATALOG} openTickers={marketMode() === "tiingo"}>
           <Header />
           <AccountNotices />
           {children}
+          <footer className="mx-auto w-full max-w-7xl px-4 pt-4 pb-8 text-xs text-muted sm:px-6 lg:px-8">
+            {market.source === "mock"
+              ? "Simulated prices, not real market data. Company names are real; their prices here are generated."
+              : "End-of-day prices from Tiingo, for personal use only."}{" "}
+            Nothing here is investment advice.
+          </footer>
         </AccountProvider>
       </body>
     </html>

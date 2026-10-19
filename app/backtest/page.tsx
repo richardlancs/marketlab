@@ -6,8 +6,9 @@ import { getMarket } from "@/lib/market";
 export const metadata: Metadata = { title: "Backtest — MarketLab" };
 
 /**
- * Try a strategy on past prices. The page itself only sends the stock list
- * and the dates available; prices load when a backtest runs.
+ * Try a strategy on past prices. The page itself only sends the dates
+ * available (from the core stocks; others may start later); the stock list
+ * comes from the layout, and prices load when a backtest runs.
  */
 export default async function BacktestPage() {
   const { stocks } = await getMarket();
@@ -24,7 +25,7 @@ export default async function BacktestPage() {
         </p>
       </div>
       <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
-        <BacktestWorkbench stocks={stocks.map((s) => ({ symbol: s.symbol, name: s.name }))} firstDate={firstDate} lastDate={lastDate} />
+        <BacktestWorkbench firstDate={firstDate} lastDate={lastDate} />
       </div>
     </main>
   );

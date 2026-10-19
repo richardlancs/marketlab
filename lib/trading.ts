@@ -42,12 +42,19 @@ export interface Order {
   time: number;
 }
 
-export type TradeError = "invalid-shares" | "invalid-price" | "insufficient-cash" | "insufficient-shares";
+export type TradeError = "invalid-shares" | "invalid-price" | "insufficient-cash" | "insufficient-shares" | "too-many-holdings";
 
 export type TradeResult = { ok: true; account: Account; trade: Trade } | { ok: false; error: TradeError; message: string };
 
 /** The most shares one order can be for. Stops absurd numbers from typos. */
 export const MAX_SHARES_PER_ORDER = 1_000_000;
+
+/**
+ * The most stocks an account can hold, and watch. Any ticker can be added now,
+ * so these keep storage (and, with real prices, data requests) bounded.
+ */
+export const MAX_HOLDINGS = 30;
+export const MAX_WATCHLIST = 30;
 
 /** Rounds to whole cents. Applied to cash after every trade. */
 export const roundCents = (value: number) => Math.round(value * 100) / 100;
@@ -67,6 +74,9 @@ export function placeOrder(account: Account, order: Order): TradeResult {
 
   if (side === "buy") {
     if (total > account.cash) return fail("insufficient-cash", "You don't have enough cash for this order.");
+    if (!held && account.holdings.length >= MAX_HOLDINGS) {
+      return fail("too-many-holdings", `You can hold up to ${MAX_HOLDINGS} different stocks. Sell one to make room.`);
+    }
     const holdings = held
       ? account.holdings.map((h) =>
           h === held
@@ -92,8 +102,15 @@ export function placeOrder(account: Account, order: Order): TradeResult {
   return { ok: true, trade, account: { ...account, cash: roundCents(account.cash + total), holdings, trades: [trade, ...account.trades] } };
 }
 
-/** Adds the symbol to the end of the watchlist, or removes it if it's already there. */
+export const WATCHLIST_FULL = `You can watch up to ${MAX_WATCHLIST} stocks. Remove one to make room.`;
+
+/** True if the symbol can't be added because the watchlist is full. Removing is always allowed. */
+export const watchlistIsFull = (account: Account, symbol: string) =>
+  !account.watchlist.includes(symbol) && account.watchlist.length >= MAX_WATCHLIST;
+
+/** Adds the symbol to the end of the watchlist, or removes it if it's already there. A full watchlist stays as it is. */
 export function toggleWatchlist(account: Account, symbol: string): Account {
+  if (watchlistIsFull(account, symbol)) return account;
   const watchlist = account.watchlist.includes(symbol)
     ? account.watchlist.filter((s) => s !== symbol)
     : [...account.watchlist, symbol];
@@ -109,6 +126,11 @@ export function totalRealizedGain(account: Account): number {
 // Validation for account data from outside: localStorage, or a guest account
 // being imported into a signed-in one. Anything malformed is rejected rather
 // than trusted, so a hand-edited or outdated value can't break the app.
+//
+// Symbols are checked with `isKnown`. When *reading* saved data, callers only
+// check the format (isSymbolFormat): a stock that's missing from the data
+// right now (the source changed, Tiingo is down) must never wipe an account.
+// Whether a stock really exists is checked when it's *added*, on the server.
 // ---------------------------------------------------------------------------
 
 const isRecord = (value: unknown): value is Record<string, unknown> => typeof value === "object" && value !== null;
@@ -118,12 +140,12 @@ const isPositiveInt = (value: unknown): value is number => Number.isInteger(valu
 /** The most trades kept in history. Older ones are dropped when loading. */
 export const MAX_TRADES = 500;
 
-/** Returns a clean Account if `value` is a valid one for these symbols, otherwise null. */
-export function parseAccount(value: unknown, knownSymbols: readonly string[]): Account | null {
+/** Returns a clean Account if `value` is a valid one, with every symbol passing `isKnown`, otherwise null. */
+export function parseAccount(value: unknown, isKnown: (symbol: string) => boolean): Account | null {
   if (!isRecord(value) || !isMoney(value.cash)) return null;
   const { holdings, watchlist, trades } = value;
   if (!Array.isArray(holdings) || !Array.isArray(watchlist) || !Array.isArray(trades)) return null;
-  const known = (symbol: unknown): symbol is string => typeof symbol === "string" && knownSymbols.includes(symbol);
+  const known = (symbol: unknown): symbol is string => typeof symbol === "string" && isKnown(symbol);
 
   const cleanHoldings: Holding[] = [];
   for (const h of holdings) {

@@ -9,10 +9,10 @@
  * This takes the database as a parameter so tests can use an in-memory one.
  * App code uses the instance from ./index.ts, which is server-only.
  */
-import { and, desc, eq, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, max, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { startingAccount } from "../starting-account";
-import { MAX_TRADES, placeOrder, type Account, type Order, type TradeResult } from "../trading";
+import { MAX_TRADES, MAX_WATCHLIST, placeOrder, type Account, type Order, type TradeResult } from "../trading";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
 
@@ -113,7 +113,7 @@ export function createAccountRepository(db: Db) {
         return result;
       }),
 
-    /** Adds the symbol to the end of the watchlist, or removes it. Returns whether it's now watched. */
+    /** Adds the symbol to the end of the watchlist, or removes it. Returns whether it's now watched, or "full". */
     toggleWatchlist: (userId: string, symbol: string) =>
       transaction(async (tx) => {
         await ensure(tx, userId);
@@ -123,7 +123,11 @@ export function createAccountRepository(db: Db) {
           await tx.delete(watchlistItem).where(where);
           return false;
         }
-        const [{ last }] = await tx.select({ last: max(watchlistItem.position) }).from(watchlistItem).where(eq(watchlistItem.userId, userId));
+        const [{ last, total }] = await tx
+          .select({ last: max(watchlistItem.position), total: count() })
+          .from(watchlistItem)
+          .where(eq(watchlistItem.userId, userId));
+        if (total >= MAX_WATCHLIST) return "full" as const;
         await tx.insert(watchlistItem).values({ userId, symbol, position: (last ?? -1) + 1 });
         return true;
       }),

@@ -5,6 +5,7 @@ import { startingAccount } from "./starting-account";
 import type { Account } from "./trading";
 
 const SYMBOLS = ["AAPL", "MSFT", "NVDA", "AMZN", "JPM", "TSLA", "META", "NFLX"];
+const isKnown = (s: string) => SYMBOLS.includes(s);
 
 /** A minimal in-memory stand-in for the browser's localStorage and window. */
 function fakeBrowser() {
@@ -31,7 +32,7 @@ function fakeBrowser() {
 
 describe("decodeAccount", () => {
   it("round-trips an account", () => {
-    expect(decodeAccount(encodeAccount(startingAccount()), SYMBOLS)).toEqual(startingAccount());
+    expect(decodeAccount(encodeAccount(startingAccount()), isKnown)).toEqual(startingAccount());
   });
 
   it.each([
@@ -40,8 +41,14 @@ describe("decodeAccount", () => {
     ["another version", JSON.stringify({ version: 99, account: startingAccount() })],
     ["an invalid account", JSON.stringify({ version: 1, account: { cash: "lots" } })],
   ])("returns null for %s", (_, raw) => {
-    expect(decodeAccount(raw, SYMBOLS)).toBeNull();
+    expect(decodeAccount(raw, isKnown)).toBeNull();
   });
+});
+
+it("keeps an account holding a stock outside the core list (by default only the format is checked)", () => {
+  const withKo = { ...startingAccount(), holdings: [{ symbol: "KO", shares: 3, averageCost: 60 }], watchlist: ["KO", "BRK-B"] };
+  expect(decodeAccount(encodeAccount(withKo))).toEqual(withKo);
+  expect(decodeAccount(encodeAccount({ ...withKo, watchlist: ["not a symbol"] }))).toBeNull();
 });
 
 describe("createLocalAccountStore", () => {
@@ -54,27 +61,27 @@ describe("createLocalAccountStore", () => {
   });
 
   it("starts from the starting account when nothing is saved", () => {
-    expect(createLocalAccountStore(SYMBOLS).getSnapshot()).toEqual(startingAccount());
+    expect(createLocalAccountStore().getSnapshot()).toEqual(startingAccount());
   });
 
   it("returns the same object until the data changes (required by useSyncExternalStore)", () => {
-    const store = createLocalAccountStore(SYMBOLS);
+    const store = createLocalAccountStore();
     expect(store.getSnapshot()).toBe(store.getSnapshot());
   });
 
   it("saves changes and tells subscribers", () => {
-    const store = createLocalAccountStore(SYMBOLS);
+    const store = createLocalAccountStore();
     const listener = vi.fn();
     store.subscribe(listener);
     const next = { ...startingAccount(), cash: 5 };
     store.set(next);
     expect(listener).toHaveBeenCalledTimes(1);
     expect(store.getSnapshot()).toBe(next);
-    expect(decodeAccount(browser.data.get(STORAGE_KEY) ?? null, SYMBOLS)).toEqual(next);
+    expect(decodeAccount(browser.data.get(STORAGE_KEY) ?? null, isKnown)).toEqual(next);
   });
 
   it("picks up changes made in another tab", () => {
-    const store = createLocalAccountStore(SYMBOLS);
+    const store = createLocalAccountStore();
     const listener = vi.fn();
     const unsubscribe = store.subscribe(listener);
     browser.otherTabWrites({ ...startingAccount(), cash: 7 });
@@ -86,7 +93,7 @@ describe("createLocalAccountStore", () => {
 
   it("falls back to the starting account if the saved data is corrupt", () => {
     browser.data.set(STORAGE_KEY, "garbage");
-    expect(createLocalAccountStore(SYMBOLS).getSnapshot()).toEqual(startingAccount());
+    expect(createLocalAccountStore().getSnapshot()).toEqual(startingAccount());
   });
 
   it("keeps working in memory when storage is blocked", () => {
@@ -98,7 +105,7 @@ describe("createLocalAccountStore", () => {
         throw new Error("blocked");
       },
     });
-    const store = createLocalAccountStore(SYMBOLS);
+    const store = createLocalAccountStore();
     const next = { ...startingAccount(), cash: 1 };
     store.set(next);
     expect(store.getSnapshot()).toBe(next);

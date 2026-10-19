@@ -5,14 +5,20 @@ import type { ReactNode } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { StockRow } from "./stock-row";
 
 /** The most rows the dashboard card shows; the rest are on the watchlist page. */
 const MAX_ROWS = 6;
 
-/** Picks the watched stocks' rows (rendered on the server, by symbol) and shows them in watchlist order. */
+/**
+ * Picks the watched stocks' rows and shows them in watchlist order. Core
+ * stocks' rows are rendered on the server, by symbol; any other stock's row is
+ * rendered here once its prices have loaded.
+ */
 export function WatchlistCard({ rows }: { rows: Record<string, ReactNode> }) {
-  const { account } = useAccount();
+  const { account, extraRows } = useAccount();
   const watchlist = account?.watchlist ?? [];
+  const rowFor = (symbol: string) => rows[symbol] ?? (extraRows[symbol] && <StockRow key={symbol} stock={extraRows[symbol]} sparkline />);
 
   return (
     <Card aria-labelledby="watchlist" aria-busy={!account} className="h-full">
@@ -43,7 +49,7 @@ export function WatchlistCard({ rows }: { rows: Record<string, ReactNode> }) {
         </p>
       ) : (
         // divide-y draws a hairline between rows, but not above the first one.
-        <ul className="mt-2 divide-y divide-border">{watchlist.slice(0, MAX_ROWS).map((symbol) => rows[symbol])}</ul>
+        <ul className="mt-2 divide-y divide-border">{watchlist.slice(0, MAX_ROWS).map(rowFor)}</ul>
       )}
     </Card>
   );

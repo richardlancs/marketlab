@@ -8,8 +8,10 @@ import type { Stock } from "@/lib/types";
  * One line in a stock list: symbol and name on the left, price and today's
  * change on the right, and optionally a small trend line in between. Shared by
  * the watchlist and top movers cards. The whole row links to the stock's page.
+ * Usually rendered on the server; the watchlist card also renders it in the
+ * browser for stocks outside the core.
  */
-export function StockRow({ stock, sparkline = false }: { stock: Stock; sparkline?: boolean }) {
+export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent" | "history">; sparkline?: boolean }) {
   return (
     <li>
       {/*

@@ -10,24 +10,26 @@ import { TradeCard } from "@/components/stocks/trade-card";
 import { WatchToggle } from "@/components/stocks/watch-toggle";
 import { Card } from "@/components/ui/card";
 import { sliceTimeframe } from "@/lib/chart";
-import { getStock, getStocks } from "@/lib/market";
+import { getListing, getStockDetail, STOCK_SYMBOLS } from "@/lib/market";
+import type { Listing } from "@/lib/market";
 
 /**
- * Tells Next.js which symbols exist, so it can build a page for each one ahead
- * of time (at `npm run build`). Other URLs, like /stocks/ZZZZ, still reach this
- * page at request time, where notFound() below turns them into a 404.
+ * Tells Next.js which pages to build ahead of time (at `npm run build`): the
+ * ten core stocks. Any other stock's page is built on its first visit (the
+ * skeleton below shows at once, then the details stream in) and stored, so
+ * later visits are instant too. Unknown symbols never get here: proxy.ts
+ * answers them with a 404.
  */
 export async function generateStaticParams() {
-  const stocks = await getStocks();
-  return stocks.map((stock) => ({ symbol: stock.symbol }));
+  return STOCK_SYMBOLS.map((symbol) => ({ symbol }));
 }
 
 // `params` is a Promise in this version of Next.js, so it's awaited.
 // PageProps<"/stocks/[symbol]"> is a global type Next.js generates from the folder name.
 export async function generateMetadata(props: PageProps<"/stocks/[symbol]">): Promise<Metadata> {
   const { symbol } = await props.params;
-  const stock = await getStock(symbol.toUpperCase());
-  return { title: stock ? `${stock.symbol} · ${stock.name} — MarketLab` : "Stock not found — MarketLab" };
+  const listing = await getListing(symbol);
+  return { title: listing ? `${listing.symbol} · ${listing.name} — MarketLab` : "Stock not found — MarketLab" };
 }
 
 /**
@@ -36,6 +38,8 @@ export async function generateMetadata(props: PageProps<"/stocks/[symbol]">): Pr
  * link is clicked. Everything that needs the symbol is in <StockDetails>,
  * behind Suspense. For the ten symbols built ahead of time, the details are
  * already in the HTML, so the skeleton only shows during client navigation.
+ * For other stocks it also shows on the very first visit, while the page is
+ * built.
  */
 export default function StockPage(props: PageProps<"/stocks/[symbol]">) {
   return (
@@ -52,12 +56,15 @@ export default function StockPage(props: PageProps<"/stocks/[symbol]">) {
 
 async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">["params"] }) {
   const { symbol } = await params;
-  const stock = await getStock(symbol);
+  const detail = await getStockDetail(symbol);
   // Renders the nearest not-found.tsx. It throws, so nothing below runs.
   // proxy.ts already rejects unknown and lowercase symbols with real 404 and
-  // 308 status codes before this page runs; this is a fallback.
-  if (!stock) notFound();
-
+  // 308 status codes before this page runs; this is a fallback (and, with
+  // Tiingo, the check for well-formed tickers that don't exist).
+  if (!detail) notFound();
+  if (detail.status === "unavailable") return <PricesUnavailable listing={detail.listing} />;
+  const { stock } = detail;
+  const quote = { symbol: stock.symbol, name: stock.name, price: stock.price, change: stock.change, changePercent: stock.changePercent };
 
   // The 52-week range: daily closes for the past year, plus today's high and low.
   const yearPrices = sliceTimeframe(stock.history, "1Y").map((p) => p.price);
@@ -77,7 +84,7 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
                   {stock.symbol} <span className="font-normal text-muted">{stock.name}</span>
                 </h1>
                 <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
-                  {stock.sector}
+                  {stock.sector ?? "Sector not available"}
                   <WatchToggle symbol={stock.symbol} />
                 </p>
               </div>
@@ -100,14 +107,32 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
         </div>
 
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up">
-          <TradeCard symbol={stock.symbol} />
+          <TradeCard quote={quote} />
         </div>
 
         <div style={{ animationDelay: "240ms" }} className="animate-fade-up">
-          <PositionCard symbol={stock.symbol} />
+          <PositionCard quote={quote} />
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * The stock exists, but its prices couldn't be loaded (the data source is
+ * down or out of requests). This answer is only cached for a minute.
+ */
+function PricesUnavailable({ listing }: { listing: Listing }) {
+  return (
+    <Card aria-labelledby="stock-title" className="mt-4">
+      <h1 id="stock-title" className="text-2xl font-semibold tracking-tight">
+        {listing.symbol} <span className="font-normal text-muted">{listing.name}</span>
+      </h1>
+      <p className="mt-3 text-sm text-muted">Prices for {listing.symbol} are unavailable right now. Try again in a minute.</p>
+      <div className="mt-3">
+        <WatchToggle symbol={listing.symbol} />
+      </div>
+    </Card>
   );
 }
 

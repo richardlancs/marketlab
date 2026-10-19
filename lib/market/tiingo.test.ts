@@ -99,3 +99,43 @@ describe("Tiingo provider", () => {
     await expect(createTiingoProvider("k", respond(status, { detail: "x" })).getSeries("AAPL", now)).rejects.toThrow(message);
   });
 });
+
+describe("Tiingo listings", () => {
+  const now = Date.UTC(2026, 9, 19, 22);
+
+  it("uses the catalog's name without a request", async () => {
+    const fetchImpl = respond(200, {});
+    expect(await createTiingoProvider("k", fetchImpl).getListing("KO")).toMatchObject({ name: "Coca-Cola Co.", sector: "Consumer Staples" });
+    expect(fetchImpl).not.toHaveBeenCalled();
+  });
+
+  it("looks up other tickers once, and remembers unknown ones", async () => {
+    const found = respond(200, { ticker: "ROKU", name: "Roku Inc", exchangeCode: "NASDAQ" });
+    const provider = createTiingoProvider("k", found);
+    expect(await provider.getListing("ROKU")).toEqual({ symbol: "ROKU", name: "Roku Inc", sector: null });
+    await provider.getListing("ROKU");
+    expect(found).toHaveBeenCalledTimes(1);
+    expect((found as unknown as ReturnType<typeof vi.fn>).mock.calls[0][0]).toBe("https://api.tiingo.com/tiingo/daily/ROKU");
+
+    const missing = respond(404, { detail: "Not found." });
+    const other = createTiingoProvider("k", missing);
+    expect(await other.getListing("ZZZZ")).toBeNull();
+    expect(await other.getListing("ZZZZ")).toBeNull();
+    expect(missing).toHaveBeenCalledTimes(1);
+  });
+
+  it("stops asking for extra tickers when the budget runs low, but keeps core ones going", async () => {
+    const fetchImpl = respond(200, SAMPLE);
+    const provider = createTiingoProvider("k", fetchImpl);
+    // 32 = 45 an hour minus 13 kept for the dashboard.
+    for (let i = 0; i < 32; i++) await provider.getSeries(`X${i}`, now);
+    await expect(provider.getSeries("ROKU", now)).rejects.toThrow(/budget/);
+    await expect(provider.getSeries("AAPL", now)).resolves.toBeTruthy();
+  });
+
+  it("pauses everything for an hour after a 429", async () => {
+    const provider = createTiingoProvider("k", respond(429, { detail: "x" }));
+    await expect(provider.getSeries("AAPL", now)).rejects.toThrow(/request limit/);
+    await expect(createTiingoProvider("k", respond(200, SAMPLE)).getSeries("MSFT", now)).rejects.toThrow(/budget/);
+  });
+});

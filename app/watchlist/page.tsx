@@ -8,9 +8,10 @@ import { getStocks } from "@/lib/market";
 export const metadata: Metadata = { title: "Watchlist — MarketLab" };
 
 /**
- * The stocks you follow. Which ones they are is saved in your browser, so the
- * page sends rows for every stock (only ten) and the client table keeps the
- * watched ones. The page itself stays fully static.
+ * The stocks you follow. Which ones they are is saved in your browser (or your
+ * account), so the page sends rows for the ten core stocks and the client
+ * table keeps the watched ones, adding any others it loads itself. The page
+ * itself stays fully static.
  */
 export default async function WatchlistPage() {
   const rows = (await getStocks()).map(toStockTableRow);

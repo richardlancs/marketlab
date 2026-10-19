@@ -36,7 +36,9 @@ describe("summarizePortfolio", () => {
     expect(summary).toMatchObject({ totalValue: 1000, totalGainPercent: 0, dayChangePercent: 0 });
   });
 
-  it("throws on an unknown symbol", () => {
-    expect(() => summarizePortfolio([{ symbol: "ZZZ", shares: 1, averageCost: 1 }], stocks, 0)).toThrow(/ZZZ/);
+  it("values a stock with no price yet at cost, flagged as unpriced, instead of failing", () => {
+    const summary = summarizePortfolio([{ symbol: "ZZZ", shares: 2, averageCost: 5 }], stocks, 100);
+    expect(summary.positions[0]).toMatchObject({ symbol: "ZZZ", marketValue: 10, gain: 0, dayChange: 0, priced: false });
+    expect(summary.totalValue).toBe(110);
   });
 });

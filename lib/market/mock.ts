@@ -11,8 +11,10 @@
  */
 import { bridge, gaussian, hashString, mulberry32, type Rng } from "../random";
 import type { DailyBar } from "../types";
+import { catalogEntry } from "./catalog";
 import { CLOSE_OFFSET, latestClosedTradingDay, tradingDaysAfter, tradingDaysEndingAt } from "./calendar";
 import type { MarketDataProvider, Series } from "./provider";
+import { isSymbolFormat } from "./symbols";
 
 /** Change this to get a completely different (but still reproducible) dataset. */
 const DATASET_SEED = 2026;
@@ -58,6 +60,31 @@ const SPECS: Record<string, Spec> = {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 const rngFor = (key: string): Rng => mulberry32(hashString(key) ^ DATASET_SEED);
 
+/** A random number between `min` and `max` where each doubling is equally likely (prices, sizes). */
+const logUniform = (rng: Rng, min: number, max: number) => min * Math.exp(rng() * Math.log(max / min));
+
+/**
+ * The spec for any symbol: the hand-tuned one above if there is one, so the
+ * original dataset never changes, otherwise one generated from the symbol
+ * itself. Which symbols *exist* in the mock market is the catalog's job
+ * (./catalog.ts); this only has to give each one believable numbers.
+ */
+export function specFor(symbol: string): Spec {
+  const known = SPECS[symbol];
+  if (known) return known;
+  const rng = rngFor(`${symbol}:spec`);
+  const price = round2(logUniform(rng, 15, 600));
+  const marketCap = logUniform(rng, 10e9, 500e9);
+  const peRatio = 10 + rng() * 35;
+  return {
+    price,
+    dailyVolatility: 0.012 + rng() * 0.023,
+    sharesOutstanding: marketCap / price,
+    earningsPerShare: price / peRatio,
+    averageVolume: logUniform(rng, 2e6, 40e6),
+  };
+}
+
 /** Daily closes for every trading day from 5 years before ANCHOR_DAY through `lastDay`. */
 function closes(symbol: string, spec: Spec, lastDay: number): { days: number[]; closes: number[] } {
   const rng = rngFor(symbol);
@@ -89,10 +116,10 @@ function toBar(symbol: string, spec: Spec, day: number, close: number, previousC
   return { time: day + CLOSE_OFFSET, open, high, low, close, volume, adjClose: close };
 }
 
-/** The mock series for `symbol` as of `now`. Throws for a symbol it doesn't know. */
+/** The mock series for `symbol` as of `now`. Throws for a malformed symbol. */
 export function mockSeries(symbol: string, now: number): Series {
-  const spec = SPECS[symbol];
-  if (!spec) throw new Error(`The mock market has no data for ${symbol}`);
+  if (!SPECS[symbol] && !isSymbolFormat(symbol)) throw new Error(`The mock market has no data for ${symbol}`);
+  const spec = specFor(symbol);
   // Never earlier than the anchor, so the original dataset is always complete.
   const lastDay = Math.max(ANCHOR_DAY, latestClosedTradingDay(now));
   const { days, closes: values } = closes(symbol, spec, lastDay);
@@ -109,4 +136,9 @@ export const mockProvider: MarketDataProvider = {
   source: "mock",
   indexSymbol: (index) => index.symbol,
   getSeries: async (symbol, now) => mockSeries(symbol, now),
+  // The mock market has exactly the catalog's stocks.
+  getListing: async (symbol) => {
+    const entry = catalogEntry(symbol);
+    return entry ? { ...entry } : null;
+  },
 };

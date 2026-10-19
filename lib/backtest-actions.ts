@@ -10,7 +10,9 @@ import { headers } from "next/headers";
 import { auth } from "./auth";
 import { MAX_RUN_NAME, MAX_SAVED_RUNS, parseConfig, runConfig, summarize, type SavedRun } from "./backtest/config";
 import { backtests } from "./db";
-import { getMarket, STOCK_SYMBOLS } from "./market";
+import type { PricePoint } from "./types";
+import { getMarket, getStockDetail } from "./market";
+import { isSymbolFormat } from "./market/symbols";
 
 export type SaveResult = { ok: true; run: SavedRun } | { ok: false; message: string };
 
@@ -24,11 +26,19 @@ export async function saveBacktestAction(name: unknown, config: unknown): Promis
   if (!userId) return { ok: false, message: "Your session has ended. Sign in again to save runs." };
   const cleanName = typeof name === "string" ? name.trim() : "";
   if (!cleanName || cleanName.length > MAX_RUN_NAME) return { ok: false, message: `Give the run a name of up to ${MAX_RUN_NAME} characters.` };
-  const parsed = parseConfig(config, STOCK_SYMBOLS);
+  const parsed = parseConfig(config, isSymbolFormat);
   if (!parsed) return { ok: false, message: "Those backtest settings aren't valid." };
 
+  // Each stock must exist, and its prices come from the server's own data.
+  const details = await Promise.all(parsed.holdings.map((h) => getStockDetail(h.symbol)));
+  const history: Record<string, PricePoint[]> = {};
+  for (const [i, detail] of details.entries()) {
+    const symbol = parsed.holdings[i].symbol;
+    if (!detail) return { ok: false, message: `Unknown stock: ${symbol}.` };
+    if (detail.status === "unavailable") return { ok: false, message: `Prices for ${symbol} are unavailable right now. Try again in a minute.` };
+    history[symbol] = detail.stock.history;
+  }
   const market = await getMarket();
-  const history = Object.fromEntries(market.stocks.map((s) => [s.symbol, s.history]));
   let summary;
   try {
     summary = summarize(runConfig(parsed, history, market.indices[0].history));

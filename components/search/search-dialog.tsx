@@ -5,7 +5,12 @@ import { useEffect, useId, useRef, useState, useSyncExternalStore, type Keyboard
 import { useAccount } from "@/components/account/account-provider";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
+import { isSymbolFormat, normalizeSymbol } from "@/lib/market/symbols";
 import { searchStocks } from "@/lib/search";
+import type { StockQuote } from "@/lib/types";
+
+/** A search result: a stock with today's price, a catalog stock (priced on its page), or "open any ticker". */
+type Result = { symbol: string; name: string; quote?: StockQuote; open?: true };
 
 /** Opens the dialog (if it isn't already) and puts the cursor in the search box. */
 function show(dialog: HTMLDialogElement | null, input: HTMLInputElement | null) {
@@ -40,9 +45,12 @@ function useShortcutLabel() {
 export function SearchDialog() {
   const router = useRouter();
   // The stock list comes from <AccountProvider>, which the root layout fills
-  // from the server, so no API route is needed.
-  const { quotes } = useAccount();
-  const stocks = Object.values(quotes);
+  // from the server, so no API route is needed. Stocks with a price show it;
+  // the rest of the catalog shows its sector, and gets its price on its page.
+  const { quotes, listings, openTickers } = useAccount();
+  const priced: Result[] = Object.values(quotes).map((quote) => ({ symbol: quote.symbol, name: quote.name, quote }));
+  const searchable: Result[] = [...priced, ...listings.filter((l) => !quotes[l.symbol]).map((l) => ({ symbol: l.symbol, name: l.name }))];
+  const sectors = Object.fromEntries(listings.map((l) => [l.symbol, l.sector]));
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);
@@ -51,8 +59,12 @@ export function SearchDialog() {
   const shortcut = useShortcutLabel();
   const listboxId = useId();
 
-  // No query yet: list every stock, so the dialog also works for browsing.
-  const results = query.trim() ? searchStocks(query, stocks) : stocks;
+  // No query yet: list the stocks with prices, so the dialog also works for browsing.
+  const matches = query.trim() ? searchStocks(query, searchable) : priced;
+  // With real data any ticker can be opened: offer one that isn't listed. Its page says if it doesn't exist.
+  const typed = normalizeSymbol(query);
+  const results: Result[] =
+    openTickers && isSymbolFormat(typed) && !matches.some((r) => r.symbol === typed) ? [...matches, { symbol: typed, name: "Open this ticker", open: true }] : matches;
   const active = results[activeIndex];
   const optionId = (symbol: string) => `${listboxId}-${symbol}`;
 
@@ -166,10 +178,16 @@ export function SearchDialog() {
                 onMouseMove={() => i !== activeIndex && setActiveIndex(i)}
                 className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 ${i === activeIndex ? "bg-foreground/[0.06]" : ""}`}
               >
-                <span className="w-14 shrink-0 text-sm font-semibold">{stock.symbol}</span>
+                <span className="w-16 shrink-0 text-sm font-semibold">{stock.symbol}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-muted">{stock.name}</span>
-                <span className="shrink-0 text-sm font-medium tabular-nums">{formatCurrency(stock.price)}</span>
-                <ChangeBadge change={stock.change} percent={stock.changePercent} variant="pill" className="shrink-0" />
+                {stock.quote ? (
+                  <>
+                    <span className="shrink-0 text-sm font-medium tabular-nums">{formatCurrency(stock.quote.price)}</span>
+                    <ChangeBadge change={stock.quote.change} percent={stock.quote.changePercent} variant="pill" className="shrink-0" />
+                  </>
+                ) : (
+                  !stock.open && <span className="hidden shrink-0 text-xs text-muted sm:block">{sectors[stock.symbol]}</span>
+                )}
               </li>
             ))}
           </ul>

@@ -6,11 +6,14 @@ import { ChangeBadge } from "@/components/ui/change-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
 import { summarizePortfolio } from "@/lib/portfolio";
+import type { StockQuote } from "@/lib/types";
 
 /** How much of one stock the simulated portfolio holds, and how it's doing. */
-export function PositionCard({ symbol }: { symbol: string }) {
+export function PositionCard({ quote }: { quote: StockQuote }) {
   const { account, quotes } = useAccount();
-  const portfolio = account && summarizePortfolio(account.holdings, Object.values(quotes), account.cash);
+  const { symbol } = quote;
+  // This page's quote is the freshest for this stock; the others value the rest of the portfolio (for the weight).
+  const portfolio = account && summarizePortfolio(account.holdings, Object.values({ ...quotes, [symbol]: quote }), account.cash);
   const position = portfolio?.positions.find((p) => p.symbol === symbol);
 
   return (

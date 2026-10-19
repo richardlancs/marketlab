@@ -82,8 +82,25 @@ describe("mock market", () => {
     expect(mockSeries("SPX", atAnchor).bars.at(-1)?.volume).toBeNull();
   });
 
-  it("refuses symbols it doesn't know", () => {
-    expect(() => mockSeries("ZZZZ", atAnchor)).toThrow();
+  it("refuses malformed symbols", () => {
+    expect(() => mockSeries("../x", atAnchor)).toThrow();
+  });
+
+  it("generates a steady series for any other symbol", () => {
+    const ko = mockSeries("KO", aWeekLater);
+    expect(ko.bars).toHaveLength(HISTORY_BARS);
+    expect(mockSeries("KO", aWeekLater)).toEqual(ko);
+    expect(ko.marketCap).toBeGreaterThan(0);
+    // A later day only adds bars at the end; the past stays the same.
+    const before = mockSeries("KO", atAnchor).bars;
+    expect(ko.bars.slice(0, -5)).toEqual(before.slice(5));
+    // Different symbols get different prices.
+    expect(mockSeries("PEP", atAnchor).bars.at(-1)?.close).not.toBe(before.at(-1)?.close);
+  });
+
+  it("lists exactly the catalog's stocks", async () => {
+    expect(await mockProvider.getListing("KO")).toEqual({ symbol: "KO", name: "Coca-Cola Co.", sector: "Consumer Staples" });
+    expect(await mockProvider.getListing("ZZZZ")).toBeNull();
   });
 });
 
@@ -112,7 +129,7 @@ describe("quotes and the market snapshot", () => {
 
   it("starts accounts with stocks that exist", () => {
     // parseAccount rejects any symbol not in the universe.
-    expect(parseAccount(startingAccount(), STOCK_SYMBOLS)).toEqual(startingAccount());
+    expect(parseAccount(startingAccount(), (s) => STOCK_SYMBOLS.includes(s))).toEqual(startingAccount());
   });
 });
 

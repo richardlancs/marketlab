@@ -141,7 +141,7 @@ describe("computeMetrics", () => {
 });
 
 describe("config", () => {
-  const symbols = ["AAPL", "MSFT", "V"];
+  const symbols = (s: string) => ["AAPL", "MSFT", "V"].includes(s);
   const valid: BacktestConfig = {
     holdings: [
       { symbol: "AAPL", weight: 0.6 },
@@ -188,7 +188,7 @@ describe("config", () => {
 });
 
 describe("saved runs in the browser", () => {
-  const symbols = ["AAPL"];
+  const symbols = (s: string) => s === "AAPL";
   const saved = {
     id: "r1",
     name: "My run",
@@ -211,5 +211,11 @@ describe("saved runs in the browser", () => {
     expect(decodeSavedRuns(raw, symbols).map((r) => r.id)).toEqual(["r1"]);
     expect(decodeSavedRuns("not json", symbols)).toEqual([]);
     expect(decodeSavedRuns(JSON.stringify({ version: 9, runs: [saved] }), symbols)).toEqual([]);
+  });
+
+  it("keeps runs on any well-formed symbol by default, so a stock missing from today's data doesn't lose them", async () => {
+    const { decodeSavedRuns } = await import("./saved-local");
+    const onKo = { ...saved, config: { ...saved.config, holdings: [{ symbol: "KO", weight: 1 }] } };
+    expect(decodeSavedRuns(JSON.stringify({ version: 1, runs: [onKo] })).map((r) => r.id)).toEqual(["r1"]);
   });
 });

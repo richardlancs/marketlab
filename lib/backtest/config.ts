@@ -86,8 +86,12 @@ export function runConfig(config: BacktestConfig, history: Record<string, PriceP
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const inRange = (v: unknown, min: number, max: number): v is number => isNumber(v) && v >= min && v <= max;
 
-/** Returns a clean config if `value` is a valid one for these symbols, otherwise null. */
-export function parseConfig(value: unknown, symbols: readonly string[]): BacktestConfig | null {
+/**
+ * Returns a clean config if `value` is a valid one, with every symbol passing
+ * `isKnown`, otherwise null. Saved runs are read with a format check only, so
+ * a run on a stock that's missing from today's data isn't lost.
+ */
+export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean): BacktestConfig | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
 
@@ -95,7 +99,7 @@ export function parseConfig(value: unknown, symbols: readonly string[]): Backtes
   const holdings: BacktestConfig["holdings"] = [];
   for (const h of v.holdings) {
     const { symbol, weight } = (h ?? {}) as Record<string, unknown>;
-    if (typeof symbol !== "string" || !symbols.includes(symbol) || !inRange(weight, 0.0001, 1)) return null;
+    if (typeof symbol !== "string" || !isKnown(symbol) || !inRange(weight, 0.0001, 1)) return null;
     if (holdings.some((x) => x.symbol === symbol)) return null;
     holdings.push({ symbol, weight });
   }
@@ -158,10 +162,10 @@ export const MAX_SAVED_RUNS = 50;
 export const MAX_RUN_NAME = 80;
 
 /** A saved run read back from storage, validated like everything else from outside. */
-export function parseSavedRun(value: unknown, symbols: readonly string[]): SavedRun | null {
+export function parseSavedRun(value: unknown, isKnown: (symbol: string) => boolean): SavedRun | null {
   if (typeof value !== "object" || value === null) return null;
   const v = value as Record<string, unknown>;
-  const config = parseConfig(v.config, symbols);
+  const config = parseConfig(v.config, isKnown);
   const s = (v.summary ?? {}) as Record<string, unknown>;
   const summaryKeys = ["finalValue", "totalReturn", "cagr", "maxDrawdown", "benchmarkTotalReturn"] as const;
   if (!config || typeof v.id !== "string" || typeof v.name !== "string" || v.name.length > MAX_RUN_NAME || !isNumber(v.createdAt)) return null;

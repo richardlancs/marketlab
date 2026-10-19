@@ -48,3 +48,49 @@ describe("getMarket", () => {
     expect(console.error).toHaveBeenCalledWith(expect.stringContaining("Falling back"), expect.stringContaining("key was rejected"));
   });
 });
+
+describe("getStockDetail", () => {
+  it("serves core stocks from the shared snapshot and catalog stocks from their own cache", async () => {
+    vi.stubEnv("TIINGO_API_KEY", "");
+    const { getStockDetail } = await import("./index");
+    expect(await getStockDetail("aapl")).toMatchObject({ status: "ok", stock: { symbol: "AAPL", sector: "Technology" } });
+    expect(await getStockDetail("KO")).toMatchObject({ status: "ok", stock: { symbol: "KO", name: "Coca-Cola Co." } });
+    expect(await getStockDetail("ZZZZ")).toBeNull();
+    expect(await getStockDetail("../x")).toBeNull();
+  });
+
+  it("never shows mock prices for a real ticker when Tiingo fails", async () => {
+    vi.stubEnv("TIINGO_API_KEY", "a-key");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 429 })));
+    const { getStockDetail } = await import("./index");
+    cacheLife.mockClear();
+    expect(await getStockDetail("KO")).toEqual({ status: "unavailable", listing: { symbol: "KO", name: "Coca-Cola Co.", sector: "Consumer Staples" } });
+    expect(cacheLife).toHaveBeenCalledWith("minutes");
+  });
+
+  it("calls a ticker unavailable, not unknown, when it can't be looked up", async () => {
+    vi.stubEnv("TIINGO_API_KEY", "a-key");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 500 })));
+    const { getStockDetail, getListing } = await import("./index");
+    expect(await getStockDetail("ROKU")).toEqual({ status: "unavailable", listing: { symbol: "ROKU", name: "ROKU", sector: null } });
+    expect(await getListing("ROKU")).toBeNull();
+  });
+
+  it("caches 'no such ticker' for days", async () => {
+    vi.stubEnv("TIINGO_API_KEY", "a-key");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 404 })));
+    const { getListing } = await import("./index");
+    expect(await getListing("ZZZZ")).toBeNull();
+    expect(cacheLife).toHaveBeenCalledWith("days");
+  });
+
+  it("ignores the key on a public Vercel deployment", async () => {
+    vi.stubEnv("TIINGO_API_KEY", "a-key");
+    vi.stubEnv("VERCEL_ENV", "production");
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const fetchSpy = vi.fn();
+    vi.stubGlobal("fetch", fetchSpy);
+    expect((await getMarket()).source).toBe("mock");
+    expect(fetchSpy).not.toHaveBeenCalled();
+  });
+});

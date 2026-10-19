@@ -107,6 +107,16 @@ describe("account repository", () => {
     expect((await repo.load(userId))?.watchlist).toEqual(["NVDA", "TSLA", "META", "NFLX", "V"]);
   });
 
+  it("refuses to watch more than the limit, but still lets a stock be removed", async () => {
+    await repo.ensure(userId);
+    // The starting watchlist has 5; fill it to 30 with any stocks (KO, BRK-B…: not just the core ones).
+    for (let i = 0; i < 25; i++) expect(await repo.toggleWatchlist(userId, `S${i}`)).toBe(true);
+    expect(await repo.toggleWatchlist(userId, "KO")).toBe("full");
+    expect(await repo.toggleWatchlist(userId, "S0")).toBe(false);
+    expect(await repo.toggleWatchlist(userId, "BRK-B")).toBe(true);
+    expect((await repo.load(userId))?.watchlist).toHaveLength(30);
+  });
+
   it("resets to the starting account", async () => {
     await repo.ensure(userId);
     await repo.placeOrder(userId, order("buy", "V", 1, 348.1));

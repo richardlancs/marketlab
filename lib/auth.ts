@@ -13,9 +13,25 @@ import { nextCookies } from "better-auth/next-js";
 import { db } from "./db";
 import * as schema from "./db/schema";
 
+/**
+ * The hosts sign-in may be used from, e.g. "marketlab.example.com" and a
+ * pattern for this project's Vercel preview URLs. Unset locally, where the
+ * single BETTER_AUTH_URL is enough. Never "*.vercel.app": that would trust
+ * every site on Vercel, not just this one's previews.
+ */
+const allowedHosts = (process.env.BETTER_AUTH_ALLOWED_HOSTS ?? "")
+  .split(",")
+  .map((host) => host.trim())
+  .filter(Boolean);
+
 export const auth = betterAuth({
   // BETTER_AUTH_SECRET and BETTER_AUTH_URL are read from the environment
-  // (.env.local in development; see .env.example).
+  // (.env.local in development; see .env.example). With allowed hosts set,
+  // the base URL follows the request's host if it's one of them (so each
+  // Vercel preview URL can sign in), and BETTER_AUTH_URL is the fallback.
+  ...(allowedHosts.length > 0 && {
+    baseURL: { allowedHosts, fallback: process.env.BETTER_AUTH_URL, protocol: "https" as const },
+  }),
   database: drizzleAdapter(db, { provider: "sqlite", schema }),
   emailAndPassword: {
     enabled: true,

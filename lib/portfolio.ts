@@ -11,8 +11,11 @@ export function summarizePortfolio(
   cash: number,
 ): PortfolioSummary {
   const positions: Position[] = holdings.map((holding) => {
-    const stock = stocks.find((s) => s.symbol === holding.symbol);
-    if (!stock) throw new Error(`Unknown symbol in portfolio: ${holding.symbol}`);
+    // A stock with no price yet (still loading, or unavailable right now) is
+    // valued at what it cost, with no change today, rather than breaking the
+    // whole summary. `priced: false` lets the UI show "—" for it.
+    const quote = stocks.find((s) => s.symbol === holding.symbol);
+    const stock = quote ?? { symbol: holding.symbol, name: holding.symbol, price: holding.averageCost, change: 0 };
 
     const marketValue = holding.shares * stock.price;
     const costBasis = holding.shares * holding.averageCost;
@@ -26,6 +29,7 @@ export function summarizePortfolio(
       gain,
       gainPercent: costBasis === 0 ? 0 : gain / costBasis,
       dayChange: holding.shares * stock.change,
+      priced: quote !== undefined,
     };
   });
 

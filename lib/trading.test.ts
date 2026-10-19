@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { startingAccount } from "./starting-account";
-import { placeOrder, parseAccount, toggleWatchlist, totalRealizedGain, type Account, type Order } from "./trading";
+import { isSymbolFormat } from "./market/symbols";
+import { MAX_HOLDINGS, MAX_WATCHLIST, placeOrder, parseAccount, toggleWatchlist, totalRealizedGain, watchlistIsFull, type Account, type Order } from "./trading";
 
 const SYMBOLS = ["AAPL", "MSFT", "TSLA"];
+const isKnown = (s: string) => SYMBOLS.includes(s);
 
 const empty = (cash = 1000): Account => ({ cash, holdings: [], watchlist: [], trades: [] });
 
@@ -118,12 +120,12 @@ describe("parseAccount", () => {
   const valid = { cash: 50, holdings: [{ symbol: "AAPL", shares: 1, averageCost: 10 }], watchlist: ["TSLA"], trades: [] };
 
   it("accepts a valid account and the starting account", () => {
-    expect(parseAccount(valid, SYMBOLS)).toEqual(valid);
-    expect(parseAccount(startingAccount(), ["AAPL", "MSFT", "NVDA", "AMZN", "JPM", "TSLA", "META", "NFLX"])).toEqual(startingAccount());
+    expect(parseAccount(valid, isKnown)).toEqual(valid);
+    expect(parseAccount(startingAccount(), isSymbolFormat)).toEqual(startingAccount());
   });
 
   it("drops unknown fields", () => {
-    expect(parseAccount({ ...valid, extra: true }, SYMBOLS)).toEqual(valid);
+    expect(parseAccount({ ...valid, extra: true }, isKnown)).toEqual(valid);
   });
 
   it.each([
@@ -135,6 +137,29 @@ describe("parseAccount", () => {
     ["fractional shares", { ...valid, holdings: [{ symbol: "AAPL", shares: 0.5, averageCost: 10 }] }],
     ["a malformed trade", { ...valid, trades: [{ id: "x", symbol: "AAPL", side: "hold", shares: 1, price: 1, time: 1 }] }],
   ])("rejects %s", (_, value) => {
-    expect(parseAccount(value, SYMBOLS)).toBeNull();
+    expect(parseAccount(value, isKnown)).toBeNull();
+  });
+});
+
+describe("limits", () => {
+  const symbols = (n: number) => Array.from({ length: n }, (_, i) => `S${i}`);
+
+  it("refuses a new stock once the watchlist is full, but still allows removing", () => {
+    const full: Account = { cash: 0, holdings: [], watchlist: symbols(MAX_WATCHLIST), trades: [] };
+    expect(watchlistIsFull(full, "NEW")).toBe(true);
+    expect(toggleWatchlist(full, "NEW")).toBe(full);
+    expect(toggleWatchlist(full, "S0").watchlist).toHaveLength(MAX_WATCHLIST - 1);
+  });
+
+  it("refuses to open a new position past the holdings limit, but adds to existing ones", () => {
+    const account: Account = {
+      cash: 1000,
+      holdings: symbols(MAX_HOLDINGS).map((symbol) => ({ symbol, shares: 1, averageCost: 1 })),
+      watchlist: [],
+      trades: [],
+    };
+    const order = { side: "buy" as const, shares: 1, price: 1, id: "t", time: 0 };
+    expect(placeOrder(account, { ...order, symbol: "NEW" })).toMatchObject({ ok: false, error: "too-many-holdings" });
+    expect(placeOrder(account, { ...order, symbol: "S0" }).ok).toBe(true);
   });
 });

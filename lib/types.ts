@@ -57,7 +57,8 @@ export interface Quote {
 }
 
 export interface Stock extends Quote {
-  sector: string;
+  /** Null for tickers outside the catalog: real data sources' price feeds don't include it. */
+  sector: string | null;
   /** Not every data source has these (Tiingo's end-of-day data doesn't), so they can be null. */
   marketCap: number | null;
   peRatio: number | null;
@@ -79,6 +80,8 @@ export interface Position extends Holding {
   gain: number;
   gainPercent: number;
   dayChange: number;
+  /** False while the stock has no price (loading or unavailable): it's then valued at cost. */
+  priced: boolean;
 }
 
 export interface PortfolioSummary {

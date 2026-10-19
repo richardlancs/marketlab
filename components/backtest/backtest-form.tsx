@@ -1,10 +1,13 @@
 "use client";
 
+import { useId } from "react";
 import { LIMITS, parseConfig, STRATEGY_NAMES, type BacktestConfig, type StrategyConfig } from "@/lib/backtest/config";
 import { DAY } from "@/lib/market/calendar";
+import { normalizeSymbol } from "@/lib/market/symbols";
 
-/** The form as typed: strings, so half-finished numbers don't throw. */
+/** The form as typed: strings, so half-finished numbers (and tickers) don't throw. */
 export interface FormState {
+  /** `symbol` as typed: "brk.b" is fine, it's normalized when the backtest runs. */
   holdings: { symbol: string; percent: string }[];
   strategy: StrategyConfig["kind"];
   fast: string;
@@ -68,13 +71,21 @@ export function formFromConfig(config: BacktestConfig): FormState {
   };
 }
 
-/** Turns the form into a config, or explains the first problem in plain words. */
-export function toConfig(form: FormState, symbols: readonly string[]): { config: BacktestConfig } | { error: string } {
+/**
+ * Turns the form into a config, or explains the first problem in plain words.
+ * `isKnown` decides which tickers can be used: the catalog's with mock data,
+ * any well-formed one with real data (the server then checks it exists).
+ */
+export function toConfig(form: FormState, isKnown: (symbol: string) => boolean): { config: BacktestConfig } | { error: string } {
+  const symbols = form.holdings.map((h) => normalizeSymbol(h.symbol));
+  if (symbols.some((s) => s === "")) return { error: "Enter a stock symbol for every row." };
+  const unknown = symbols.find((s) => !isKnown(s));
+  if (unknown) return { error: `${unknown} isn't a stock MarketLab knows. Pick one from the list.` };
   const percents = form.holdings.map((h) => Number(h.percent));
   if (percents.some((p) => !(p > 0))) return { error: "Give every stock a weight above 0%." };
   const total = percents.reduce((a, b) => a + b, 0);
   if (Math.abs(total - 100) > 0.1) return { error: `The weights add up to ${Math.round(total * 10) / 10}%. They need to add up to 100%.` };
-  if (new Set(form.holdings.map((h) => h.symbol)).size !== form.holdings.length) return { error: "Each stock can only be listed once." };
+  if (new Set(symbols).size !== symbols.length) return { error: "Each stock can only be listed once." };
 
   const fast = Number(form.fast);
   const slow = Number(form.slow);
@@ -108,7 +119,7 @@ export function toConfig(form: FormState, symbols: readonly string[]): { config:
 
   const config = parseConfig(
     {
-      holdings: form.holdings.map((h, i) => ({ symbol: h.symbol, weight: percents[i] / total })),
+      holdings: symbols.map((symbol, i) => ({ symbol, weight: percents[i] / total })),
       strategy,
       start,
       end: end + DAY - 1, // include the whole end day
@@ -116,7 +127,7 @@ export function toConfig(form: FormState, symbols: readonly string[]): { config:
       costs: { commission, slippageBps: slippage },
       benchmark: form.benchmark,
     },
-    symbols,
+    isKnown,
   );
   return config ? { config } : { error: "Those settings aren't valid. Check each field." };
 }
@@ -138,19 +149,22 @@ interface BacktestFormProps {
   form: FormState;
   onChange: (form: FormState) => void;
   onRun: () => void;
-  stocks: StockOption[];
+  stocks: readonly StockOption[];
+  /** True when any real ticker can be typed (Tiingo), not just the listed ones. */
+  openTickers: boolean;
   firstDate: number;
   lastDate: number;
   running: boolean;
   error: string | null;
 }
 
-export function BacktestForm({ form, onChange, onRun, stocks, firstDate, lastDate, running, error }: BacktestFormProps) {
+export function BacktestForm({ form, onChange, onRun, stocks, openTickers, firstDate, lastDate, running, error }: BacktestFormProps) {
+  const listId = useId();
   const set = (patch: Partial<FormState>) => onChange({ ...form, ...patch });
   const setHolding = (i: number, patch: Partial<FormState["holdings"][number]>) =>
     set({ holdings: form.holdings.map((h, j) => (j === i ? { ...h, ...patch } : h)) });
   const total = form.holdings.reduce((sum, h) => sum + (Number(h.percent) || 0), 0);
-  const unused = stocks.find((s) => !form.holdings.some((h) => h.symbol === s.symbol));
+  const unused = stocks.find((s) => !form.holdings.some((h) => normalizeSymbol(h.symbol) === s.symbol));
 
   return (
     <form
@@ -161,6 +175,13 @@ export function BacktestForm({ form, onChange, onRun, stocks, firstDate, lastDat
       noValidate
       className="space-y-5"
     >
+      <datalist id={listId}>
+        {stocks.map((s) => (
+          <option key={s.symbol} value={s.symbol}>
+            {s.name}
+          </option>
+        ))}
+      </datalist>
       <fieldset className={fieldset}>
         <legend className={legend}>Stocks</legend>
         {form.holdings.map((holding, i) => (
@@ -169,13 +190,21 @@ export function BacktestForm({ form, onChange, onRun, stocks, firstDate, lastDat
               <label htmlFor={`stock-${i}`} className={label}>
                 Stock {form.holdings.length > 1 ? i + 1 : ""}
               </label>
-              <select id={`stock-${i}`} value={holding.symbol} onChange={(e) => setHolding(i, { symbol: e.target.value })} className={`${input} mt-1`}>
-                {stocks.map((s) => (
-                  <option key={s.symbol} value={s.symbol} disabled={s.symbol !== holding.symbol && form.holdings.some((h) => h.symbol === s.symbol)}>
-                    {s.symbol} · {s.name}
-                  </option>
-                ))}
-              </select>
+              {/*
+               * A text box with suggestions (a native <datalist>): type a symbol
+               * or a company name and pick from the list. With real data, any
+               * other ticker can be typed too.
+               */}
+              <input
+                id={`stock-${i}`}
+                list={listId}
+                value={holding.symbol}
+                onChange={(e) => setHolding(i, { symbol: e.target.value })}
+                autoComplete="off"
+                spellCheck={false}
+                placeholder={openTickers ? "Any ticker" : "Symbol"}
+                className={`${input} mt-1 uppercase placeholder:normal-case`}
+              />
             </div>
             <div className="w-20">
               <label htmlFor={`weight-${i}`} className={label}>

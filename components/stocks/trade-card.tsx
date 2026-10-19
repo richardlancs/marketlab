@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
 import { placeOrder as previewOrder, roundCents, type Order } from "@/lib/trading";
+import type { StockQuote } from "@/lib/types";
 
 type Status = { tone: "success" | "error"; text: string } | null;
 
@@ -13,16 +14,19 @@ type Status = { tone: "success" | "error"; text: string } | null;
  * Buy or sell this stock at today's price. As you type, the order is run
  * through the same rules that will apply it (without saving), so the preview
  * and any error match exactly what happens when you submit.
+ *
+ * The page passes the quote in, so this works for any stock, not just the
+ * ones whose prices the whole app already has.
  */
-export function TradeCard({ symbol }: { symbol: string }) {
-  const { account, quotes, placeOrder } = useAccount();
+export function TradeCard({ quote }: { quote: StockQuote }) {
+  const { account, placeOrder } = useAccount();
+  const { symbol, price } = quote;
   const [side, setSide] = useState<Order["side"]>("buy");
   const [sharesText, setSharesText] = useState("");
   const [status, setStatus] = useState<Status>(null);
   const [pending, setPending] = useState(false);
   const hintId = useId();
 
-  const price = quotes[symbol].price;
   if (!account) {
     return (
       <Card aria-labelledby="trade" aria-busy>
@@ -50,7 +54,7 @@ export function TradeCard({ symbol }: { symbol: string }) {
     event.preventDefault();
     if (!preview?.ok || pending) return;
     setPending(true);
-    const result = await placeOrder(symbol, side, shares);
+    const result = await placeOrder(quote, side, shares);
     setPending(false);
     if (result.ok) {
       const verb = side === "buy" ? "Bought" : "Sold";
