@@ -5,7 +5,11 @@ import type { Holding, PortfolioSummary, Position, Stock } from "./types";
  * same output, no side effects, so it's easy to test and reuse later for
  * the portfolio simulator.
  */
-export function summarizePortfolio(holdings: Holding[], stocks: Stock[], cash: number): PortfolioSummary {
+export function summarizePortfolio(
+  holdings: Holding[],
+  stocks: Pick<Stock, "symbol" | "name" | "price" | "change">[],
+  cash: number,
+): PortfolioSummary {
   const positions: Position[] = holdings.map((holding) => {
     const stock = stocks.find((s) => s.symbol === holding.symbol);
     if (!stock) throw new Error(`Unknown symbol in portfolio: ${holding.symbol}`);

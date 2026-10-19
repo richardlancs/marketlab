@@ -1,36 +1,60 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# MarketLab
 
-## Getting Started
+A stock dashboard and portfolio simulator, built with Next.js 16, React 19 and Tailwind CSS 4. Market data is mock data, generated from fixed seeds, frozen at Oct 16, 2026.
 
-First, run the development server:
+- **Dashboard, stocks table, stock pages and ⌘K search**, all pre-rendered.
+- **Watchlist and simulated trading.** Without an account, everything is saved in your browser (guest mode). With an account, it's saved in a database and follows you between devices. On your first sign-in you can import your guest data.
+
+## Running it locally
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local      # then fill in BETTER_AUTH_SECRET (see below)
+npm run db:migrate              # creates local.db with all the tables
+npm run dev                     # http://localhost:3000
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+In `.env.local`:
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+- `BETTER_AUTH_SECRET`: a random string that signs session cookies. Generate one with `openssl rand -base64 32`.
+- `BETTER_AUTH_URL=http://localhost:3000`
+- Leave `DATABASE_URL` empty to use the local `local.db` file.
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Scripts
 
-## Learn More
+| Command               | What it does                                                    |
+| --------------------- | --------------------------------------------------------------- |
+| `npm run dev`         | Development server                                              |
+| `npm run build`       | Production build (also type-checks)                             |
+| `npm start`           | Serve the production build                                      |
+| `npm test`            | Unit tests (Vitest)                                             |
+| `npm run lint`        | ESLint                                                          |
+| `npm run db:generate` | Write a new migration in `drizzle/` after changing `lib/db/schema.ts` |
+| `npm run db:migrate`  | Apply migrations to the database in `DATABASE_URL`              |
 
-To learn more about Next.js, take a look at the following resources:
+## Deploying
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+The app needs a database the server can reach. Locally that's a SQLite file. Online, use [Turso](https://turso.tech), a hosted database that speaks the same SQLite dialect, so the same code and migrations work on both.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+1. **Create a Turso database** and get its URL (`libsql://…`) and an auth token.
+2. **Apply the migrations to it** from your machine:
+   ```bash
+   DATABASE_URL=libsql://… DATABASE_AUTH_TOKEN=… npm run db:migrate
+   ```
+   Do this again whenever a new migration is added.
+3. **Set these environment variables on your host** (on Vercel: Project → Settings → Environment Variables):
+   - `BETTER_AUTH_SECRET`: a **new** random value, not your local one.
+   - `BETTER_AUTH_URL`: the site's public URL, e.g. `https://marketlab.example.com`.
+   - `DATABASE_URL` and `DATABASE_AUTH_TOKEN`: from step 1.
+4. **Deploy.** Better Auth refuses to start in production without a real secret, so a missing variable shows up as an error, not as a quietly insecure site.
 
-## Deploy on Vercel
+If you self-host on more than one server instance (not needed on Vercel), also set `NEXT_SERVER_ACTIONS_ENCRYPTION_KEY` to the same value on every instance, so Server Actions work whichever instance answers.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Where things live
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- `app/`: pages and API routes (`/api/auth/*` for sign-in, `/api/account` for loading your account).
+- `components/`: UI. `components/account/account-provider.tsx` decides whether the account lives in the browser or the database.
+- `lib/trading.ts`: the trading rules. The browser (guest mode) and the server (signed in) both use them.
+- `lib/account-actions.ts`: Server Actions for signed-in users. They check the session and validate every input.
+- `lib/db/`: the database schema (Drizzle), and the code that reads and writes accounts.
+- `lib/auth.ts`: Better Auth configuration (email and password sign-in, rate limits).

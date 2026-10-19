@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
-import { StockTable, type StockTableRow } from "@/components/stocks/stock-table";
+import { StockTable } from "@/components/stocks/stock-table";
+import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { Card } from "@/components/ui/card";
 import { getStocks } from "@/lib/mock-data";
 
@@ -12,17 +13,7 @@ export const metadata: Metadata = { title: "Stocks — MarketLab" };
  */
 export default async function StocksPage() {
   const stocks = await getStocks();
-  const rows: StockTableRow[] = stocks.map((stock) => ({
-    symbol: stock.symbol,
-    name: stock.name,
-    price: stock.price,
-    change: stock.change,
-    changePercent: stock.changePercent,
-    previousClose: stock.previousClose,
-    marketCap: stock.marketCap,
-    peRatio: stock.peRatio,
-    intraday: stock.history["1D"].map((p) => p.price),
-  }));
+  const rows = stocks.map(toStockTableRow);
 
   return (
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">

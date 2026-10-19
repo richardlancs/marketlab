@@ -3,13 +3,14 @@ import {
   AS_OF_DAY,
   generateQuote,
   getIndices,
-  getPortfolio,
   getStock,
   getStocks,
   getTopMovers,
-  getWatchlist,
+  STOCK_SYMBOLS,
   tradingDays,
 } from "./mock-data";
+import { startingAccount } from "./starting-account";
+import { parseAccount } from "./trading";
 import { TIMEFRAMES } from "./types";
 
 describe("tradingDays", () => {
@@ -87,10 +88,6 @@ describe("other getters", () => {
     expect((await getIndices()).map((i) => i.symbol)).toEqual(["SPX", "IXIC", "DJI"]);
   });
 
-  it("returns the watchlist in order", async () => {
-    expect((await getWatchlist()).map((s) => s.symbol)).toEqual(["AAPL", "NVDA", "TSLA", "META", "NFLX"]);
-  });
-
   it("sorts top movers strongest first", async () => {
     const { gainers, losers } = await getTopMovers(3);
     expect(gainers.every((s) => s.changePercent > 0)).toBe(true);
@@ -101,9 +98,8 @@ describe("other getters", () => {
     for (let i = 1; i < losers.length; i++) expect(losers[i].changePercent).toBeGreaterThanOrEqual(losers[i - 1].changePercent);
   });
 
-  it("values the portfolio", async () => {
-    const portfolio = await getPortfolio();
-    expect(portfolio.positions).toHaveLength(5);
-    expect(portfolio.totalValue).toBeGreaterThan(portfolio.cash);
+  it("starts accounts with stocks that exist", () => {
+    // parseAccount rejects any symbol not in the dataset.
+    expect(parseAccount(startingAccount(), STOCK_SYMBOLS)).toEqual(startingAccount());
   });
 });

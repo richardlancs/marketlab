@@ -2,13 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useSyncExternalStore, type KeyboardEvent as ReactKeyboardEvent } from "react";
+import { useAccount } from "@/components/account/account-provider";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
 import { searchStocks } from "@/lib/search";
-import type { Stock } from "@/lib/types";
-
-/** Just what a search result shows. The header passes these in from the server. */
-export type SearchStock = Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent">;
 
 /** Opens the dialog (if it isn't already) and puts the cursor in the search box. */
 function show(dialog: HTMLDialogElement | null, input: HTMLInputElement | null) {
@@ -40,8 +37,12 @@ function useShortcutLabel() {
  * box the whole time, and the arrow keys move a highlight through the results.
  * `aria-activedescendant` tells screen readers which result is highlighted.
  */
-export function SearchDialog({ stocks }: { stocks: SearchStock[] }) {
+export function SearchDialog() {
   const router = useRouter();
+  // The stock list comes from <AccountProvider>, which the root layout fills
+  // from the server, so no API route is needed.
+  const { quotes } = useAccount();
+  const stocks = Object.values(quotes);
   const dialogRef = useRef<HTMLDialogElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLUListElement>(null);

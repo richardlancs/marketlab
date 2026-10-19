@@ -67,3 +67,6 @@ export interface PortfolioSummary {
   dayChange: number;
   dayChangePercent: number;
 }
+
+/** A stock's name and today's price, without its history. Small enough to send to the browser for every stock. */
+export type StockQuote = Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent">;

@@ -1,21 +1,35 @@
+"use client";
+
 import Link from "next/link";
+import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { ChangeBadge } from "@/components/ui/change-badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
-import { getPortfolio } from "@/lib/mock-data";
+import { summarizePortfolio } from "@/lib/portfolio";
 
 const weightFormat = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
 
 /**
  * Colors follow the holding, in the order the holdings are listed, never their
- * size. If one position grows past another, neither changes color.
+ * size. If one position grows past another, neither changes color. There are
+ * five series colors; holdings past the fifth share a neutral "other" color
+ * rather than reusing one, which would make two holdings look like one.
  */
-const seriesColor = (i: number) => `var(--series-${i + 1})`;
+const SERIES_COLORS = 5;
+const OTHER_COLOR = "color-mix(in srgb, var(--muted) 80%, transparent)";
+const seriesColor = (i: number) => (i < SERIES_COLORS ? `var(--series-${i + 1})` : OTHER_COLOR);
 const CASH_COLOR = "color-mix(in srgb, var(--muted) 45%, transparent)";
 
-/** The simulated portfolio: total value, today's and all-time change, and what it's made of. */
-export async function PortfolioSummary() {
-  const portfolio = await getPortfolio();
+/**
+ * The simulated portfolio: total value, today's and all-time change, and what
+ * it's made of. A Client Component, because the holdings are saved in the
+ * browser; the numbers are worked out here from them and today's prices.
+ */
+export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?: boolean }) {
+  const { account, quotes } = useAccount();
+  if (!account) return <PortfolioSkeleton />;
+  const portfolio = summarizePortfolio(account.holdings, Object.values(quotes), account.cash);
 
   // One entry per slice of the allocation bar and row of the table, cash last.
   const slices = [
@@ -29,7 +43,7 @@ export async function PortfolioSummary() {
       href: `/stocks/${p.symbol}`,
     })),
     { label: "Cash", name: "Uninvested", value: portfolio.cash, gain: null, gainPercent: null, color: CASH_COLOR, href: null },
-  ].map((slice) => ({ ...slice, weight: slice.value / portfolio.totalValue }));
+  ].map((slice) => ({ ...slice, weight: portfolio.totalValue > 0 ? slice.value / portfolio.totalValue : 0 }));
 
   return (
     <Card aria-labelledby="portfolio" className="h-full">
@@ -37,7 +51,17 @@ export async function PortfolioSummary() {
         <h2 id="portfolio" className="text-lg font-semibold tracking-tight">
           Portfolio
         </h2>
-        <span className="text-xs text-muted">Simulated · {portfolio.positions.length} positions</span>
+        <span className="text-xs text-muted">
+          Simulated · {portfolio.positions.length} {portfolio.positions.length === 1 ? "position" : "positions"}
+          {showDetailsLink && (
+            <>
+              {" · "}
+              <Link href="/portfolio" className="text-accent hover:underline">
+                Details
+              </Link>
+            </>
+          )}
+        </span>
       </div>
 
       <p className="mt-3 text-3xl font-semibold tracking-tight">{formatCurrency(portfolio.totalValue)}</p>
@@ -117,6 +141,21 @@ export async function PortfolioSummary() {
           ))}
         </tbody>
       </table>
+    </Card>
+  );
+}
+
+function PortfolioSkeleton() {
+  return (
+    <Card aria-labelledby="portfolio" aria-busy className="h-full">
+      <h2 id="portfolio" className="text-lg font-semibold tracking-tight">
+        Portfolio
+      </h2>
+      <span className="sr-only">Loading portfolio…</span>
+      <Skeleton className="mt-3 h-9 w-48" />
+      <Skeleton className="mt-2 h-5 w-64" />
+      <Skeleton className="mt-5 h-3" />
+      <Skeleton className="mt-4 h-48" />
     </Card>
   );
 }

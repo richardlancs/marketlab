@@ -3,12 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { PriceChart } from "@/components/charts/price-chart";
+import { PositionCard } from "@/components/stocks/position-card";
 import { RangeBar } from "@/components/stocks/range-bar";
 import { StockStats } from "@/components/stocks/stock-stats";
+import { TradeCard } from "@/components/stocks/trade-card";
+import { WatchToggle } from "@/components/stocks/watch-toggle";
 import { Card } from "@/components/ui/card";
-import { ChangeBadge } from "@/components/ui/change-badge";
-import { formatCurrency } from "@/lib/format";
-import { getPortfolio, getStock, getStocks, getWatchlist } from "@/lib/mock-data";
+import { getStock, getStocks } from "@/lib/mock-data";
 
 /**
  * Tells Next.js which symbols exist, so it can build a page for each one ahead
@@ -56,9 +57,6 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
   // 308 status codes before this page runs; this is a fallback.
   if (!stock) notFound();
 
-  const [portfolio, watchlist] = await Promise.all([getPortfolio(), getWatchlist()]);
-  const position = portfolio.positions.find((p) => p.symbol === stock.symbol);
-  const watched = watchlist.some((s) => s.symbol === stock.symbol);
 
   // The 52-week range: daily closes for the past year, plus today's intraday extremes.
   const yearPrices = stock.history["1Y"].map((p) => p.price);
@@ -79,9 +77,7 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
                 </h1>
                 <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
                   {stock.sector}
-                  {watched && (
-                    <span className="rounded-full bg-accent/10 px-2 py-0.5 font-medium text-accent">On your watchlist</span>
-                  )}
+                  <WatchToggle symbol={stock.symbol} />
                 </p>
               </div>
             }
@@ -103,52 +99,11 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
         </div>
 
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up">
-          <Card aria-labelledby="position">
-            <h2 id="position" className="text-lg font-semibold tracking-tight">
-              Your position
-            </h2>
-            {position ? (
-              <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
-                <div>
-                  <dt className="text-xs text-muted">Shares</dt>
-                  <dd className="mt-0.5 font-medium tabular-nums">{position.shares}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Average cost</dt>
-                  <dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(position.averageCost)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Market value</dt>
-                  <dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(position.marketValue)}</dd>
-                </div>
-                <div>
-                  <dt className="text-xs text-muted">Weight</dt>
-                  <dd className="mt-0.5 font-medium tabular-nums">
-                    {((position.marketValue / portfolio.totalValue) * 100).toFixed(1)}%
-                  </dd>
-                </div>
-                <div className="col-span-2 border-t border-border pt-3">
-                  <dt className="text-xs text-muted">Today</dt>
-                  <dd className="mt-0.5">
-                    <ChangeBadge
-                      change={position.dayChange}
-                      // Today's % is measured against yesterday's value of the position.
-                      percent={position.dayChange / (position.marketValue - position.dayChange)}
-                      currency
-                    />
-                  </dd>
-                </div>
-                <div className="col-span-2">
-                  <dt className="text-xs text-muted">Total return</dt>
-                  <dd className="mt-0.5">
-                    <ChangeBadge change={position.gain} percent={position.gainPercent} currency />
-                  </dd>
-                </div>
-              </dl>
-            ) : (
-              <p className="mt-2 text-sm text-muted">You don&apos;t own any {stock.symbol} in your simulated portfolio.</p>
-            )}
-          </Card>
+          <TradeCard symbol={stock.symbol} />
+        </div>
+
+        <div style={{ animationDelay: "240ms" }} className="animate-fade-up">
+          <PositionCard symbol={stock.symbol} />
         </div>
       </div>
     </div>
@@ -171,6 +126,10 @@ function StockDetailsSkeleton() {
         <Card>
           <div className={`h-6 w-32 ${block}`} />
           <div className={`mt-4 h-14 ${block}`} />
+        </Card>
+        <Card>
+          <div className={`h-6 w-32 ${block}`} />
+          <div className={`mt-4 h-56 ${block}`} />
         </Card>
         <Card>
           <div className={`h-6 w-32 ${block}`} />

@@ -6,19 +6,8 @@ import { Sparkline } from "@/components/charts/sparkline";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { nextSort, sortStocks, type Sort, type SortKey } from "@/lib/sort";
-import type { Stock } from "@/lib/types";
-
-/**
- * Just what the table shows. The server page builds these from full stocks,
- * so a year of price history per stock isn't sent to the browser.
- */
-export type StockTableRow = Pick<
-  Stock,
-  "symbol" | "name" | "price" | "change" | "changePercent" | "previousClose" | "marketCap" | "peRatio"
-> & {
-  /** Today's prices, for the sparkline. */
-  intraday: number[];
-};
+import type { StockTableRow } from "./stock-table-rows";
+import { WatchToggle } from "./watch-toggle";
 
 interface Column {
   key: SortKey;
@@ -47,7 +36,7 @@ const DIRECTION_LABEL = { asc: "ascending", desc: "descending" } as const;
  * useState. Keeping it in the URL (?sort=price) would make the page depend on
  * request-time data, so it could no longer be fully pre-rendered.
  */
-export function StockTable({ rows }: { rows: StockTableRow[] }) {
+export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow[]; label?: string }) {
   const [sort, setSort] = useState<Sort>({ key: "marketCap", direction: "desc" });
   const sorted = sortStocks(rows, sort);
   const sortedLabel = COLUMNS.find((c) => c.key === sort.key)?.label;
@@ -57,7 +46,7 @@ export function StockTable({ rows }: { rows: StockTableRow[] }) {
     <table className="w-full text-sm">
       {/* Read out by screen readers, so the current order is announced with the table. */}
       <caption className="sr-only">
-        All stocks, sorted by {sortedLabel}, {DIRECTION_LABEL[sort.direction]}
+        {label}, sorted by {sortedLabel}, {DIRECTION_LABEL[sort.direction]}
       </caption>
       <thead>
         <tr className="border-b border-border text-xs text-muted">
@@ -68,6 +57,9 @@ export function StockTable({ rows }: { rows: StockTableRow[] }) {
           {NUMBER_COLUMNS.map((column) => (
             <SortableHeader key={column.key} column={column} sort={sort} onSort={onSort} />
           ))}
+          <th scope="col" className="w-10 py-2 pl-2">
+            <span className="sr-only">Watchlist</span>
+          </th>
         </tr>
       </thead>
       <tbody className="divide-y divide-border">
@@ -108,6 +100,9 @@ export function StockTable({ rows }: { rows: StockTableRow[] }) {
             </td>
             <td className="hidden py-3 pl-4 text-right tabular-nums md:table-cell">{formatCompactCurrency(stock.marketCap)}</td>
             <td className="hidden py-3 pl-4 text-right tabular-nums lg:table-cell">{stock.peRatio.toFixed(1)}</td>
+            <td className="py-3 pl-2 text-right">
+              <WatchToggle symbol={stock.symbol} variant="icon" />
+            </td>
           </tr>
         ))}
       </tbody>

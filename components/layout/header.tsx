@@ -1,30 +1,22 @@
 import Link from "next/link";
 import { Suspense } from "react";
+import { AccountMenu } from "@/components/auth/account-menu";
 import { SearchDialog } from "@/components/search/search-dialog";
-import { getStocks } from "@/lib/mock-data";
 import { NavLinks, NavLinksFallback, type NavItem } from "./nav-links";
 import { ThemeToggle } from "./theme-toggle";
 
 const pages: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/stocks", label: "Stocks" },
+  { href: "/watchlist", label: "Watchlist" },
+  { href: "/portfolio", label: "Portfolio" },
 ];
 
 // Sections planned for later phases. Shown so the shell feels complete, but
 // not links yet, since those routes don't exist.
-const upcoming = ["Watchlist", "Portfolio", "Backtest"];
+const upcoming = ["Backtest"];
 
-export async function Header() {
-  // The search dialog gets the stock list straight from the server as props,
-  // so it needs no API route. It's small: five fields for each stock.
-  const stocks = (await getStocks()).map(({ symbol, name, price, change, changePercent }) => ({
-    symbol,
-    name,
-    price,
-    change,
-    changePercent,
-  }));
-
+export function Header() {
   return (
     // Sticky, translucent bar with a backdrop blur, like Apple's site navigation.
     <header className="sticky top-0 z-50 border-b border-border bg-background/70 backdrop-blur-xl backdrop-saturate-150">
@@ -71,8 +63,9 @@ export async function Header() {
         </nav>
 
         <div className="ml-auto flex items-center gap-2">
-          <SearchDialog stocks={stocks} />
+          <SearchDialog />
           <ThemeToggle />
+          <AccountMenu />
         </div>
       </div>
     </header>

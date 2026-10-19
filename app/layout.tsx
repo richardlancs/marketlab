@@ -1,6 +1,9 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { AccountNotices } from "@/components/account/account-notices";
+import { AccountProvider } from "@/components/account/account-provider";
 import { Header } from "@/components/layout/header";
+import { getStocks } from "@/lib/mock-data";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -23,7 +26,17 @@ export const metadata: Metadata = {
 // (e.g. localStorage is blocked), the server default of "dark" stays.
 const themeScript = `(function(){try{var t=localStorage.getItem("theme");if(t!=="light"&&t!=="dark"){t=matchMedia("(prefers-color-scheme: light)").matches?"light":"dark"}document.documentElement.setAttribute("data-theme",t)}catch(e){}})()`;
 
-export default function RootLayout({ children }: LayoutProps<"/">) {
+export default async function RootLayout({ children }: LayoutProps<"/">) {
+  // Today's prices for every stock, for the account features (watchlist,
+  // portfolio, trading). Names and prices only, no history, so it stays small.
+  const quotes = (await getStocks()).map(({ symbol, name, price, change, changePercent }) => ({
+    symbol,
+    name,
+    price,
+    change,
+    changePercent,
+  }));
+
   return (
     // suppressHydrationWarning: the script above may change data-theme before
     // React hydrates; this tells React to accept the DOM's value.
@@ -47,8 +60,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
         >
           Skip to content
         </a>
-        <Header />
-        {children}
+        <AccountProvider quotes={quotes}>
+          <Header />
+          <AccountNotices />
+          {children}
+        </AccountProvider>
       </body>
     </html>
   );

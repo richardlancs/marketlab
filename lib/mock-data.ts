@@ -5,9 +5,8 @@
  * The getters are `async` on purpose: a real market-data API will be async,
  * so components that `await` these now won't need to change later.
  */
-import { summarizePortfolio } from "./portfolio";
 import { bridge, gaussian, hashString, mulberry32, type Rng } from "./random";
-import type { Holding, MarketIndex, PortfolioSummary, PricePoint, Quote, Stock } from "./types";
+import type { MarketIndex, PricePoint, Quote, Stock } from "./types";
 
 /** Change this to get a completely different (but still reproducible) dataset. */
 const DATASET_SEED = 2026;
@@ -162,19 +161,7 @@ const INDEX_SPECS: QuoteSpec[] = [
 /** Every stock symbol in the dataset. Cheap to read, for code that only needs to check a symbol exists. */
 export const STOCK_SYMBOLS: readonly string[] = STOCK_SPECS.map((spec) => spec.symbol);
 
-const WATCHLIST = ["AAPL", "NVDA", "TSLA", "META", "NFLX"];
-
 export const FEATURED_SYMBOL = "AAPL";
-
-const HOLDINGS: Holding[] = [
-  { symbol: "AAPL", shares: 40, averageCost: 182.5 },
-  { symbol: "MSFT", shares: 15, averageCost: 410 },
-  { symbol: "NVDA", shares: 60, averageCost: 118.75 },
-  { symbol: "AMZN", shares: 25, averageCost: 178.2 },
-  { symbol: "JPM", shares: 20, averageCost: 248.9 },
-];
-
-const CASH = 12_450;
 
 // Generated once, when this module is first imported.
 const stocks = STOCK_SPECS.map(generateStock);
@@ -196,10 +183,6 @@ export async function getIndices(): Promise<MarketIndex[]> {
   return indices;
 }
 
-export async function getWatchlist(): Promise<Stock[]> {
-  return WATCHLIST.map((symbol) => stocks.find((s) => s.symbol === symbol)).filter((s) => s !== undefined);
-}
-
 /** The biggest percentage gainers and losers today, strongest first. */
 export async function getTopMovers(count = 3): Promise<{ gainers: Stock[]; losers: Stock[] }> {
   const byChange = [...stocks].sort((a, b) => b.changePercent - a.changePercent);
@@ -209,8 +192,4 @@ export async function getTopMovers(count = 3): Promise<{ gainers: Stock[]; loser
     gainers: byChange.filter((s) => s.changePercent >= MIN_MOVE).slice(0, count),
     losers: byChange.filter((s) => s.changePercent <= -MIN_MOVE).reverse().slice(0, count),
   };
-}
-
-export async function getPortfolio(): Promise<PortfolioSummary> {
-  return summarizePortfolio(HOLDINGS, stocks, CASH);
 }
