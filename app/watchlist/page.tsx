@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TrendRangePicker } from "@/components/charts/trend-line";
 import { StorageLabel } from "@/components/account/storage-label";
 import { AlertsPanel } from "@/components/alerts/alerts-panel";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
@@ -21,7 +22,10 @@ export default async function WatchlistPage() {
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="animate-fade-up">
         <StorageLabel />
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Watchlist</h1>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Watchlist</h1>
+          <TrendRangePicker />
+        </div>
         <p className="mt-2 text-muted">The stocks you follow. Use the star to add or remove one.</p>
       </div>
 

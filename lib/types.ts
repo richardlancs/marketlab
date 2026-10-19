@@ -10,11 +10,21 @@
 
 // `as const` makes this a readonly tuple of literal strings, and the type below
 // is derived from it, so the list and the type can never drift apart.
-export const TIMEFRAMES = ["1M", "6M", "1Y", "5Y"] as const;
+export const TIMEFRAMES = ["1D", "1W", "1M", "6M", "1Y", "5Y"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
 
-/** How far back each timeframe reaches, in calendar months. */
-export const TIMEFRAME_MONTHS: Record<Timeframe, number> = { "1M": 1, "6M": 6, "1Y": 12, "5Y": 60 };
+/**
+ * How far back each timeframe reaches. Prices are daily closes, so "1D" is
+ * just yesterday's close to today's: today's change.
+ */
+export const TIMEFRAME_SPAN: Record<Timeframe, { days: number } | { months: number }> = {
+  "1D": { days: 1 },
+  "1W": { days: 7 },
+  "1M": { months: 1 },
+  "6M": { months: 6 },
+  "1Y": { months: 12 },
+  "5Y": { months: 60 },
+};
 
 export interface PricePoint {
   time: number;

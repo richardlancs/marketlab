@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { MonthSparkline } from "@/components/charts/sparkline";
+import { TrendLine } from "@/components/charts/trend-line";
+import { useTrendRange } from "@/components/charts/trend-range";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { nextSort, sortStocks, type Sort, type SortKey } from "@/lib/sort";
@@ -21,7 +22,7 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: "symbol", label: "Symbol", numeric: false },
   { key: "price", label: "Price", numeric: true },
-  { key: "changePercent", label: "Change", numeric: true },
+  { key: "changePercent", label: "Today", numeric: true },
   { key: "marketCap", label: "Mkt cap", numeric: true, visibility: "hidden md:table-cell" },
   { key: "peRatio", label: "P/E", numeric: true, visibility: "hidden lg:table-cell" },
 ];
@@ -41,6 +42,7 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
   const sorted = sortStocks(rows, sort);
   const sortedLabel = COLUMNS.find((c) => c.key === sort.key)?.label;
   const onSort = (key: SortKey) => setSort(nextSort(sort, key));
+  const { range } = useTrendRange();
 
   return (
     <table className="w-full text-sm">
@@ -52,7 +54,7 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
         <tr className="border-b border-border text-xs text-muted">
           <SortableHeader column={SYMBOL_COLUMN} sort={sort} onSort={onSort} />
           <th scope="col" className="hidden py-2 pr-4 text-left font-medium sm:table-cell">
-            Today
+            {range} trend
           </th>
           {NUMBER_COLUMNS.map((column) => (
             <SortableHeader key={column.key} column={column} sort={sort} onSort={onSort} />
@@ -88,7 +90,7 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
               <span className="block truncate text-xs text-muted">{stock.name}</span>
             </td>
             <td className="hidden py-3 pr-4 sm:table-cell">
-              <MonthSparkline history={stock.history} className="h-8 w-20" />
+              <TrendLine series={stock.trend} className="h-10 w-20" />
             </td>
             <td className="py-3 pl-4 text-right font-medium tabular-nums">{formatCurrency(stock.price)}</td>
             <td className="py-3 pl-4 text-right">

@@ -1,5 +1,6 @@
 import Link from "next/link";
-import { MonthSparkline } from "@/components/charts/sparkline";
+import { TrendLine } from "@/components/charts/trend-line";
+import type { TrendSeries } from "@/lib/chart";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
 import type { Stock } from "@/lib/types";
@@ -11,7 +12,7 @@ import type { Stock } from "@/lib/types";
  * Usually rendered on the server; the watchlist card also renders it in the
  * browser for stocks outside the core.
  */
-export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent" | "history">; sparkline?: boolean }) {
+export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent"> & { trend?: TrendSeries }; sparkline?: boolean }) {
   return (
     <li>
       {/*
@@ -27,7 +28,7 @@ export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "sym
           <p className="truncate text-xs text-muted">{stock.name}</p>
         </div>
 
-        {sparkline && <MonthSparkline history={stock.history} className="h-8 w-16 shrink-0" />}
+        {sparkline && stock.trend && <TrendLine series={stock.trend} className="h-10 w-16 shrink-0" />}
 
         <div className="shrink-0 text-right">
           <p className="text-sm font-medium tabular-nums">{formatCurrency(stock.price)}</p>

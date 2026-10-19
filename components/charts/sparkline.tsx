@@ -1,6 +1,5 @@
 import { useId } from "react";
-import { areaPath, extent, linePath, scaleY, sliceTimeframe, toPoints } from "@/lib/chart";
-import type { PricePoint } from "@/lib/types";
+import { areaPath, extent, linePath, scaleY, toPoints } from "@/lib/chart";
 
 // The drawing is done in this fixed coordinate space, then stretched by CSS to
 // whatever size the parent gives the <svg>.
@@ -16,8 +15,8 @@ interface SparklineProps {
 }
 
 /**
- * A small trend line with a soft gradient fill. Server Component: it's pure
- * SVG, so no JavaScript is sent to the browser for it.
+ * A small trend line with a soft gradient fill: pure SVG, drawn on the server
+ * or in the browser (inside TrendLine, which picks its range and color).
  *
  * The color comes from CSS `color` (set `text-gain` or `text-loss` on it), and
  * the stroke and gradient use `currentColor`, so it follows the theme.
@@ -71,14 +70,4 @@ export function Sparkline({ values, baseline, className = "" }: SparklineProps) 
       />
     </svg>
   );
-}
-
-/**
- * The last month of a daily history as a sparkline, green or red by the
- * month's direction, with a dotted line at the month's starting price.
- */
-export function MonthSparkline({ history, className = "" }: { history: PricePoint[]; className?: string }) {
-  const values = sliceTimeframe(history, "1M").map((p) => p.price);
-  const up = values[values.length - 1] >= values[0];
-  return <Sparkline values={values} baseline={values[0]} className={`${up ? "text-gain" : "text-loss"} ${className}`} />;
 }

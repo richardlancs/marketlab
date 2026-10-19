@@ -1,6 +1,7 @@
-import { MonthSparkline } from "@/components/charts/sparkline";
+import { TrendLine, TrendRangePicker } from "@/components/charts/trend-line";
 import { Card } from "@/components/ui/card";
 import { ChangeBadge } from "@/components/ui/change-badge";
+import { trendSeries } from "@/lib/chart";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { getMarket } from "@/lib/market";
 import type { MarketIndex } from "@/lib/types";
@@ -18,9 +19,10 @@ export async function MarketOverview() {
         <h2 id="market-overview" className="text-lg font-semibold tracking-tight">
           Markets
         </h2>
-        <p className="text-xs text-muted">
-          As of the {formatDate(asOf)} close
-        </p>
+        <div className="flex flex-wrap items-center justify-end gap-x-3 gap-y-2">
+          <p className="text-xs text-muted">As of the {formatDate(asOf)} close</p>
+          <TrendRangePicker />
+        </div>
       </div>
 
       <ul aria-labelledby="market-overview" className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
@@ -51,7 +53,7 @@ function IndexCard({ index, isFund }: { index: MarketIndex; isFund: boolean }) {
       <p className="mt-2 text-2xl font-semibold tracking-tight">{isFund ? formatCurrency(index.price) : formatNumber(index.price)}</p>
       <ChangeBadge change={index.change} percent={index.changePercent} className="mt-0.5 text-sm" />
 
-      <MonthSparkline history={index.history} className="mt-4 h-12 w-full" />
+      <TrendLine series={trendSeries(index.history)} className="mt-4 h-14 w-full" />
     </Card>
   );
 }

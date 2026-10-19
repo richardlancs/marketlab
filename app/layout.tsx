@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { AccountNotices } from "@/components/account/account-notices";
 import { AccountProvider } from "@/components/account/account-provider";
+import { TrendRangeProvider } from "@/components/charts/trend-range";
 import { Header } from "@/components/layout/header";
 import { getMarket } from "@/lib/market";
 import { CATALOG } from "@/lib/market/catalog";
@@ -64,17 +65,19 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           Skip to content
         </a>
         {/* The catalog's names (~100 stocks, a few KB) let search find any of them without an API call. */}
+        <TrendRangeProvider>
         <AccountProvider quotes={quotes} listings={CATALOG} openTickers={marketMode() === "tiingo"} asOf={market.asOf}>
           <Header />
           <AccountNotices />
           {children}
           <footer className="mx-auto w-full max-w-7xl px-4 pt-4 pb-8 text-xs text-muted sm:px-6 lg:px-8">
             {market.source === "mock"
-              ? "Simulated prices, not real market data. Company names are real; their prices here are generated."
+              ? "Simulated prices, not real market data. Each stock starts from its real price on Oct 16, 2026; every move since (and the history before) is generated."
               : "End-of-day prices from Tiingo, for personal use only."}{" "}
             Nothing here is investment advice.
           </footer>
         </AccountProvider>
+        </TrendRangeProvider>
       </body>
     </html>
   );

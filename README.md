@@ -14,10 +14,14 @@ A stock dashboard, portfolio simulator and strategy backtester, built with Next.
 
 Prices come from one of two sources:
 
-- **The mock market (default).** Generated from fixed seeds: five years of daily prices that keep moving forward one trading day at a time with the real calendar. No account or key needed.
+- **The mock market (default).** Generated from fixed seeds: five years of daily prices that keep moving forward one trading day at a time with the real calendar. No account or key needed. Each stock (and index) starts from its *real* price and market cap around Oct 16, 2026, and pays dividends at roughly its real yield (`lib/market/anchors.ts`, read from public lists that day); only that starting point is real, the path before and every move after are simulated.
 - **Tiingo (real end-of-day prices).** Used when `TIINGO_API_KEY` is set. Get a free key at [tiingo.com](https://www.tiingo.com). The free plan allows 50 requests an hour and 1,000 a day. The dashboard's 13 symbols cost one request each per hourly refresh. Any other stock costs one request an hour while someone looks at it, plus one (cached for a week) to look up a ticker that isn't in the catalog. A request budget (`lib/market/budget.ts`) stops extra tickers before they could crowd out the dashboard.
 
 > **Licensing:** Tiingo's free plan is for **personal use only**: its terms forbid showing the data to anyone else. Use your key on your own machine or a private deployment. A public deployment must leave `TIINGO_API_KEY` unset, so it uses the mock market. As a safety net, on Vercel the key is ignored (with a warning in the logs) unless `MARKET_DATA_PRIVATE=1` is also set.
+
+### Chart colors and ranges
+
+Every price chart, big or small, shows the same range: pick 1D, 1W, 1M, 6M, 1Y or 5Y on the dashboard, a stock page, the stocks table or the watchlist, and they all follow (remembered in your browser). A line is green if it ended that range higher than it started and red if lower, and small lines show that change beside them ("1M +4.2%"), next to today's change.
 
 ### How orders, dividends and alerts work
 

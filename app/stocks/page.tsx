@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { TrendRangePicker } from "@/components/charts/trend-line";
 import Link from "next/link";
 import { DataSource } from "@/components/market/data-source";
 import { StockTable } from "@/components/stocks/stock-table";
@@ -26,7 +27,10 @@ export default async function StocksPage() {
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="animate-fade-up">
         <DataSource />
-        <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Stocks</h1>
+        <div className="mt-1 flex flex-wrap items-end justify-between gap-3">
+          <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Stocks</h1>
+          <TrendRangePicker />
+        </div>
         <p className="mt-2 text-muted">
           The {stocks.length} featured stocks. Select a column heading to sort, or a row to open the stock.
         </p>

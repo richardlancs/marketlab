@@ -6,7 +6,7 @@
  * higher price must map to a *smaller* y.
  */
 
-import { TIMEFRAME_MONTHS, type Timeframe } from "./types";
+import { TIMEFRAMES, TIMEFRAME_SPAN, type PricePoint, type Timeframe } from "./types";
 
 export type Point = [x: number, y: number];
 
@@ -88,13 +88,40 @@ export function nearestIndex(ratio: number, length: number): number {
  * The part of a daily history covering `timeframe`, by calendar date: "1Y"
  * runs from the same date a year before the last point. It starts at the last
  * point on or before that date, so the range's change is measured from the
- * close that was current then (the date itself may be a weekend).
+ * close that was current then (the date itself may be a weekend). "1D" is the
+ * last two closes: today's change.
  */
 export function sliceTimeframe<T extends { time: number }>(history: T[], timeframe: Timeframe): T[] {
   if (history.length === 0) return history;
+  const span = TIMEFRAME_SPAN[timeframe];
+  if (timeframe === "1D") return history.slice(-2);
   const end = new Date(history[history.length - 1].time);
-  const cutoff = Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - TIMEFRAME_MONTHS[timeframe], end.getUTCDate(), 23, 59);
+  const cutoff =
+    "days" in span
+      ? Date.UTC(end.getUTCFullYear(), end.getUTCMonth(), end.getUTCDate() - span.days, 23, 59)
+      : Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - span.months, end.getUTCDate(), 23, 59);
   let start = 0;
   while (start + 1 < history.length && history[start + 1].time <= cutoff) start++;
   return history.slice(start);
+}
+
+/** A small chart's values for every timeframe, so it can switch ranges in the browser without the whole history. */
+export type TrendSeries = Record<Timeframe, number[]>;
+
+/** Small charts are a few dozen pixels wide: more points than this add nothing but bytes. */
+const TREND_POINTS = 48;
+
+/**
+ * The values a small chart needs for each timeframe, thinned out to at most
+ * TREND_POINTS (always keeping the first and last, so each range's change is
+ * exact). Done on the server, so only a few hundred numbers per stock reach
+ * the browser instead of five years of closes.
+ */
+export function trendSeries(history: readonly PricePoint[]): TrendSeries {
+  const thin = (values: number[]) => {
+    if (values.length <= TREND_POINTS) return values;
+    const step = (values.length - 1) / (TREND_POINTS - 1);
+    return Array.from({ length: TREND_POINTS }, (_, i) => values[Math.round(i * step)]);
+  };
+  return Object.fromEntries(TIMEFRAMES.map((tf) => [tf, thin(sliceTimeframe([...history], tf).map((p) => p.price))])) as TrendSeries;
 }

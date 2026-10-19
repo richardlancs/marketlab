@@ -59,7 +59,8 @@ describe("mock market", () => {
 
   it("matches the original dataset on the anchor day", () => {
     const { bars } = mockSeries("AAPL", atAnchor);
-    expect(bars.at(-1)?.close).toBe(248.3);
+    // Apple's real price around Oct 16, 2026 (lib/market/anchors.ts).
+    expect(bars.at(-1)?.close).toBe(343.65);
     expect(Math.floor((bars.at(-1)?.time ?? 0) / DAY) * DAY).toBe(ANCHOR_DAY);
   });
 
@@ -145,6 +146,22 @@ describe("sliceTimeframe", () => {
     expect(first("5Y")).toBe("2021-10-15");
   });
 
+  it("covers a day (today's change) and a week", () => {
+    expect(sliceTimeframe(history, "1D")).toEqual(history.slice(-2));
+    // Oct 9, 2026 was a Friday: the week starts from that close.
+    expect(first("1W")).toBe("2026-10-09");
+  });
+
+  it("thins each range for small charts, keeping its first and last value", async () => {
+    const { trendSeries } = await import("../chart");
+    const rising = history.map((p, i) => ({ ...p, price: 100 + i }));
+    const series = trendSeries(rising);
+    expect(series["1D"]).toEqual([1598, 1599]);
+    expect(series["5Y"].length).toBeLessThanOrEqual(48);
+    expect(series["5Y"][0]).toBe(sliceTimeframe(rising, "5Y")[0].price);
+    expect(series["5Y"].at(-1)).toBe(1599);
+  });
+
   it("keeps a short history whole", () => {
     expect(sliceTimeframe(history.slice(-5), "1Y")).toHaveLength(5);
     expect(sliceTimeframe([], "1M")).toEqual([]);
@@ -155,15 +172,15 @@ describe("mock dividends and splits", () => {
   const later = newYork(2027, 6, 1, 18);
 
   it("only happen from ACTIONS_START on, so earlier closes never change", () => {
-    const before = mockSeries("NFLX", newYork(2026, 10, 16, 18)).bars;
-    const after = mockSeries("NFLX", later);
+    const before = mockSeries("TSLA", newYork(2026, 10, 16, 18)).bars;
+    const after = mockSeries("TSLA", newYork(2028, 6, 1, 18));
     expect(after.actions.every((a) => a.time >= ACTIONS_START)).toBe(true);
     const closes = new Map(after.bars.map((b) => [b.time, b.close]));
     for (const bar of before.slice(-100)) expect(closes.get(bar.time)).toBe(bar.close);
   });
 
-  it("split an expensive stock: the close drops by the ratio, the adjusted history doesn't jump", () => {
-    const { bars, actions } = mockSeries("NFLX", later); // $1,184 at the anchor, so it splits right away
+  it("split a stock after a big run: the close drops by the ratio, the adjusted history doesn't jump", () => {
+    const { bars, actions } = mockSeries("TSLA", newYork(2028, 6, 1, 18)); // reaches 2.5× its starting price in Oct 2027
     const split = actions.find((a) => a.kind === "split");
     if (split?.kind !== "split") throw new Error("expected a split");
     const i = bars.findIndex((b) => b.time === split.time);

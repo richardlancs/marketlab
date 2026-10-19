@@ -6,12 +6,15 @@ import { areaPath, extent, linePath, nearestIndex, niceTicks, scaleY, sliceTimef
 import { formatAxisValue, formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import type { PricePoint, Timeframe } from "@/lib/types";
 import { TimeframePicker } from "./timeframe-picker";
+import { useTrendRange } from "./trend-range";
 
 // Drawing space for the SVG, stretched by CSS to the real size (see Sparkline).
 const WIDTH = 1000;
 const HEIGHT = 300;
 
 const RANGE_LABELS: Record<Timeframe, string> = {
+  "1D": "Today",
+  "1W": "Past week",
   "1M": "Past month",
   "6M": "Past 6 months",
   "1Y": "Past year",
@@ -19,7 +22,7 @@ const RANGE_LABELS: Record<Timeframe, string> = {
 };
 
 /** Points are daily; within a month the year is obvious, beyond that it isn't. */
-const formatPointTime = (time: number, timeframe: Timeframe) => (timeframe === "1M" ? formatShortDate(time) : formatDate(time));
+const formatPointTime = (time: number, timeframe: Timeframe) => (timeframe === "1D" || timeframe === "1W" || timeframe === "1M" ? formatShortDate(time) : formatDate(time));
 
 /** Converts SVG coordinates to CSS percentages, for HTML laid over the chart. */
 const percentX = (x: number) => `${(x / WIDTH) * 100}%`;
@@ -45,7 +48,8 @@ interface PriceChartProps {
  * attaching the event handlers.
  */
 export function PriceChart({ history, today, title }: PriceChartProps) {
-  const [timeframe, setTimeframe] = useState<Timeframe>("1M");
+  // Shared with every small chart on the site (see trend-range.tsx).
+  const { range: timeframe, setRange: setTimeframe } = useTrendRange();
   // The point under the pointer (or chosen with arrow keys), or null when idle.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const gradientId = useId();
