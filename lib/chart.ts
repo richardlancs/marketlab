@@ -125,3 +125,11 @@ export function trendSeries(history: readonly PricePoint[]): TrendSeries {
   };
   return Object.fromEntries(TIMEFRAMES.map((tf) => [tf, thin(sliceTimeframe([...history], tf).map((p) => p.price))])) as TrendSeries;
 }
+
+/** How much a small chart's values moved over `range`: in its units (dollars or points) and as a fraction. */
+export function trendChange(series: TrendSeries, range: Timeframe): { change: number; percent: number } {
+  const values = series[range];
+  const first = values[0];
+  const last = values[values.length - 1];
+  return { change: last - first, percent: first ? last / first - 1 : 0 };
+}

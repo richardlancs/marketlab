@@ -1,6 +1,5 @@
-import { TrendLine, TrendRangePicker } from "@/components/charts/trend-line";
+import { TrendChange, TrendLine, TrendRangePicker } from "@/components/charts/trend-line";
 import { Card } from "@/components/ui/card";
-import { ChangeBadge } from "@/components/ui/change-badge";
 import { trendSeries } from "@/lib/chart";
 import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
 import { getMarket } from "@/lib/market";
@@ -43,6 +42,7 @@ export async function MarketOverview() {
 
 /** `isFund`: real data shows a fund that tracks the index (SPY for the S&P 500), priced in dollars. */
 function IndexCard({ index, isFund }: { index: MarketIndex; isFund: boolean }) {
+  const trend = trendSeries(index.history);
   return (
     <Card className="group transition-colors hover:border-foreground/15">
       <div className="flex items-baseline justify-between gap-2">
@@ -51,9 +51,10 @@ function IndexCard({ index, isFund }: { index: MarketIndex; isFund: boolean }) {
       </div>
 
       <p className="mt-2 text-2xl font-semibold tracking-tight">{isFund ? formatCurrency(index.price) : formatNumber(index.price)}</p>
-      <ChangeBadge change={index.change} percent={index.changePercent} className="mt-0.5 text-sm" />
+      {/* The change and the line both follow the chosen range (trend-range.tsx). */}
+      <TrendChange series={trend} currency={isFund} className="mt-0.5 text-sm" />
 
-      <TrendLine series={trendSeries(index.history)} className="mt-4 h-14 w-full" />
+      <TrendLine series={trend} className="mt-4 h-12 w-full" />
     </Card>
   );
 }

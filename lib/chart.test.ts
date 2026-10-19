@@ -64,3 +64,14 @@ describe("chart", () => {
     expect(nearestIndex(1.7, 5)).toBe(4);
   });
 });
+
+describe("trendChange", async () => {
+  const { trendChange } = await import("./chart");
+  it("measures a range from its first to its last value", () => {
+    const series = { "1D": [100, 99], "1W": [90, 99], "1M": [99], "6M": [50, 99], "1Y": [110, 99], "5Y": [20, 99] };
+    expect(trendChange(series, "1D").change).toBe(-1);
+    expect(trendChange(series, "1D").percent).toBeCloseTo(-0.01);
+    expect(trendChange(series, "1W").percent).toBeCloseTo(0.1);
+    expect(trendChange(series, "1M")).toEqual({ change: 0, percent: 0 });
+  });
+});

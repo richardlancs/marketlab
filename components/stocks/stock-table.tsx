@@ -2,9 +2,9 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { TrendLine } from "@/components/charts/trend-line";
+import { TrendChange, TrendLine } from "@/components/charts/trend-line";
 import { useTrendRange } from "@/components/charts/trend-range";
-import { ChangeBadge } from "@/components/ui/change-badge";
+import { trendChange } from "@/lib/chart";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { nextSort, sortStocks, type Sort, type SortKey } from "@/lib/sort";
 import type { StockTableRow } from "./stock-table-rows";
@@ -22,13 +22,12 @@ interface Column {
 const COLUMNS: Column[] = [
   { key: "symbol", label: "Symbol", numeric: false },
   { key: "price", label: "Price", numeric: true },
-  { key: "changePercent", label: "Today", numeric: true },
+  { key: "changePercent", label: "Change", numeric: true },
   { key: "marketCap", label: "Mkt cap", numeric: true, visibility: "hidden md:table-cell" },
   { key: "peRatio", label: "P/E", numeric: true, visibility: "hidden lg:table-cell" },
 ];
 
 // The symbol column comes first, then the sparkline, then the number columns.
-const [SYMBOL_COLUMN, ...NUMBER_COLUMNS] = COLUMNS;
 
 const DIRECTION_LABEL = { asc: "ascending", desc: "descending" } as const;
 
@@ -39,10 +38,13 @@ const DIRECTION_LABEL = { asc: "ascending", desc: "descending" } as const;
  */
 export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow[]; label?: string }) {
   const [sort, setSort] = useState<Sort>({ key: "marketCap", direction: "desc" });
-  const sorted = sortStocks(rows, sort);
-  const sortedLabel = COLUMNS.find((c) => c.key === sort.key)?.label;
-  const onSort = (key: SortKey) => setSort(nextSort(sort, key));
   const { range } = useTrendRange();
+  // The change column follows the chosen range, and so does sorting by it.
+  const ranged = rows.map((row) => ({ ...row, changePercent: trendChange(row.trend, range).percent }));
+  const sorted = sortStocks(ranged, sort);
+  const columns = COLUMNS.map((c) => (c.key === "changePercent" ? { ...c, label: `${range} change` } : c));
+  const sortedLabel = columns.find((c) => c.key === sort.key)?.label;
+  const onSort = (key: SortKey) => setSort(nextSort(sort, key));
 
   return (
     <table className="w-full text-sm">
@@ -52,11 +54,11 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
       </caption>
       <thead>
         <tr className="border-b border-border text-xs text-muted">
-          <SortableHeader column={SYMBOL_COLUMN} sort={sort} onSort={onSort} />
+          <SortableHeader column={columns[0]} sort={sort} onSort={onSort} />
           <th scope="col" className="hidden py-2 pr-4 text-left font-medium sm:table-cell">
             {range} trend
           </th>
-          {NUMBER_COLUMNS.map((column) => (
+          {columns.slice(1).map((column) => (
             <SortableHeader key={column.key} column={column} sort={sort} onSort={onSort} />
           ))}
           <th scope="col" className="w-10 py-2 pl-2">
@@ -94,7 +96,7 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
             </td>
             <td className="py-3 pl-4 text-right font-medium tabular-nums">{formatCurrency(stock.price)}</td>
             <td className="py-3 pl-4 text-right">
-              <ChangeBadge change={stock.change} percent={stock.changePercent} variant="pill" />
+              <TrendChange series={stock.trend} variant="pill" />
             </td>
             <td className="hidden py-3 pl-4 text-right tabular-nums md:table-cell">{stock.marketCap === null ? "—" : formatCompactCurrency(stock.marketCap)}</td>
             <td className="hidden py-3 pl-4 text-right tabular-nums lg:table-cell">{stock.peRatio === null ? "—" : stock.peRatio.toFixed(1)}</td>

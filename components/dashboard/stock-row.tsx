@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { TrendLine } from "@/components/charts/trend-line";
+import { TrendChange, TrendLine } from "@/components/charts/trend-line";
 import type { TrendSeries } from "@/lib/chart";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
@@ -32,7 +32,12 @@ export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "sym
 
         <div className="shrink-0 text-right">
           <p className="text-sm font-medium tabular-nums">{formatCurrency(stock.price)}</p>
-          <ChangeBadge change={stock.change} percent={stock.changePercent} variant="pill" className="mt-1" />
+          {/* With a trend line, the change follows its range; without one (top movers), it's today's. */}
+          {sparkline && stock.trend ? (
+            <TrendChange series={stock.trend} variant="pill" className="mt-1" />
+          ) : (
+            <ChangeBadge change={stock.change} percent={stock.changePercent} variant="pill" className="mt-1" />
+          )}
         </div>
       </Link>
     </li>
