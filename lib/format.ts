@@ -31,6 +31,7 @@ const signedPercent = new Intl.NumberFormat(LOCALE, {
   signDisplay: "exceptZero",
 });
 const signedCurrency = new Intl.NumberFormat(LOCALE, { style: "currency", currency: "USD", signDisplay: "exceptZero" });
+const percent = new Intl.NumberFormat(LOCALE, { style: "percent", minimumFractionDigits: 1, maximumFractionDigits: 1 });
 const date = new Intl.DateTimeFormat(LOCALE, { timeZone: MARKET_TIME_ZONE, month: "short", day: "numeric", year: "numeric" });
 const shortDate = new Intl.DateTimeFormat(LOCALE, { timeZone: MARKET_TIME_ZONE, month: "short", day: "numeric" });
 const time = new Intl.DateTimeFormat(LOCALE, { timeZone: MARKET_TIME_ZONE, hour: "numeric", minute: "2-digit" });
@@ -58,6 +59,9 @@ export const formatChange = (value: number) => signedNumber.format(value);
 
 /** A fraction: 0.0123 → "+1.23%" */
 export const formatPercent = (fraction: number) => signedPercent.format(fraction);
+
+/** A fraction without a sign, for sizes rather than changes: 0.25 → "25.0%" */
+export const formatShare = (fraction: number) => percent.format(fraction);
 
 /** A timestamp → "Oct 16, 2026" (New York time) */
 export const formatDate = (timestamp: number) => date.format(timestamp);

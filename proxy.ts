@@ -1,5 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
-import { STOCK_SYMBOLS } from "@/lib/mock-data";
+import { STOCK_SYMBOLS } from "@/lib/market/universe";
 
 /**
  * Runs before a /stocks/<symbol> request reaches the page.

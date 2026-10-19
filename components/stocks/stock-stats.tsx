@@ -1,15 +1,18 @@
 import { formatCompactCurrency, formatCompactNumber, formatCurrency } from "@/lib/format";
 import type { Stock } from "@/lib/types";
 
+/** Shown when a data source doesn't provide a figure (Tiingo has no market cap or P/E). */
+const DASH = "—";
+
 /** Key numbers under a price chart. Shared by the dashboard's featured card and the stock page. */
 export function StockStats({ stock, className = "" }: { stock: Stock; className?: string }) {
   const stats = [
     { label: "Open", value: formatCurrency(stock.open) },
     { label: "High", value: formatCurrency(stock.high) },
     { label: "Low", value: formatCurrency(stock.low) },
-    { label: "Volume", value: formatCompactNumber(stock.volume) },
-    { label: "Mkt cap", value: formatCompactCurrency(stock.marketCap) },
-    { label: "P/E", value: stock.peRatio.toFixed(1) },
+    { label: "Volume", value: stock.volume === null ? DASH : formatCompactNumber(stock.volume) },
+    { label: "Mkt cap", value: stock.marketCap === null ? DASH : formatCompactCurrency(stock.marketCap) },
+    { label: "P/E", value: stock.peRatio === null ? DASH : stock.peRatio.toFixed(1) },
   ];
 
   return (

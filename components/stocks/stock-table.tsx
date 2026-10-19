@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
-import { Sparkline } from "@/components/charts/sparkline";
+import { MonthSparkline } from "@/components/charts/sparkline";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { nextSort, sortStocks, type Sort, type SortKey } from "@/lib/sort";
@@ -88,18 +88,14 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
               <span className="block truncate text-xs text-muted">{stock.name}</span>
             </td>
             <td className="hidden py-3 pr-4 sm:table-cell">
-              <Sparkline
-                values={stock.intraday}
-                baseline={stock.previousClose}
-                className={`h-8 w-20 ${stock.change >= 0 ? "text-gain" : "text-loss"}`}
-              />
+              <MonthSparkline history={stock.history} className="h-8 w-20" />
             </td>
             <td className="py-3 pl-4 text-right font-medium tabular-nums">{formatCurrency(stock.price)}</td>
             <td className="py-3 pl-4 text-right">
               <ChangeBadge change={stock.change} percent={stock.changePercent} variant="pill" />
             </td>
-            <td className="hidden py-3 pl-4 text-right tabular-nums md:table-cell">{formatCompactCurrency(stock.marketCap)}</td>
-            <td className="hidden py-3 pl-4 text-right tabular-nums lg:table-cell">{stock.peRatio.toFixed(1)}</td>
+            <td className="hidden py-3 pl-4 text-right tabular-nums md:table-cell">{stock.marketCap === null ? "—" : formatCompactCurrency(stock.marketCap)}</td>
+            <td className="hidden py-3 pl-4 text-right tabular-nums lg:table-cell">{stock.peRatio === null ? "—" : stock.peRatio.toFixed(1)}</td>
             <td className="py-3 pl-2 text-right">
               <WatchToggle symbol={stock.symbol} variant="icon" />
             </td>

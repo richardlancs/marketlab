@@ -1,5 +1,6 @@
 import { useId } from "react";
-import { areaPath, extent, linePath, scaleY, toPoints } from "@/lib/chart";
+import { areaPath, extent, linePath, scaleY, sliceTimeframe, toPoints } from "@/lib/chart";
+import type { PricePoint } from "@/lib/types";
 
 // The drawing is done in this fixed coordinate space, then stretched by CSS to
 // whatever size the parent gives the <svg>.
@@ -70,4 +71,14 @@ export function Sparkline({ values, baseline, className = "" }: SparklineProps) 
       />
     </svg>
   );
+}
+
+/**
+ * The last month of a daily history as a sparkline, green or red by the
+ * month's direction, with a dotted line at the month's starting price.
+ */
+export function MonthSparkline({ history, className = "" }: { history: PricePoint[]; className?: string }) {
+  const values = sliceTimeframe(history, "1M").map((p) => p.price);
+  const up = values[values.length - 1] >= values[0];
+  return <Sparkline values={values} baseline={values[0]} className={`${up ? "text-gain" : "text-loss"} ${className}`} />;
 }

@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { startingAccount } from "./starting-account";
 
 // The actions' collaborators are replaced with test doubles: the session
-// lookup, the database, and Next's request headers.
+// lookup, the database, the market, and Next's request headers.
 const session = vi.hoisted(() => ({ current: null as { user: { id: string } } | null }));
 const accounts = vi.hoisted(() => ({
   ensure: vi.fn(),
@@ -15,6 +15,11 @@ const accounts = vi.hoisted(() => ({
 vi.mock("next/headers", () => ({ headers: async () => new Headers() }));
 vi.mock("./auth", () => ({ auth: { api: { getSession: async () => session.current } } }));
 vi.mock("./db", () => ({ accounts }));
+// A fixed market, so prices don't depend on the date (or on Next's cache).
+vi.mock("./market", async () => ({
+  STOCK_SYMBOLS: (await import("./market/universe")).STOCK_SYMBOLS,
+  getStock: async (symbol: string) => (symbol === "AAPL" ? { symbol, price: 248.3 } : undefined),
+}));
 
 const { importGuestAccountAction, placeOrderAction, resetAccountAction, toggleWatchlistAction } = await import("./account-actions");
 

@@ -1,8 +1,8 @@
-import { Sparkline } from "@/components/charts/sparkline";
+import { MonthSparkline } from "@/components/charts/sparkline";
 import { Card } from "@/components/ui/card";
 import { ChangeBadge } from "@/components/ui/change-badge";
-import { formatDate, formatNumber, formatTime } from "@/lib/format";
-import { getIndices } from "@/lib/mock-data";
+import { formatCurrency, formatDate, formatNumber } from "@/lib/format";
+import { getMarket } from "@/lib/market";
 import type { MarketIndex } from "@/lib/types";
 
 /**
@@ -10,10 +10,7 @@ import type { MarketIndex } from "@/lib/types";
  * Component: it awaits the data on the server and sends finished HTML.
  */
 export async function MarketOverview() {
-  const indices = await getIndices();
-  // The timestamp of the last price point is when the data is "as of".
-  const intraday = indices[0].history["1D"];
-  const asOf = intraday[intraday.length - 1].time;
+  const { indices, asOf, source } = await getMarket();
 
   return (
     <div>
@@ -22,7 +19,7 @@ export async function MarketOverview() {
           Markets
         </h2>
         <p className="text-xs text-muted">
-          Closed · {formatDate(asOf)}, {formatTime(asOf)} ET
+          As of the {formatDate(asOf)} close
         </p>
       </div>
 
@@ -34,7 +31,7 @@ export async function MarketOverview() {
             style={{ animationDelay: `${(i + 1) * 60}ms` }}
             className="animate-fade-up"
           >
-            <IndexCard index={index} />
+            <IndexCard index={index} isFund={source === "tiingo"} />
           </li>
         ))}
       </ul>
@@ -42,9 +39,8 @@ export async function MarketOverview() {
   );
 }
 
-function IndexCard({ index }: { index: MarketIndex }) {
-  const up = index.change >= 0;
-
+/** `isFund`: real data shows a fund that tracks the index (SPY for the S&P 500), priced in dollars. */
+function IndexCard({ index, isFund }: { index: MarketIndex; isFund: boolean }) {
   return (
     <Card className="group transition-colors hover:border-foreground/15">
       <div className="flex items-baseline justify-between gap-2">
@@ -52,14 +48,10 @@ function IndexCard({ index }: { index: MarketIndex }) {
         <span className="text-xs text-muted">{index.symbol}</span>
       </div>
 
-      <p className="mt-2 text-2xl font-semibold tracking-tight">{formatNumber(index.price)}</p>
+      <p className="mt-2 text-2xl font-semibold tracking-tight">{isFund ? formatCurrency(index.price) : formatNumber(index.price)}</p>
       <ChangeBadge change={index.change} percent={index.changePercent} className="mt-0.5 text-sm" />
 
-      <Sparkline
-        values={index.history["1D"].map((p) => p.price)}
-        baseline={index.previousClose}
-        className={`mt-4 h-12 w-full ${up ? "text-gain" : "text-loss"}`}
-      />
+      <MonthSparkline history={index.history} className="mt-4 h-12 w-full" />
     </Card>
   );
 }

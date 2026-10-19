@@ -49,3 +49,16 @@ describe("nextSort", () => {
     expect(nextSort({ key: "price", direction: "desc" }, "symbol")).toEqual({ key: "symbol", direction: "asc" });
   });
 });
+
+describe("sortStocks with missing values", () => {
+  it("puts missing values last in both directions", () => {
+    const rows = [
+      { symbol: "A", price: 1, changePercent: 0, marketCap: null, peRatio: 10 },
+      { symbol: "B", price: 1, changePercent: 0, marketCap: 5, peRatio: null },
+      { symbol: "C", price: 1, changePercent: 0, marketCap: 9, peRatio: 20 },
+    ];
+    expect(symbols(sortStocks(rows, { key: "marketCap", direction: "desc" }))).toEqual(["C", "B", "A"]);
+    expect(symbols(sortStocks(rows, { key: "marketCap", direction: "asc" }))).toEqual(["B", "C", "A"]);
+    expect(symbols(sortStocks(rows, { key: "peRatio", direction: "asc" }))).toEqual(["A", "C", "B"]);
+  });
+});

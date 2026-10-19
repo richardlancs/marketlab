@@ -6,6 +6,8 @@
  * higher price must map to a *smaller* y.
  */
 
+import { TIMEFRAME_MONTHS, type Timeframe } from "./types";
+
 export type Point = [x: number, y: number];
 
 /** The smallest and largest value. */
@@ -80,4 +82,19 @@ export function niceTicks(min: number, max: number, count = 4): number[] {
 export function nearestIndex(ratio: number, length: number): number {
   const clamped = Math.min(1, Math.max(0, ratio));
   return Math.round(clamped * (length - 1));
+}
+
+/**
+ * The part of a daily history covering `timeframe`, by calendar date: "1Y"
+ * runs from the same date a year before the last point. It starts at the last
+ * point on or before that date, so the range's change is measured from the
+ * close that was current then (the date itself may be a weekend).
+ */
+export function sliceTimeframe<T extends { time: number }>(history: T[], timeframe: Timeframe): T[] {
+  if (history.length === 0) return history;
+  const end = new Date(history[history.length - 1].time);
+  const cutoff = Date.UTC(end.getUTCFullYear(), end.getUTCMonth() - TIMEFRAME_MONTHS[timeframe], end.getUTCDate(), 23, 59);
+  let start = 0;
+  while (start + 1 < history.length && history[start + 1].time <= cutoff) start++;
+  return history.slice(start);
 }

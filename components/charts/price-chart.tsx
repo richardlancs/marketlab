@@ -2,8 +2,8 @@
 
 import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ChangeBadge } from "@/components/ui/change-badge";
-import { areaPath, extent, linePath, nearestIndex, niceTicks, scaleY, toPoints } from "@/lib/chart";
-import { formatAxisValue, formatCurrency, formatDate, formatShortDate, formatTime } from "@/lib/format";
+import { areaPath, extent, linePath, nearestIndex, niceTicks, scaleY, sliceTimeframe, toPoints } from "@/lib/chart";
+import { formatAxisValue, formatCurrency, formatDate, formatShortDate } from "@/lib/format";
 import { TIMEFRAMES, type PricePoint, type Timeframe } from "@/lib/types";
 
 // Drawing space for the SVG, stretched by CSS to the real size (see Sparkline).
@@ -11,33 +11,24 @@ const WIDTH = 1000;
 const HEIGHT = 300;
 
 const RANGE_LABELS: Record<Timeframe, string> = {
-  "1D": "Today",
-  "1W": "Past week",
   "1M": "Past month",
+  "6M": "Past 6 months",
   "1Y": "Past year",
+  "5Y": "Past 5 years",
 };
 
-/** How a point's time is written depends on how far apart the points are. */
-function formatPointTime(time: number, timeframe: Timeframe): string {
-  switch (timeframe) {
-    case "1D":
-      return formatTime(time);
-    case "1W":
-      return `${formatShortDate(time)}, ${formatTime(time)}`;
-    case "1M":
-      return formatShortDate(time);
-    case "1Y":
-      return formatDate(time);
-  }
-}
+/** Points are daily; within a month the year is obvious, beyond that it isn't. */
+const formatPointTime = (time: number, timeframe: Timeframe) => (timeframe === "1M" ? formatShortDate(time) : formatDate(time));
 
 /** Converts SVG coordinates to CSS percentages, for HTML laid over the chart. */
 const percentX = (x: number) => `${(x / WIDTH) * 100}%`;
 const percentY = (y: number) => `${(y / HEIGHT) * 100}%`;
 
 interface PriceChartProps {
-  history: Record<Timeframe, PricePoint[]>;
-  previousClose: number;
+  /** Daily closes, oldest first; the chart shows the slice for the chosen timeframe. */
+  history: PricePoint[];
+  /** Today's move against yesterday's close, shown next to the range's change. */
+  today: { change: number; percent: number };
   /**
    * Shown on the left of the top row. It's rendered by the Server Component
    * that uses this chart and passed in already finished, so it adds no
@@ -52,17 +43,17 @@ interface PriceChartProps {
  * still rendered to HTML on the server first; the browser then "hydrates" it,
  * attaching the event handlers.
  */
-export function PriceChart({ history, previousClose, title }: PriceChartProps) {
-  const [timeframe, setTimeframe] = useState<Timeframe>("1D");
+export function PriceChart({ history, today, title }: PriceChartProps) {
+  const [timeframe, setTimeframe] = useState<Timeframe>("1M");
   // The point under the pointer (or chosen with arrow keys), or null when idle.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const gradientId = useId();
 
-  const points = history[timeframe];
+  const points = sliceTimeframe(history, timeframe);
   const values = points.map((p) => p.price);
   const last = points.length - 1;
-  // 1D is measured against yesterday's close; longer ranges against their first point.
-  const reference = timeframe === "1D" ? previousClose : values[0];
+  // Each range is measured against its first point.
+  const reference = values[0];
 
   // Leave 10% empty space above and below so the line never touches the edges.
   const [low, high] = extent([...values, reference]);
@@ -130,6 +121,15 @@ export function PriceChart({ history, previousClose, title }: PriceChartProps) {
           <span className="text-muted">
             {activeIndex === null ? RANGE_LABELS[timeframe] : formatPointTime(shown.time, timeframe)}
           </span>
+          {activeIndex === null && (
+            <>
+              <span aria-hidden className="text-muted">
+                ·
+              </span>
+              <ChangeBadge change={today.change} percent={today.percent} currency />
+              <span className="text-muted">Today</span>
+            </>
+          )}
         </p>
       </div>
 

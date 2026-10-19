@@ -3,7 +3,7 @@ import { StorageLabel } from "@/components/account/storage-label";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { WatchlistTable } from "@/components/stocks/watchlist-table";
 import { Card } from "@/components/ui/card";
-import { getStocks } from "@/lib/mock-data";
+import { getStocks } from "@/lib/market";
 
 export const metadata: Metadata = { title: "Watchlist — MarketLab" };
 

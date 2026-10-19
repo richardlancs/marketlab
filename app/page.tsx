@@ -1,3 +1,4 @@
+import { DataSource } from "@/components/market/data-source";
 import type { ReactNode } from "react";
 import { FeaturedStock } from "@/components/dashboard/featured-stock";
 import { MarketOverview } from "@/components/dashboard/market-overview";
@@ -21,7 +22,7 @@ export default function Home() {
   return (
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="animate-fade-up">
-        <p className="text-sm font-medium text-accent">Mock data</p>
+        <DataSource />
         <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Dashboard</h1>
         <p className="mt-2 text-muted">A snapshot of markets, your watchlist, and your simulated portfolio.</p>
       </div>

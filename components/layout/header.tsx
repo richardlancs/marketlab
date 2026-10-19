@@ -10,11 +10,9 @@ const pages: NavItem[] = [
   { href: "/stocks", label: "Stocks" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
+  { href: "/backtest", label: "Backtest" },
 ];
 
-// Sections planned for later phases. Shown so the shell feels complete, but
-// not links yet, since those routes don't exist.
-const upcoming = ["Backtest"];
 
 export function Header() {
   return (
@@ -51,15 +49,6 @@ export function Header() {
           <Suspense fallback={<NavLinksFallback items={pages} />}>
             <NavLinks items={pages} />
           </Suspense>
-          {upcoming.map((label) => (
-            // `relative` keeps the absolutely positioned sr-only text inside the
-            // scrolling nav; otherwise it hangs off the edge and widens the page on phones.
-            <span key={label} title="Coming soon" className="relative shrink-0 cursor-default rounded-full px-3 py-1.5 text-muted/50">
-              {label}
-              {/* The greyed-out look is visual only, so say it in words for screen readers. */}
-              <span className="sr-only"> (coming soon)</span>
-            </span>
-          ))}
         </nav>
 
         <div className="ml-auto flex items-center gap-2">

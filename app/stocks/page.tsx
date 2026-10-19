@@ -1,8 +1,9 @@
 import type { Metadata } from "next";
+import { DataSource } from "@/components/market/data-source";
 import { StockTable } from "@/components/stocks/stock-table";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { Card } from "@/components/ui/card";
-import { getStocks } from "@/lib/mock-data";
+import { getStocks } from "@/lib/market";
 
 export const metadata: Metadata = { title: "Stocks — MarketLab" };
 
@@ -18,7 +19,7 @@ export default async function StocksPage() {
   return (
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
       <div className="animate-fade-up">
-        <p className="text-sm font-medium text-accent">Mock data</p>
+        <DataSource />
         <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Stocks</h1>
         <p className="mt-2 text-muted">
           All {stocks.length} stocks in the dataset. Select a column heading to sort, or a row to open the stock.

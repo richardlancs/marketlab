@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { getStocks } from "@/lib/mock-data";
+import { getStocks } from "@/lib/market";
 import { StockRow } from "./stock-row";
 import { WatchlistCard } from "./watchlist-card";
 

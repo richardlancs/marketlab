@@ -1,7 +1,7 @@
 /**
  * Reading and changing signed-in users' simulated accounts in the database.
  *
- * Every change runs as one write transaction that reads the account, applies
+ * Every change runs as one write transaction (see ./transaction.ts) that reads the account, applies
  * the same rules guest mode uses (lib/trading.ts), and writes the result. So
  * two orders sent at once (say, from two tabs) can't both spend the same cash:
  * the second waits for the first, then sees its result.
@@ -14,10 +14,9 @@ import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { startingAccount } from "../starting-account";
 import { MAX_TRADES, placeOrder, type Account, type Order, type TradeResult } from "../trading";
 import * as schema from "./schema";
+import { writeTransaction, type Executor } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
-/** A transaction, or the database itself: both can run queries. */
-type Executor = Pick<Db, "select" | "insert" | "update" | "delete">;
 
 const { portfolio, holding, watchlistItem, trade } = schema;
 
@@ -74,19 +73,7 @@ async function ensure(ex: Executor, userId: string): Promise<Account> {
 }
 
 export function createAccountRepository(db: Db) {
-  // Write transactions run one at a time within this server process: each waits
-  // for the previous one to finish. Local SQLite needs this because its driver
-  // is synchronous. A transaction waiting for the file's lock would block the
-  // whole event loop, including the transaction that holds the lock. (Turso
-  // queues transactions on its side, so this costs nothing there.)
-  let queue: Promise<unknown> = Promise.resolve();
-  const transaction = <T>(fn: (tx: Executor) => Promise<T>): Promise<T> => {
-    // "immediate" takes the write lock at the start, so the read inside each
-    // transaction can't go stale before its write.
-    const run = queue.then(() => db.transaction(fn, { behavior: "immediate" }));
-    queue = run.catch(() => {}); // one failed transaction mustn't block the next
-    return run;
-  };
+  const transaction = <T>(fn: (tx: Executor) => Promise<T>) => writeTransaction(db, fn);
 
   return {
     /** The user's account, or null if they haven't got one yet. */

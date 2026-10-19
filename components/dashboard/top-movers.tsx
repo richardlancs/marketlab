@@ -1,5 +1,5 @@
 import { Card } from "@/components/ui/card";
-import { getTopMovers } from "@/lib/mock-data";
+import { getTopMovers } from "@/lib/market";
 import type { Stock } from "@/lib/types";
 import { StockRow } from "./stock-row";
 

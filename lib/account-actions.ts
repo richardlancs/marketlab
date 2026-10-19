@@ -13,7 +13,7 @@
 import { headers } from "next/headers";
 import { auth } from "./auth";
 import { accounts } from "./db";
-import { getStock, STOCK_SYMBOLS } from "./mock-data";
+import { getStock, STOCK_SYMBOLS } from "./market";
 import { parseAccount, type Account } from "./trading";
 
 /** What the browser gets back: the account after the change, or a message to show. */

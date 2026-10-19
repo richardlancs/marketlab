@@ -2,7 +2,7 @@ import Link from "next/link";
 import { PriceChart } from "@/components/charts/price-chart";
 import { StockStats } from "@/components/stocks/stock-stats";
 import { Card } from "@/components/ui/card";
-import { FEATURED_SYMBOL, getStock } from "@/lib/mock-data";
+import { FEATURED_SYMBOL, getStock } from "@/lib/market";
 
 /**
  * The large chart card. The data loading and the static parts (title, stats)
@@ -10,13 +10,13 @@ import { FEATURED_SYMBOL, getStock } from "@/lib/mock-data";
  */
 export async function FeaturedStock() {
   const stock = await getStock(FEATURED_SYMBOL);
-  if (!stock) throw new Error(`Featured stock ${FEATURED_SYMBOL} is missing from the mock data`);
+  if (!stock) throw new Error(`Featured stock ${FEATURED_SYMBOL} is missing from the market data`);
 
   return (
     <Card aria-labelledby="featured-stock" className="h-full">
       <PriceChart
         history={stock.history}
-        previousClose={stock.previousClose}
+        today={{ change: stock.change, percent: stock.changePercent }}
         title={
           <div className="min-w-0">
             <h2 id="featured-stock" className="text-lg font-semibold tracking-tight">

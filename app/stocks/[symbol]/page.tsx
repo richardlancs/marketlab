@@ -9,7 +9,8 @@ import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
 import { WatchToggle } from "@/components/stocks/watch-toggle";
 import { Card } from "@/components/ui/card";
-import { getStock, getStocks } from "@/lib/mock-data";
+import { sliceTimeframe } from "@/lib/chart";
+import { getStock, getStocks } from "@/lib/market";
 
 /**
  * Tells Next.js which symbols exist, so it can build a page for each one ahead
@@ -58,8 +59,8 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
   if (!stock) notFound();
 
 
-  // The 52-week range: daily closes for the past year, plus today's intraday extremes.
-  const yearPrices = stock.history["1Y"].map((p) => p.price);
+  // The 52-week range: daily closes for the past year, plus today's high and low.
+  const yearPrices = sliceTimeframe(stock.history, "1Y").map((p) => p.price);
   const yearLow = Math.min(...yearPrices, stock.low);
   const yearHigh = Math.max(...yearPrices, stock.high);
 
@@ -69,7 +70,7 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
         <Card aria-labelledby="stock-title">
           <PriceChart
             history={stock.history}
-            previousClose={stock.previousClose}
+            today={{ change: stock.change, percent: stock.changePercent }}
             title={
               <div className="min-w-0">
                 <h1 id="stock-title" className="text-2xl font-semibold tracking-tight">

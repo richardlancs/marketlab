@@ -8,6 +8,7 @@ import {
   formatDate,
   formatNumber,
   formatPercent,
+  formatShare,
   formatShortDate,
   formatSignedCurrency,
   formatTime,
@@ -57,5 +58,10 @@ describe("format", () => {
     expect(formatSignedCurrency(1234.5)).toBe("+$1,234.50");
     expect(formatSignedCurrency(-20)).toBe("-$20.00");
     expect(formatSignedCurrency(0)).toBe("$0.00");
+  });
+
+  it("formats unsigned shares", () => {
+    expect(formatShare(0.25)).toBe("25.0%");
+    expect(formatShare(0.0049)).toBe("0.5%");
   });
 });

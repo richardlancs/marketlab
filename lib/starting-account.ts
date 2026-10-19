@@ -1,6 +1,6 @@
 /**
  * What every new account starts with: a few holdings, some cash and a short
- * watchlist. Kept apart from mock-data.ts so browser code can import it
+ * watchlist. Kept apart from the market data so browser code can import it
  * without also pulling in the price-history generator.
  */
 import type { Account } from "./trading";

@@ -1,4 +1,5 @@
-import type { Stock } from "@/lib/types";
+import { sliceTimeframe } from "@/lib/chart";
+import type { PricePoint, Stock } from "@/lib/types";
 
 /**
  * Just what the stocks table shows. Server pages build these from full
@@ -8,8 +9,8 @@ import type { Stock } from "@/lib/types";
  * Component module, and server code can't call functions exported from one.
  */
 export type StockTableRow = Pick<Stock, "symbol" | "name" | "price" | "change" | "changePercent" | "previousClose" | "marketCap" | "peRatio"> & {
-  /** Today's prices, for the sparkline. */
-  intraday: number[];
+  /** The last month of daily closes, for the sparkline. */
+  history: PricePoint[];
 };
 
 export function toStockTableRow(stock: Stock): StockTableRow {
@@ -22,6 +23,6 @@ export function toStockTableRow(stock: Stock): StockTableRow {
     previousClose: stock.previousClose,
     marketCap: stock.marketCap,
     peRatio: stock.peRatio,
-    intraday: stock.history["1D"].map((p) => p.price),
+    history: sliceTimeframe(stock.history, "1M"),
   };
 }

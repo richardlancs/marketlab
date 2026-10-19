@@ -1,6 +1,6 @@
 /**
  * Shared data shapes. Components depend on these types, not on where the data
- * comes from, so the mock generator can later be swapped for a real API.
+ * comes from: the mock market and the real one (Tiingo) both produce them.
  *
  * Conventions:
  * - Prices are in US dollars.
@@ -10,18 +10,40 @@
 
 // `as const` makes this a readonly tuple of literal strings, and the type below
 // is derived from it, so the list and the type can never drift apart.
-export const TIMEFRAMES = ["1D", "1W", "1M", "1Y"] as const;
+export const TIMEFRAMES = ["1M", "6M", "1Y", "5Y"] as const;
 export type Timeframe = (typeof TIMEFRAMES)[number];
+
+/** How far back each timeframe reaches, in calendar months. */
+export const TIMEFRAME_MONTHS: Record<Timeframe, number> = { "1M": 1, "6M": 6, "1Y": 12, "5Y": 60 };
 
 export interface PricePoint {
   time: number;
   price: number;
 }
 
+/** One trading day, as a data source reports it. */
+export interface DailyBar {
+  /** The day's close, as a timestamp (see lib/market/calendar.ts). */
+  time: number;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  /** Shares traded; null for indices, which don't trade. */
+  volume: number | null;
+  /**
+   * The close adjusted for later splits and dividends, so that a whole
+   * history compares like for like. Charts and backtests use this; today's
+   * price and change use the plain `close`.
+   */
+  adjClose: number;
+}
+
 /** Fields shared by anything with a price: stocks and market indices. */
 export interface Quote {
   symbol: string;
   name: string;
+  /** The latest close. */
   price: number;
   previousClose: number;
   change: number;
@@ -29,14 +51,16 @@ export interface Quote {
   open: number;
   high: number;
   low: number;
-  history: Record<Timeframe, PricePoint[]>;
+  volume: number | null;
+  /** Daily adjusted closes, oldest first, up to 5 years. */
+  history: PricePoint[];
 }
 
 export interface Stock extends Quote {
   sector: string;
-  volume: number;
-  marketCap: number;
-  peRatio: number;
+  /** Not every data source has these (Tiingo's end-of-day data doesn't), so they can be null. */
+  marketCap: number | null;
+  peRatio: number | null;
 }
 
 export type MarketIndex = Quote;

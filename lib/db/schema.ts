@@ -156,3 +156,20 @@ export const trade = sqliteTable(
   // Trade history is always read per user, newest first.
   (table) => [index("trade_user_time_idx").on(table.userId, table.time)],
 );
+
+/**
+ * Saved backtests. The settings and the summary are stored as JSON text:
+ * they're always read and written whole, never queried by field.
+ */
+export const backtestRun = sqliteTable(
+  "backtest_run",
+  {
+    id: text("id").primaryKey(),
+    userId: userId(),
+    name: text("name").notNull(),
+    config: text("config").notNull(),
+    summary: text("summary").notNull(),
+    createdAt: integer("created_at").notNull(),
+  },
+  (table) => [index("backtest_run_user_idx").on(table.userId, table.createdAt)],
+);

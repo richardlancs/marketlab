@@ -30,12 +30,16 @@ export function nextSort(current: Sort, key: SortKey): Sort {
 /**
  * Returns a sorted copy (the input isn't changed). Works on anything that has
  * the sortable fields, so it accepts full stocks or slimmer table rows. Ties
- * are broken by symbol, A→Z, so the order is always the same.
+ * are broken by symbol, A→Z, so the order is always the same. Missing values
+ * (a data source without P/E, say) always go last, whichever the direction.
  */
 export function sortStocks<T extends Pick<Stock, SortKey>>(stocks: readonly T[], { key, direction }: Sort): T[] {
   const sign = direction === "asc" ? 1 : -1;
   return [...stocks].sort((a, b) => {
-    const order = key === "symbol" ? a.symbol.localeCompare(b.symbol) : a[key] - b[key];
-    return order !== 0 ? order * sign : a.symbol.localeCompare(b.symbol);
+    if (key === "symbol") return a.symbol.localeCompare(b.symbol) * sign;
+    const x = a[key];
+    const y = b[key];
+    if (x === null || y === null) return x === y ? a.symbol.localeCompare(b.symbol) : x === null ? 1 : -1;
+    return x !== y ? (x - y) * sign : a.symbol.localeCompare(b.symbol);
   });
 }
