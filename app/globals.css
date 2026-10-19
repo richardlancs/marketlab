@@ -1,26 +1,117 @@
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/*
+ * Dark mode is driven by the `data-theme` attribute on <html>, not by the OS
+ * setting directly. That lets the user override their system preference with
+ * the toggle. `dark:` utilities match any element inside [data-theme="dark"].
+ */
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Design tokens. Values are inspired by Apple's system colors.
+ * Components never use raw hex values; they use these semantic names
+ * (e.g. `bg-surface`, `text-muted`, `text-gain`), so a theme switch only
+ * needs to swap the variables below.
+ */
+:root,
+[data-theme="light"] {
+  --background: #f5f5f7;
+  --surface: #ffffff;
+  --surface-raised: #fbfbfd;
+  --foreground: #1d1d1f;
+  --muted: #6e6e73;
+  --border: rgb(0 0 0 / 0.08);
+  --accent: #0071e3;
+  --gain: #1f9d55;
+  --loss: #e0352b;
+  --glow: rgb(0 113 227 / 0.08);
+  /*
+   * Categorical colors for charts that compare things (e.g. portfolio
+   * allocation). Always assigned in this order, and checked for colorblind
+   * separation against each theme's card color. Dark mode uses its own steps.
+   */
+  --series-1: #2a78d6;
+  --series-2: #eb6834;
+  --series-3: #1baf7a;
+  --series-4: #eda100;
+  --series-5: #e87ba4;
+}
+
+[data-theme="dark"] {
+  --background: #000000;
+  --surface: #161617;
+  --surface-raised: #1d1d1f;
+  --foreground: #f5f5f7;
+  --muted: #8e8e93;
+  --border: rgb(255 255 255 / 0.08);
+  --accent: #2997ff;
+  --gain: #30d158;
+  --loss: #ff453a;
+  --glow: rgb(41 151 255 / 0.12);
+  --series-1: #3987e5;
+  --series-2: #d95926;
+  --series-3: #199e70;
+  --series-4: #c98500;
+  --series-5: #d55181;
 }
 
 @theme inline {
   --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-raised: var(--surface-raised);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-gain: var(--gain);
+  --color-loss: var(--loss);
+  --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --animate-fade-up: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-reveal: reveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
+
+  @keyframes fade-up {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  /* Wipes a chart line in from left to right by shrinking a clipping rectangle. */
+  @keyframes reveal {
+    from {
+      clip-path: inset(0 100% 0 0);
+    }
+    to {
+      clip-path: inset(0 0 0 0);
+    }
   }
 }
 
 body {
-  background: var(--background);
+  /* A soft accent glow at the top of the page; fixed so it doesn't scroll. */
+  background:
+    radial-gradient(ellipse 80% 50% at 50% -10%, var(--glow), transparent) fixed,
+    var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  transition:
+    background-color 0.3s ease,
+    color 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    /* Without this, staggered cards would still sit invisible for their delay. */
+    animation-delay: 0s !important;
+    transition-duration: 0.01ms !important;
+  }
 }
