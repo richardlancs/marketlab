@@ -3,35 +3,37 @@
 import { useState } from "react";
 import type { TermKey } from "@/lib/glossary";
 import type { Question } from "@/lib/lessons";
-import { markPassed, passed } from "@/lib/lessons/progress";
-import { useProgress } from "./use-progress";
+import { current, passed } from "@/lib/lessons/progress";
+import { useLearnProgress } from "./learn-progress-provider";
 
 /**
  * "Test yourself": a few multiple-choice questions. Each answer is marked
- * right or wrong at once, with an explanation. Passing (3 of 4 or better)
- * puts a ✓ on the lesson in /learn, in this browser only. It's optional:
+ * right or wrong at once, with an explanation, and saved as it's given, so a
+ * reload (or another device, signed in) picks up where you left off. Passing
+ * (3 of 4 or better) puts a ✓ on the lesson in /learn. It's optional:
  * nothing else depends on it.
  */
 export function LessonQuiz({ term, questions }: { term: TermKey; questions: readonly Question[] }) {
-  const [answers, setAnswers] = useState<(number | null)[]>(() => questions.map(() => null));
+  const { status, storage, progress, error, answer, retry: retryQuiz } = useLearnProgress();
+  const saved = current(progress[term], questions.length);
+  const answers = saved?.answers ?? questions.map(() => null);
+  // Bumped on "Try again", so each attempt's question cards start fresh.
   const [attempt, setAttempt] = useState(0);
-  const alreadyPassed = useProgress().includes(term);
+  const loading = status === "loading";
 
   const answered = answers.filter((a) => a !== null).length;
   const score = answers.filter((a, i) => a === questions[i].answer).length;
   const done = answered === questions.length;
   const pass = passed(score, questions.length);
+  const alreadyPassed = saved?.passedAt != null;
 
   function choose(questionIndex: number, choice: number) {
-    if (answers[questionIndex] !== null) return;
-    const next = answers.map((a, i) => (i === questionIndex ? choice : a));
-    setAnswers(next);
-    const finalScore = next.filter((a, i) => a === questions[i].answer).length;
-    if (next.every((a) => a !== null) && passed(finalScore, questions.length)) markPassed(term);
+    if (loading || answers[questionIndex] !== null) return;
+    answer(term, questions, questionIndex, choice);
   }
 
   function retry() {
-    setAnswers(questions.map(() => null));
+    retryQuiz(term, questions.length);
     setAttempt((n) => n + 1);
   }
 
@@ -40,6 +42,15 @@ export function LessonQuiz({ term, questions }: { term: TermKey; questions: read
       <p className="text-sm text-muted">
         Optional: {questions.length} quick questions on the words, using the idea, and how it plays out in real markets.
         {alreadyPassed && !done && <span className="ml-1 font-medium text-gain">You’ve passed this one before ✓</span>}
+      </p>
+      <p className="mt-1 text-xs text-muted" aria-live="polite">
+        {loading
+          ? "Loading your answers…"
+          : status === "error"
+            ? "Couldn’t load your saved answers. New answers will still be saved."
+            : storage === "account"
+              ? "Answers are saved to your account as you go."
+              : "Answers are saved for this browser as you go. Sign in to keep them on every device."}
       </p>
       <ol className="mt-4 space-y-4">
         {questions.map((q, qi) => {
@@ -62,7 +73,7 @@ export function LessonQuiz({ term, questions }: { term: TermKey; questions: read
                         key={ci}
                         type="button"
                         onClick={() => choose(qi, ci)}
-                        disabled={chosen !== null}
+                        disabled={chosen !== null || loading}
                         aria-pressed={chosen === ci}
                         className={`flex items-start gap-3 rounded-xl border px-3.5 py-2.5 text-left text-sm transition-colors focus-visible:outline-2 focus-visible:outline-accent ${
                           state === "open"
@@ -103,6 +114,11 @@ export function LessonQuiz({ term, questions }: { term: TermKey; questions: read
           );
         })}
       </ol>
+      {error && (
+        <p role="alert" className="mt-4 rounded-xl border border-loss/30 bg-loss/10 px-3.5 py-2.5 text-sm">
+          {error}
+        </p>
+      )}
       <div aria-live="polite" className="mt-4">
         {done && (
           <div className={`flex flex-wrap items-center justify-between gap-3 rounded-2xl border p-4 ${pass ? "border-gain/30 bg-gain/10" : "border-border bg-surface"}`}>

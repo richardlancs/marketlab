@@ -248,3 +248,46 @@ export const leaderboardEntry = sqliteTable(
     startValue: real("start_value").notNull(),
   },
 );
+
+// ---------------------------------------------------------------------------
+// Lesson progress (quiz answers, best scores, passes), for everyone.
+// ---------------------------------------------------------------------------
+
+/**
+ * Whoever is working through the lessons. A signed-in user has one, linked
+ * by `userId`. A guest gets an anonymous one the first time they answer a
+ * question, known only by a random ID in an httpOnly cookie
+ * (lib/learn-progress.ts). It's separate from sign-in on purpose: being a
+ * guest learner doesn't make anyone "signed in" to the rest of the app. When
+ * a guest signs in, their progress moves into their account's learner and the
+ * anonymous one is deleted.
+ */
+export const learner = sqliteTable("learner", {
+  id: text("id").primaryKey(),
+  /** Null for an anonymous guest. */
+  userId: text("user_id")
+    .unique()
+    .references(() => user.id, { onDelete: "cascade" }),
+  createdAt: integer("created_at").notNull(),
+  /** Last time it changed: lets old anonymous learners be told apart and cleaned up later. */
+  updatedAt: integer("updated_at").notNull(),
+});
+
+/** One row per learner and lesson (see LessonProgress in lib/lessons/progress.ts). */
+export const lessonProgress = sqliteTable(
+  "lesson_progress",
+  {
+    learnerId: text("learner_id")
+      .notNull()
+      .references(() => learner.id, { onDelete: "cascade" }),
+    /** The glossary term the lesson is about, e.g. "sharpe". */
+    term: text("term").notNull(),
+    /** The current attempt's answers, as JSON: [1, null, 2, null]. Always read and written whole. */
+    answers: text("answers").notNull(),
+    total: integer("total").notNull(),
+    bestScore: integer("best_score"),
+    passedAt: integer("passed_at"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.learnerId, table.term] })],
+);

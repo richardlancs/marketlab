@@ -7,7 +7,7 @@ A stock dashboard, portfolio simulator and strategy backtester, built with Next.
 - **Realistic trading.** Market, limit and stop orders (filled at a daily close), dividends paid into your cash, and stock splits (with cash for any fraction of a share). Start over with a starter portfolio or cash only ($10k, $25k or $100k).
 - **Price alerts.** "Tell me when KO closes above $70", with a badge in the header and, if you turn them on, browser notifications while the site is open.
 - **Filings and news.** Each stock page lists the company's real recent SEC filings (earnings, annual reports, leadership changes). With your own Tiingo key, it also shows news headlines.
-- **Learn as you go.** An ⓘ next to measures and terms (Sharpe ratio, drawdown, RSI, limit orders, P/E…) explains them in plain English, with a link to a full lesson. `/learn` has 29 short lessons (3–5 minutes each, in a suggested order) on investing basics, measuring results, orders, company numbers, indicators and strategies. Each has a worked example, an interactive demo for most, links into the app (strategy lessons open a ready-made backtest), and an optional short test; passing it ticks the lesson off (saved in your browser).
+- **Learn as you go.** An ⓘ next to measures and terms (Sharpe ratio, drawdown, RSI, limit orders, P/E…) explains them in plain English, with a link to a full lesson. `/learn` has 29 short lessons (3–5 minutes each, in a suggested order) on investing basics, measuring results, orders, company numbers, indicators and strategies. Each has a worked example, an interactive demo for most, links into the app (strategy lessons open a ready-made backtest), and an optional short test; passing it ticks the lesson off. Quiz answers, best scores and passes are saved in the database as you answer, so a reload picks up where you left off: with your account when signed in (on every device), or, for guests, with an anonymous learner cookie for that browser, merged into your account when you sign in (see [Lesson progress](#lesson-progress)).
 - **Share and compare.** "Copy link" on a backtest makes a link that opens the same backtest for anyone (the settings travel in the link, nothing is stored). Signed-in users can join the opt-in leaderboard under a display name, ranked by their return since joining.
 - **Portfolio analytics.** Your portfolio's value over time, rebuilt from your trades, as growth of $100 against the S&P 500, Nasdaq or Dow, with return, drawdown, volatility and Sharpe ratio; a breakdown by sector; and your trades as a CSV file.
 - **Backtesting.** Try buy and hold, a moving-average crossover, dollar-cost averaging, rebalancing, or your own rules (RSI, moving averages, crossovers) on up to five stocks over five years of daily prices, with trading costs, compared with a benchmark. See returns month by month, test a range of settings at once (a parameter sweep), save runs and compare up to four.
@@ -51,6 +51,16 @@ All of this is applied when you next open the site (or before your next trade): 
 Saved accounts and backtests only check that a symbol is *well-formed* when they're read, so a stock missing from today's data (say, after switching from Tiingo back to mock) never wipes them; it just shows "—". The server checks a stock really exists when you add it. Accounts can hold and watch up to 30 stocks each.
 
 If Tiingo can't be reached (wrong key, request limit, network), the dashboard shows the mock market with a notice and tries again a minute later. Other stocks never fall back to made-up prices: their pages say the prices are unavailable and retry a minute later. `MARKET_DATA_SOURCE=mock` forces the mock market even when a key is set. Tiingo's end-of-day data has no market cap or P/E, so those show "—" with real prices.
+
+### Lesson progress
+
+Quiz answers (including half-finished quizzes), best scores and passed lessons are saved in the database for everyone:
+
+- **Signed in:** with your account, so they follow you to any device.
+- **Guests:** with an anonymous *learner*, known only by a random ID in an httpOnly cookie (`marketlab_learner`, 400 days). It's created the first time a guest answers a question, so visitors who only read lessons create nothing. It's separate from sign-in on purpose: guests' portfolios and backtests still live in their browser, and nothing else treats a guest as signed in.
+- **Signing in** merges the guest's progress into the account (best score and earliest pass kept, the most recent answers kept) and deletes the anonymous learner and its cookie.
+
+Answers go through Server Actions (`lib/learn-actions.ts`) that send only which choice was picked; the server marks them right or wrong against the lesson's answer key, so a request can't claim a pass. The tables are `learner` and `lesson_progress` (migration 0004). Lessons passed in the browser-only version before this are brought into the database once, then removed from the browser.
 
 ## Running it locally
 
@@ -131,12 +141,13 @@ If you self-host on more than one server instance (not needed on Vercel), also s
 - `lib/orders.ts`, `lib/alerts.ts`, `lib/processing.ts`: limit and stop orders, price alerts, and catching an account up with the market.
 - `lib/market/filings.ts`: SEC filings; `lib/market/tiingo.ts` also has Tiingo news.
 - `lib/glossary.ts`: every explained term (the ⓘ popovers, `/learn` and each lesson's opening), in learning-path order.
-- `lib/lessons/`: the lessons at `/learn/<slug>`. `content/` holds the text, one file per group, with tests that recompute every worked example; `slugs.ts` the addresses (proxy.ts 404s any other); `demos.ts` the math behind the interactive demos (`components/learn/demos/`), which uses arithmetic only so the server and browser draw identical charts; `progress.ts` which tests this browser has passed. `lessons.test.ts` holds every lesson to the format: 3–5 minutes, every part filled in, a quiz covering terminology, use and the real world, and only valid links.
+- `lib/lessons/`: the lessons at `/learn/<slug>`. `content/` holds the text, one file per group, with tests that recompute every worked example; `slugs.ts` the addresses (proxy.ts 404s any other); `demos.ts` the math behind the interactive demos (`components/learn/demos/`), which uses arithmetic only so the server and browser draw identical charts; `progress.ts` the rules for answers, scores, passes and merging a guest's progress into an account. `lessons.test.ts` holds every lesson to the format: 3–5 minutes, every part filled in, a quiz covering terminology, use and the real world, and only valid links.
 - `lib/backtest/share.ts`: backtest share links (`/backtest#run=…`).
 - `lib/leaderboard.ts`, `lib/leaderboard-data.ts`, `lib/leaderboard-actions.ts`: display-name rules and standings, the cached public standings, and joining or leaving.
 
 ### Saved backtests and versions
 
 A saved run stores its settings as JSON. Settings carry a `version` (now 2: custom rules were added). Older settings are upgraded when they're read, and settings from a newer version are refused rather than misread, so adding a strategy never needs a database migration. Don't change the `VERSION` in `lib/backtest/saved-local.ts` for this: that one covers the browser's list of saved runs, and changing it hides every guest's saved runs.
-- `lib/db/`: the database schema (Drizzle), and the code that reads and writes accounts and saved backtests.
+- `lib/db/`: the database schema (Drizzle), and the code that reads and writes accounts, saved backtests, the leaderboard and lesson progress (`learning.ts`).
+- `lib/learn-progress.ts`, `lib/learn-actions.ts`, `app/api/learn-progress`: who a lesson-progress request belongs to (account or guest learner cookie), saving answers, and loading progress.
 - `lib/auth.ts`: Better Auth configuration (email and password sign-in, rate limits).

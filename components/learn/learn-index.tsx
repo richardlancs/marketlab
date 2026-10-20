@@ -4,7 +4,8 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useState } from "react";
 import { GROUPS, type TermKey } from "@/lib/glossary";
-import { useProgress } from "./use-progress";
+import { lastUnfinished, passedTerms } from "@/lib/lessons/progress";
+import { useLearnProgress } from "./learn-progress-provider";
 
 export interface LessonCard {
   term: TermKey;
@@ -35,7 +36,8 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
   const requested = params.get("group");
   const filter: Filter = GROUPS.find((g) => g === requested) ?? "All";
   const [query, setQuery] = useState("");
-  const done = useProgress();
+  const { status, storage, progress } = useLearnProgress();
+  const done = passedTerms(progress);
 
   const setFilter = (next: Filter) => {
     const search = next === "All" ? "" : `?group=${encodeURIComponent(next)}`;
@@ -43,21 +45,24 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
   };
 
   const visible = cards.filter((c) => (filter === "All" || c.group === filter) && matches(c, query));
-  const next = cards.find((c) => !done.includes(c.term)) ?? cards[0];
+  // The lesson you were last working on, or else the first one not yet passed.
+  const unfinished = lastUnfinished(progress);
+  const next = cards.find((c) => c.term === unfinished) ?? cards.find((c) => !done.includes(c.term)) ?? cards[0];
   const passed = cards.filter((c) => done.includes(c.term)).length;
+  const resuming = next.term === unfinished;
 
   return (
     <>
       <div className="mt-8 grid gap-4 md:grid-cols-[1fr_16rem]">
         <div className="rounded-2xl border border-accent/20 bg-accent/5 p-5">
-          <p className="text-xs font-medium tracking-wide text-accent uppercase">{passed === 0 ? "Start here" : "Continue"}</p>
+          <p className="text-xs font-medium tracking-wide text-accent uppercase">{resuming ? "Pick up where you left off" : passed === 0 ? "Start here" : "Next up"}</p>
           <p className="mt-1 text-lg font-semibold tracking-tight">{next.title}</p>
           <p className="mt-1 text-sm text-foreground/80">{next.short}</p>
           <Link
             href={next.href}
             className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
-            {passed === 0 ? "Start the first lesson" : "Next lesson"} <span aria-hidden>→</span>
+            {resuming ? "Continue the lesson" : passed === 0 ? "Start the first lesson" : "Next lesson"} <span aria-hidden>→</span>
           </Link>
         </div>
         <div className="rounded-2xl border border-border bg-surface p-5">
@@ -75,7 +80,10 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
           >
             <div className="h-full rounded-full bg-accent transition-[width] duration-500" style={{ width: `${(passed / cards.length) * 100}%` }} />
           </div>
-          <p className="mt-2 text-xs text-muted">Pass a lesson’s short test to tick it off. Saved in this browser.</p>
+          <p className="mt-2 text-xs text-muted">
+            Pass a lesson’s short test to tick it off.{" "}
+            {status === "loading" ? "Loading your progress…" : storage === "account" ? "Saved to your account." : "Saved for this browser; sign in to keep it on every device."}
+          </p>
         </div>
       </div>
 
@@ -125,6 +133,7 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
               <ol className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
                 {groupCards.map((card) => {
                   const isDone = done.includes(card.term);
+                  const best = progress[card.term]?.bestScore;
                   return (
                     // The id keeps old /learn#sharpe links (from before lessons had pages) landing on the card.
                     <li key={card.term} id={card.term} className="scroll-mt-24">
@@ -134,6 +143,11 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
                       >
                         <span className="flex items-start justify-between gap-2">
                           <span className="font-semibold group-hover:text-accent">{card.title}</span>
+                          {!isDone && best != null && (
+                            <span className="shrink-0 rounded-full bg-foreground/5 px-2 py-0.5 text-xs font-medium text-muted" title="Best score so far">
+                              {best} of {progress[card.term]!.total}
+                            </span>
+                          )}
                           {isDone && (
                             <span className="grid size-5 shrink-0 place-items-center rounded-full bg-gain/15 text-xs font-semibold text-gain" title="Passed">
                               ✓<span className="sr-only"> Passed</span>
