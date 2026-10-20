@@ -8,7 +8,7 @@ import { compareResults } from "./stored";
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ cacheLife: () => {}, cacheTag: () => {} }));
 const { compute, configuredEngine, engineFor } = await import("./engines");
-const { PythonEngineError, runOnPython } = await import("./python-client");
+const { PythonEngineError, reproducePythonRun, runOnPython, savePythonRun } = await import("./python-client");
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 0, 5, 20);
@@ -140,6 +140,40 @@ describe("the Python client", () => {
     await expect(runOnPython(config(), snap)).rejects.toThrow(/didn't answer within 10 seconds/);
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
     await expect(runOnPython(config(), snap)).rejects.toThrow(/couldn't be reached/);
+  });
+});
+
+describe("saving and reproducing through the Python service", () => {
+  const snap = makeSnapshot(config(), history, market, "mock", T0);
+  const outcome = runConfig(config(), { AAPL: history.AAPL }, []);
+  const result = {
+    outcome,
+    note: null,
+    provenance: { engine: { name: "python", version: "1.0.0" }, dataset: { ...describeSnapshot(snap) }, assumptions: {}, computedAt: 1 },
+  };
+  const configured = () => {
+    vi.stubEnv("ANALYTICS_URL", "http://analytics.test/");
+    vi.stubEnv("ANALYTICS_SERVICE_TOKEN", "secret");
+  };
+
+  it("sends the verified owner and reads the saved result back", async () => {
+    configured();
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ summary: { finalValue: 1, totalReturn: 0, cagr: 0, maxDrawdown: 0, benchmarkTotalReturn: 0 }, result })));
+    vi.stubGlobal("fetch", fetchMock);
+    const saved = await savePythonRun({ ownerId: "user-1", run: { id: "r", name: "n", createdAt: 1 }, config: config(), snapshot: snap, dataset: result.provenance.dataset, note: null, assumptions: {} });
+    expect(saved.result.provenance.engine.name).toBe("python");
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [URL, RequestInit];
+    expect(String(url)).toBe("http://analytics.test/v1/saved-runs");
+    expect(JSON.parse(String(init.body)).ownerId).toBe("user-1");
+  });
+
+  it("passes on the service's own messages, and refuses an unreadable answer", async () => {
+    configured();
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ error: "That saved run doesn't exist." }), { status: 404 })));
+    await expect(reproducePythonRun("r", "user-1")).rejects.toThrow("That saved run doesn't exist.");
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ reproduced: {}, comparison: {} }))));
+    await expect(reproducePythonRun("r", "user-1")).rejects.toThrow(PythonEngineError);
   });
 });
 

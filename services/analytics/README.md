@@ -4,11 +4,13 @@ A FastAPI service that calculates backtests with the same rules as MarketLab's T
 
 - `analytics/engine.py`: the engine. Pure functions on plain data, with no FastAPI involved, so it works in notebooks and tests.
 - `analytics/api.py`: the HTTP layer: Pydantic models, authentication and limits.
+- `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing Python-engine runs (see [Database access](#database-access)).
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
 - `tests/`:
   - `test_engine.py`: the engine's rules;
   - `test_api.py`: authentication, validation and limits;
-  - `test_parity.py`: results compared with the TypeScript engine on fixed datasets.
+  - `test_parity.py`: results compared with the TypeScript engine on fixed datasets;
+  - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client.
 
 ## Setup
 
@@ -96,6 +98,54 @@ Response, with the same shapes as the TypeScript engine's `BacktestOutcome`:
 | 503 | No token configured on the service. |
 
 The Next.js side (`lib/backtest/python-client.ts`) waits up to 10 seconds (`ANALYTICS_TIMEOUT_MS`). It validates the response before using it and turns every failure into a message for the user. It never falls back to TypeScript.
+
+### `POST /v1/saved-runs`
+
+Calculates a run from a price snapshot **itself**, then saves the result and the snapshot to the database for `ownerId`.
+
+**Body:**
+- `ownerId`
+- `run`: `{ id, name, createdAt }`
+- `config`
+- `snapshot`: the `PriceSnapshot` from `lib/backtest/snapshot.ts`
+- `dataset`: `{ checksum, datasetVersion, source, simulated, asOf, firstDate, lastDate, observations }`
+- `note`
+- `assumptions`
+
+**Returns** `{ summary, result }`, where `result` is a `StoredResult`, the same JSON shape the TypeScript side stores.
+
+**Errors:** 404 for an unknown owner, 409 when the owner already has 50 saved runs, 503 when the database is down.
+
+### `POST /v1/saved-runs/{id}/reproduce`
+
+**Body:** `{ ownerId }`.
+
+Reads that owner's saved run and its snapshot from the database, recalculates from the saved prices, and compares the new result with the stored one.
+
+**Returns** `{ reproduced, comparison: { matches, largestDifference, differences } }`.
+
+**Errors:**
+- 404 for a missing run, or someone else's;
+- 409 for a run saved before results were kept, or one calculated by the TypeScript engine (the Next.js server reproduces those itself);
+- 503 when the database is down.
+
+## Database access
+
+The service uses MarketLab's own database, through the same `DATABASE_URL` and `DATABASE_AUTH_TOKEN` as the Next.js server:
+- **Locally (no `DATABASE_URL`):** the repository's `local.db`, through Python's `sqlite3`.
+- **Online (`libsql://…`):** Turso's HTTP API (`/v2/pipeline`) through `httpx`. That needs no native driver, so nothing has to compile on Vercel.
+
+What it reads and writes:
+- **It writes** Python-engine saved runs (`backtest_run`, with their result and provenance columns) and their snapshots (`price_snapshot`, stored once per checksum).
+- **It reads** a saved run and its snapshot to reproduce it.
+- **The Next.js server still** lists and opens saved runs, and handles everything else: accounts, guests, lesson progress, and TypeScript-engine runs.
+
+Ownership:
+- **The service never decides who is asking.** The Next.js server checks the session or guest cookie and the rate limits, then sends the owner's ID. The service accepts that only on requests carrying the service token, which only the Next.js server has.
+- **Every query is limited to that owner's rows.**
+- **Every write is one SQL statement, so it's atomic:** a run is inserted only if its owner exists and has fewer than 50 runs. A snapshot left behind by a refused run is removed by the daily job.
+
+The schema is defined once, in Drizzle (`lib/db/schema.ts` and `drizzle/`). The Python code uses those same tables and columns, and its tests build their database from the same migration files, so a schema change that breaks the Python side fails its tests.
 
 ## Simulation rules (shared with the TypeScript engine)
 

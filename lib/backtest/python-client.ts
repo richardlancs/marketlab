@@ -1,6 +1,7 @@
 /**
- * Calls the Python analytics service (services/analytics) to calculate a
- * backtest. Server-only: it holds the service token, and only the Next.js
+ * Calls the Python analytics service (services/analytics): to calculate a
+ * backtest, and to save and reproduce runs of its own (it reads and writes
+ * the database for those). Server-only: it holds the service token, and only the Next.js
  * server's own prices are ever sent.
  *
  * Settings, from the environment:
@@ -14,9 +15,10 @@
  */
 import "server-only";
 import { cacheLife } from "next/cache";
-import type { BacktestConfig, BacktestOutcome } from "./config";
+import type { BacktestConfig, BacktestOutcome, RunSummary } from "./config";
 import type { BacktestRun, BacktestTrade, Metrics } from "./engine";
 import type { PriceSnapshot } from "./snapshot";
+import { parseStoredResult, type Comparison, type StoredResult } from "./stored";
 
 export class PythonEngineError extends Error {}
 
@@ -125,4 +127,72 @@ export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapsho
   }
   const warnings = Array.isArray(body?.warnings) ? (body.warnings as unknown[]).filter((w): w is string => typeof w === "string") : [];
   return { outcome: { run, benchmark }, engine: { name: engine.name, version: engine.version }, warnings };
+}
+
+/** POSTs JSON to the service with its token; returns the parsed body, or throws a PythonEngineError with a message fit to show. */
+async function post(path: string, body: unknown, what: string): Promise<Record<string, unknown>> {
+  const token = process.env.ANALYTICS_SERVICE_TOKEN;
+  if (!pythonConfigured() || !token) throw new PythonEngineError("The Python engine is selected but not set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
+  const timeout = Number(process.env.ANALYTICS_TIMEOUT_MS) || 10_000;
+  let response: Response;
+  try {
+    response = await fetch(serviceUrl(path), {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(timeout),
+      cache: "no-store",
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
+    console.error(`[analytics] ${what} failed:`, error instanceof Error ? error.message : error);
+    throw new PythonEngineError(timedOut ? `The Python engine didn't answer within ${timeout / 1000} seconds. Try again in a minute.` : "The Python engine couldn't be reached. Try again in a minute.");
+  }
+  const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
+  if (!response.ok) {
+    const detail = typeof data?.error === "string" ? data.error : "";
+    console.error(`[analytics] ${what} ${response.status}: ${detail}`);
+    // The service's own messages for these are written for users (a full list, a run it can't reproduce, the database being down).
+    if ([404, 409, 422, 503].includes(response.status) && detail) throw new PythonEngineError(detail);
+    if (response.status === 401) throw new PythonEngineError("The Python engine isn't accepting requests from this server (its service token is missing or doesn't match).");
+    throw new PythonEngineError(`The Python engine failed (${response.status}). Try again in a minute.`);
+  }
+  if (!data) throw new PythonEngineError("The Python engine sent back an answer MarketLab couldn't read.");
+  return data;
+}
+
+export interface PythonSave {
+  ownerId: string;
+  run: { id: string; name: string; createdAt: number };
+  config: BacktestConfig;
+  snapshot: PriceSnapshot;
+  dataset: StoredResult["provenance"]["dataset"];
+  note: string | null;
+  assumptions: Record<string, string>;
+}
+
+/**
+ * Saves a run through the Python service, which calculates it from the
+ * snapshot itself and writes the result and snapshot to the database.
+ * `ownerId` is whoever the Next.js server has verified (session or guest cookie).
+ */
+export async function savePythonRun(save: PythonSave): Promise<{ summary: RunSummary; result: StoredResult }> {
+  const data = await post("v1/saved-runs", save, "save");
+  const result = parseStoredResult(data.result);
+  const summary = data.summary as RunSummary | undefined;
+  if (!result || !summary || !["finalValue", "totalReturn", "cagr", "maxDrawdown", "benchmarkTotalReturn"].every((k) => isNumber(summary[k as keyof RunSummary]))) {
+    throw new PythonEngineError("The Python engine sent back an answer MarketLab couldn't read.");
+  }
+  return { summary, result };
+}
+
+/** Has the Python service read one of the owner's saved runs from the database, recalculate it, and compare. */
+export async function reproducePythonRun(runId: string, ownerId: string): Promise<{ reproduced: StoredResult; comparison: Comparison }> {
+  const data = await post(`v1/saved-runs/${encodeURIComponent(runId)}/reproduce`, { ownerId }, "reproduce");
+  const reproduced = parseStoredResult(data.reproduced);
+  const c = data.comparison as Partial<Comparison> | undefined;
+  if (!reproduced || typeof c?.matches !== "boolean" || !isNumber(c.largestDifference) || !Array.isArray(c.differences)) {
+    throw new PythonEngineError("The Python engine sent back an answer MarketLab couldn't read.");
+  }
+  return { reproduced, comparison: { matches: c.matches, largestDifference: c.largestDifference, differences: c.differences.filter((d): d is string => typeof d === "string") } };
 }
