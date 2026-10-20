@@ -4,6 +4,7 @@ import type { TrendSeries } from "@/lib/chart";
 import { ChangeBadge } from "@/components/ui/change-badge";
 import { formatCurrency } from "@/lib/format";
 import type { Stock } from "@/lib/types";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 /**
  * One line in a stock list: symbol and name on the left, price and today's
@@ -23,6 +24,7 @@ export function StockRow({ stock, sparkline = false }: { stock: Pick<Stock, "sym
         href={`/stocks/${stock.symbol}`}
         className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-3 transition-colors hover:bg-foreground/[0.04] focus-visible:outline-2 focus-visible:outline-accent"
       >
+        <StockLogo symbol={stock.symbol} size={36} />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold">{stock.symbol}</p>
           <p className="truncate text-xs text-muted">{stock.name}</p>

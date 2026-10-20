@@ -8,6 +8,7 @@ import { formatCurrency } from "@/lib/format";
 import { isSymbolFormat, normalizeSymbol } from "@/lib/market/symbols";
 import { searchStocks } from "@/lib/search";
 import type { StockQuote } from "@/lib/types";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 /** A search result: a stock with today's price, a catalog stock (priced on its page), or "open any ticker". */
 type Result = { symbol: string; name: string; quote?: StockQuote; open?: true };
@@ -178,7 +179,8 @@ export function SearchDialog() {
                 onMouseMove={() => i !== activeIndex && setActiveIndex(i)}
                 className={`flex cursor-pointer items-center gap-3 rounded-lg px-3 py-2.5 ${i === activeIndex ? "bg-foreground/[0.06]" : ""}`}
               >
-                <span className="w-16 shrink-0 text-sm font-semibold">{stock.symbol}</span>
+                <StockLogo symbol={stock.symbol} size={28} />
+                <span className="w-14 shrink-0 text-sm font-semibold">{stock.symbol}</span>
                 <span className="min-w-0 flex-1 truncate text-sm text-muted">{stock.name}</span>
                 {stock.quote ? (
                   <>

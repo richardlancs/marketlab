@@ -7,6 +7,7 @@ import { ChangeBadge } from "@/components/ui/change-badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency } from "@/lib/format";
 import { summarizePortfolio } from "@/lib/portfolio";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 const weightFormat = new Intl.NumberFormat("en-US", { style: "percent", maximumFractionDigits: 1 });
 
@@ -121,6 +122,7 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
               <th scope="row" className="py-2 text-left font-medium">
                 {/* The color key ties each row to its segment in the bar above. */}
                 <span aria-hidden className="mr-2 inline-block size-2.5 rounded-[3px] align-middle" style={{ background: slice.color }} />
+                {slice.href && <StockLogo symbol={slice.label} size={22} className="mr-2 align-middle" />}
                 {slice.href ? (
                   <Link href={slice.href} title={slice.name} className="rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
                     {slice.label}

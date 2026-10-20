@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import { getStocks } from "@/lib/market";
 import { MORE_LISTINGS } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 export const metadata: Metadata = { title: "Stocks — MarketLab" };
 
@@ -58,9 +59,12 @@ export default async function StocksPage() {
                 <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{sector}</h3>
                 <ul className="mt-2 space-y-1 text-sm">
                   {listings.map((listing) => (
-                    <li key={listing.symbol} className="truncate">
-                      <Link href={`/stocks/${listing.symbol}`} className="rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
-                        <span className="font-semibold">{listing.symbol}</span> <span className="text-muted">{listing.name}</span>
+                    <li key={listing.symbol}>
+                      <Link href={`/stocks/${listing.symbol}`} className="flex items-center gap-2.5 rounded-sm py-0.5 hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
+                        <StockLogo symbol={listing.symbol} size={22} />
+                        <span className="truncate">
+                          <span className="font-semibold">{listing.symbol}</span> <span className="text-muted">{listing.name}</span>
+                        </span>
                       </Link>
                     </li>
                   ))}

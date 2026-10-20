@@ -38,6 +38,16 @@ Prices come from one of two sources.
 - **Catalog:** about 95 stocks in `lib/market/catalog.ts`. Each page is built on its first visit. With mock data, these are the whole market.
 - **Any ticker (Tiingo only):** search offers "Open this ticker" for unlisted symbols.
 
+**Company logos**
+- Each stock shows its logo in a rounded tile beside its ticker. The tile is the same light colour in every theme, the way app icons are.
+- The logos ship with the site, in `public/logos/`, so visitors never load anything from a third party. `npm run logos:fetch` downloads them from the websites in `lib/market/logos.ts` and writes `lib/market/logo-files.ts`.
+- Each logo comes from the first of these that works:
+  1. the company's own site icon, if it's at least 96px;
+  2. its mark from [Simple Icons](https://simpleicons.org), in the brand colour;
+  3. a smaller site icon, if it's at least 48px.
+- A stock with none of these (or an index, or another ticker with real data) gets its first letter on an accent-tinted tile.
+- The marks remain their owners' trademarks and are shown only to identify each company.
+
 **Charts**
 - Every chart follows the range chosen (1D to 5Y).
 - A line is green if it ended the range higher than it started, and red if lower.

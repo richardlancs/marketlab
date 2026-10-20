@@ -54,6 +54,7 @@ npm run analytics:dev           # the Python service on :8000, alongside npm run
 | `npm run db:migrate` | Apply migrations to the database in `DATABASE_URL` |
 | `npm run analytics:install` | Install the Python service's locked dependencies |
 | `npm run analytics:dev` | Start the Python service |
+| `npm run logos:fetch` | Re-download company logos after changing the catalog |
 
 ## Project layout
 

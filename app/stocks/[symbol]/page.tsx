@@ -15,6 +15,7 @@ import { Card } from "@/components/ui/card";
 import { sliceTimeframe } from "@/lib/chart";
 import { getListing, getStockDetail, STOCK_SYMBOLS } from "@/lib/market";
 import type { Listing } from "@/lib/market";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 /**
  * Tells Next.js which pages to build ahead of time (at `npm run build`): the
@@ -83,7 +84,9 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
             intraday={stock.intraday}
             today={{ change: stock.change, percent: stock.changePercent }}
             title={
-              <div className="min-w-0">
+              <div className="flex min-w-0 items-center gap-3.5">
+                <StockLogo symbol={stock.symbol} size={48} />
+                <div className="min-w-0">
                 <h1 id="stock-title" className="text-2xl font-semibold tracking-tight">
                   {stock.symbol} <span className="font-normal text-muted">{stock.name}</span>
                 </h1>
@@ -91,6 +94,7 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
                   {stock.sector ?? "Sector not available"}
                   <WatchToggle symbol={stock.symbol} />
                 </p>
+                </div>
               </div>
             }
           />

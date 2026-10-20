@@ -9,6 +9,7 @@ import { formatCompactCurrency, formatCurrency } from "@/lib/format";
 import { nextSort, sortStocks, type Sort, type SortKey } from "@/lib/sort";
 import type { StockTableRow } from "./stock-table-rows";
 import { WatchToggle } from "./watch-toggle";
+import { StockLogo } from "@/components/stocks/stock-logo";
 
 interface Column {
   key: SortKey;
@@ -77,19 +78,24 @@ export function StockTable({ rows, label = "All stocks" }: { rows: StockTableRow
              * table would overflow the card.
              */}
             <td className="max-w-0 py-3 pr-4 sm:max-w-none">
-              {/*
-               * A <tr> can't be a link, so the link sits in the first cell and
-               * its ::after stretches over the whole row: clicking anywhere on
-               * the row follows it, and there's still one link per row for
-               * keyboard and screen reader users.
-               */}
-              <Link
-                href={`/stocks/${stock.symbol}`}
-                className="block font-semibold outline-none after:absolute after:inset-y-0 after:-inset-x-2 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-accent"
-              >
-                {stock.symbol}
-              </Link>
-              <span className="block truncate text-xs text-muted">{stock.name}</span>
+              <div className="flex items-center gap-3">
+                <StockLogo symbol={stock.symbol} size={36} hideOnPhone />
+                <div className="min-w-0">
+                  {/*
+                   * A <tr> can't be a link, so the link sits in the first cell and
+                   * its ::after stretches over the whole row: clicking anywhere on
+                   * the row follows it, and there's still one link per row for
+                   * keyboard and screen reader users.
+                   */}
+                  <Link
+                    href={`/stocks/${stock.symbol}`}
+                    className="block font-semibold outline-none after:absolute after:inset-y-0 after:-inset-x-2 after:rounded-lg focus-visible:after:outline-2 focus-visible:after:outline-accent"
+                  >
+                    {stock.symbol}
+                  </Link>
+                  <span className="block truncate text-xs text-muted">{stock.name}</span>
+                </div>
+              </div>
             </td>
             <td className="hidden py-3 pr-4 sm:table-cell">
               <TrendLine series={stock.trend} className="h-10 w-20" />
