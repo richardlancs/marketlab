@@ -3,7 +3,7 @@
  *
  * Licensing: Tiingo's free plan is for personal use only. It may not be shown
  * to other people, so a public deployment must not set TIINGO_API_KEY (the app
- * then uses the mock market). See the README.
+ * then uses the mock market). See docs/how-it-works.md, "Market data".
  *
  * The free plan allows 50 requests an hour and 1,000 a day. The dashboard needs
  * one request per core symbol (13) per refresh, and refreshes at most hourly.
