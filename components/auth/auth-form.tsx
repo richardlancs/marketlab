@@ -28,7 +28,8 @@ export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
     setPending(true);
     setError(null);
     const { error } = signUp
-      ? await authClient.signUp.email({ name: String(form.get("name")), email, password })
+      ? // callbackURL: where the confirmation link in the verification email leads back to.
+        await authClient.signUp.email({ name: String(form.get("name")), email, password, callbackURL: "/email-verified" })
       : await authClient.signIn.email({ email, password });
     setPending(false);
     if (error) {

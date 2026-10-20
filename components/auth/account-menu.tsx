@@ -52,6 +52,7 @@ export function AccountMenu() {
         <div className="px-3 py-2">
           <p className="truncate text-sm font-medium">{name}</p>
           <p className="truncate text-xs text-muted">{email}</p>
+          {session.user.emailVerified && <p className="mt-1 text-xs font-medium text-gain">Email confirmed ✓</p>}
         </div>
         <div className="my-1 border-t border-border" />
         <button

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { formatCurrency } from "@/lib/format";
 import { useAccount } from "./account-provider";
+import { VerifyEmailNotice } from "./verify-email-notice";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
@@ -10,14 +11,21 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
  * Messages about the account itself, under the header:
  * - after signing in, when this browser's guest and the account both had a
  *   portfolio of their own, the choice of which one to keep;
+ * - confirming your email address, until it's confirmed;
  * - problems reaching the server.
  */
-export function AccountNotices() {
+export function AccountNotices({ emailVerification }: { emailVerification: boolean }) {
   const { account, pendingGuest, resolvePendingGuest, error, dismissError } = useAccount();
   const [pending, setPending] = useState<"use-guest" | "keep-account" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  if (!pendingGuest && !error) return null;
+  if (!pendingGuest && !error) {
+    return (
+      <div className="mx-auto w-full max-w-7xl px-4 pt-4 empty:hidden sm:px-6 lg:px-8">
+        <VerifyEmailNotice enabled={emailVerification} />
+      </div>
+    );
+  }
 
   async function choose(choice: "use-guest" | "keep-account") {
     setPending(choice);
@@ -31,7 +39,8 @@ export function AccountNotices() {
     `${plural(a.holdings.length, "holding")}, ${formatCurrency(a.cash)} cash, ${plural(a.watchlist.length, "watched stock")} and ${plural(a.trades.length, "trade")}`;
 
   return (
-    <div className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
+    <div className="mx-auto w-full max-w-7xl space-y-2 px-4 pt-4 sm:px-6 lg:px-8">
+      <VerifyEmailNotice enabled={emailVerification} />
       {pendingGuest && (
         <section
           aria-labelledby="import-title"

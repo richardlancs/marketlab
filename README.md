@@ -74,7 +74,13 @@ When a guest signs in, `lib/db/guests.ts` hands their data over in one transacti
 
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the 4 PM New York close in summer and winter (`vercel.json`; Vercel's Hobby plan runs it some time within that hour). It loads fresh market data, then catches up every account that's behind, in batches within about 50 seconds (what doesn't fit waits for the next run, or the owner's next visit), and deletes guests unused for 180 days, old Phase 10 learners and old rate-limit counters. Only Vercel can run it: it sends the `CRON_SECRET` environment variable as a bearer token, and every other request is refused (all of them, if no secret is set). To run it locally: `CRON_SECRET=test npm run dev`, then `curl -H 'authorization: Bearer test' localhost:3000/api/cron/daily`.
 
-Email alerts are a natural next step, but need verified email addresses (sign-up doesn't verify them yet) and an email service.
+Email alerts are a natural next step: addresses can now be verified (below), so the job could send each user's triggered alerts to their confirmed address.
+
+### Email verification
+
+Signing up sends a link (valid for 24 hours) that confirms the address (`user.email_verified`); a notice under the header offers to send it again until it's confirmed, and the account menu shows "Email confirmed ✓". It doesn't block signing in: accounts made before verification existed keep working. The link leads to `/api/auth/verify-email` (Better Auth checks it, signs the user in) and then `/email-verified`, which explains an expired or broken link. Sending is rate-limited to 2 a minute.
+
+Emails go through [Resend](https://resend.com)'s HTTP API (`lib/email.ts`), set up with `RESEND_API_KEY` and `EMAIL_FROM` (an address on a domain you've verified with Resend). Without them, production offers no verification at all, so nothing promises an email that never comes; in development each email is printed to the server console instead, so the flow can be tried locally. Guests' placeholder addresses are never mailed.
 
 ## Running it locally
 
@@ -128,6 +134,7 @@ MarketLab runs on [Vercel](https://vercel.com) with a [Turso](https://turso.tech
    | `TIINGO_API_KEY` | **not set** | **not set** |
    | `MARKET_DATA_SOURCE` | optionally `mock`, as a second safety | the same |
    | `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings | the same |
+   | `RESEND_API_KEY`, `EMAIL_FROM` | from Resend, to send verification emails (optional: without them, verification is off) | the same, or unset |
    | `CRON_SECRET` | a new random value (`openssl rand -base64 32`): lets Vercel Cron run the daily job | not needed (Vercel Cron only runs on production) |
 
 6. **Deploy, then test the preview** before production:
@@ -167,4 +174,4 @@ A saved run stores its settings as JSON. Settings carry a `version` (now 2: cust
 - `lib/owner.ts`: whose data a request is about (signed-in user or guest cookie), and the handover when a guest signs in. `lib/db/guests.ts` holds the guest rules.
 - `lib/learn-actions.ts`, `app/api/learn-progress`: saving answers and loading lesson progress.
 - `lib/maintenance.ts`, `app/api/cron/daily`, `vercel.json`: the daily job.
-- `lib/auth.ts`: Better Auth configuration (email and password sign-in, rate limits).
+- `lib/auth.ts`: Better Auth configuration (email and password sign-in, email verification, rate limits). `lib/email.ts` sends email.

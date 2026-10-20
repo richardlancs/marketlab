@@ -4,6 +4,7 @@ import { AccountNotices } from "@/components/account/account-notices";
 import { AccountProvider } from "@/components/account/account-provider";
 import { TrendRangeProvider } from "@/components/charts/trend-range";
 import { Header } from "@/components/layout/header";
+import { emailEnabled } from "@/lib/email";
 import { getMarket } from "@/lib/market";
 import { CATALOG } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
@@ -69,7 +70,7 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <TrendRangeProvider>
         <AccountProvider quotes={quotes} listings={CATALOG} openTickers={marketMode() === "tiingo"} asOf={market.asOf}>
           <Header />
-          <AccountNotices />
+          <AccountNotices emailVerification={emailEnabled()} />
           {children}
           <footer className="mx-auto w-full max-w-7xl px-4 pt-4 pb-8 text-xs text-muted sm:px-6 lg:px-8">
             {market.source === "mock"

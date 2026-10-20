@@ -11,6 +11,7 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
 import { db } from "./db";
+import { emailEnabled, sendEmail, verificationEmail } from "./email";
 import * as schema from "./db/schema";
 
 /**
@@ -36,10 +37,25 @@ export const auth = betterAuth({
   emailAndPassword: {
     enabled: true,
     minPasswordLength: 8,
-    // Sign the user in straight after sign-up. There's no email sending yet,
-    // so addresses aren't verified; that would be a later addition.
+    // Signed in straight after sign-up, verified or not: requiring it would
+    // lock out every account made before verification existed. Verified
+    // addresses (user.emailVerified) are what email features rely on.
     autoSignIn: true,
   },
+  // Verifying email addresses: a link sent on sign-up (and on request from
+  // the banner, components/account/verify-email-notice.tsx), valid for a day.
+  // Only where email can be sent (lib/email.ts): otherwise nothing promises
+  // an email that never comes.
+  ...(emailEnabled() && {
+    emailVerification: {
+      sendOnSignUp: true,
+      autoSignInAfterVerification: true,
+      expiresIn: 24 * 60 * 60,
+      async sendVerificationEmail({ user, url }) {
+        await sendEmail(verificationEmail(user.email, user.name, url));
+      },
+    },
+  }),
   rateLimit: {
     // On in development too, so it can be tested. Stored in the database,
     // because online each server instance has its own memory.
@@ -49,6 +65,8 @@ export const auth = betterAuth({
       // Slow down password guessing: 5 sign-in attempts a minute per IP.
       "/sign-in/email": { window: 60, max: 5 },
       "/sign-up/email": { window: 60, max: 3 },
+      // Each one sends an email: a couple a minute is plenty.
+      "/send-verification-email": { window: 60, max: 2 },
     },
   },
   // Lets Server Actions set auth cookies. Must be the last plugin.
