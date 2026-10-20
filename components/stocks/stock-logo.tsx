@@ -34,7 +34,8 @@ export function StockLogo({ symbol, size = 32, hideOnPhone = false, className = 
   const inset = logo.kind === "mark" ? Math.round(size * 0.2) : 0;
   return (
     <span aria-hidden className={`${tile} bg-white`} style={style}>
-      <Image src={logo.src} alt="" width={size - inset * 2} height={size - inset * 2} className="object-contain" style={{ width: size - inset * 2, height: size - inset * 2 }} />
+      {/* unoptimized: the files are already small, and the image optimizer isn't routed on this Vercel Services setup. */}
+      <Image src={logo.src} alt="" unoptimized width={size - inset * 2} height={size - inset * 2} className="object-contain" style={{ width: size - inset * 2, height: size - inset * 2 }} />
     </span>
   );
 }

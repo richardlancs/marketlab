@@ -10,10 +10,12 @@
 // 2. Its mark from Simple Icons (CC0 icon data), filled with the brand colour.
 // 3. An icon of at least 48px from those same sources.
 // Anything else gets no file, and the site shows a lettered badge instead.
+// Icons over 128px are shrunk to 128px (with macOS sips; elsewhere they stay full size).
 // The marks remain their owners' trademarks; they're shown only to identify
 // each company's stock.
 
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 
 const OUT = new URL("../public/logos/", import.meta.url);
 const MANIFEST = new URL("../lib/market/logo-files.ts", import.meta.url);
@@ -96,7 +98,10 @@ await Promise.all(
     const png = await largestIcon(domain);
     const svg = GLYPHS[symbol] && (!png || png.width < 96 || PREFER_GLYPH.has(symbol)) ? await glyph(GLYPHS[symbol]) : null;
     const icon = () => {
-      writeFileSync(new URL(`${symbol}.${png.ext}`, OUT), png.bytes);
+      const file = new URL(`${symbol}.${png.ext}`, OUT);
+      writeFileSync(file, png.bytes);
+      // Served as-is (not through the image optimizer), so keep them small: 128px is sharp at 2x for a 48px tile.
+      if (png.width > 128 && process.platform === "darwin") execFileSync("sips", ["-Z", "128", file.pathname], { stdio: "ignore" });
       files[symbol] = { src: `/logos/${symbol}.${png.ext}`, kind: "icon" };
     };
     if (png && png.width >= 96 && !(svg && PREFER_GLYPH.has(symbol))) icon();
