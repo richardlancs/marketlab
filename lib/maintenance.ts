@@ -7,7 +7,7 @@
  *    (lib/processing.ts), which is safe to run twice, so the job and a visit
  *    can never apply anything twice.
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
- *    own, and other leftovers.
+ *    own, and other leftovers (including saved price snapshots no run uses).
  *
  * Accounts go in batches, within a time budget: whatever doesn't fit waits
  * for the next run (or for its owner's next visit, which catches up too).
@@ -30,6 +30,8 @@ export interface DailyDeps {
   deleteInactiveGuests(cutoff: number, limit: number): Promise<number>;
   deleteOrphanLearners(cutoff: number, limit: number): Promise<number>;
   pruneRateLimits(before: number): Promise<void>;
+  /** Deletes saved price snapshots no saved run refers to any more. */
+  deleteOrphanSnapshots(limit: number): Promise<number>;
 }
 
 export interface DailySummary {
@@ -40,6 +42,7 @@ export interface DailySummary {
   unfinished: boolean;
   guestsDeleted: number;
   learnersDeleted: number;
+  snapshotsDeleted: number;
   ms: number;
 }
 
@@ -81,6 +84,8 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
   const guestsDeleted = outOfTime() ? 0 : await deps.deleteInactiveGuests(cutoff, 500);
   const learnersDeleted = outOfTime() ? 0 : await deps.deleteOrphanLearners(cutoff, 500);
   await deps.pruneRateLimits(deps.now() - DAY);
+  // After the guests: their saved runs (and so their snapshots' last references) went with them.
+  const snapshotsDeleted = outOfTime() ? 0 : await deps.deleteOrphanSnapshots(500);
 
-  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, ms: deps.now() - start };
+  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, ms: deps.now() - start };
 }

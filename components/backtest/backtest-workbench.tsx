@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
-import { compareRunsAction, runBacktestAction } from "@/lib/backtest-actions";
+import { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, type ReproduceResult } from "@/lib/backtest-actions";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
 import { isSymbolFormat } from "@/lib/market/symbols";
 import { BacktestForm, defaultForm, formFromConfig, toConfig, type FormState } from "./backtest-form";
@@ -14,11 +14,18 @@ import { SweepPanel, SweepResults, type Measure } from "./sweep-panel";
 import { useSavedRuns } from "./use-saved-runs";
 import { useSweep } from "./use-sweep";
 import { parseShareFragment, shareFragment } from "@/lib/backtest/share";
+import type { StoredResult } from "@/lib/backtest/stored";
 import type { Axis } from "@/lib/backtest/sweep";
+import { formatDate } from "@/lib/format";
+import { RunProvenance } from "./run-provenance";
 
 type View =
   | { kind: "empty" }
-  | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome }
+  | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome; provenance: StoredResult["provenance"] }
+  /** A saved run's stored result, exactly as it was calculated (not re-run). */
+  | { kind: "saved"; run: SavedRun; result: StoredResult; reproduction: ReproduceResult | "running" | null }
+  /** A run saved before results were stored: only its settings exist. */
+  | { kind: "legacy"; run: SavedRun }
   | { kind: "compare"; runs: SavedRun[]; outcomes: BacktestOutcome[] }
   | { kind: "sweep"; measure: Measure };
 
@@ -63,7 +70,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
       const result = await runBacktestAction(config);
       if (!result.ok) return setError(result.message);
       setNote(result.note);
-      setView({ kind: "result", config, outcome: result.outcome });
+      setView({ kind: "result", config, outcome: result.outcome, provenance: result.provenance });
     });
 
   function run() {
@@ -77,7 +84,41 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
     setForm(formFromConfig(config));
     void runWith(config);
   }
-  const open = (run: SavedRun) => openConfig(run.config);
+  /**
+   * Opens a saved run: its stored result, exactly as calculated and saved
+   * (re-running, with current prices or the saved ones, is a separate button).
+   * A run saved before results were kept shows its settings only.
+   */
+  const open = (run: SavedRun) =>
+    busy(async () => {
+      setForm(formFromConfig(run.config));
+      if (!run.stored) {
+        setNote(null);
+        setView({ kind: "legacy", run });
+        return;
+      }
+      const loaded = await loadSavedRunAction(run.id);
+      if (!loaded.ok) return setError(loaded.message);
+      if (!loaded.stored) {
+        setNote(null);
+        setView({ kind: "legacy", run: loaded.run });
+        return;
+      }
+      setNote(loaded.stored.note);
+      setView({ kind: "saved", run: loaded.run, result: loaded.stored, reproduction: null });
+    });
+
+  /** Calculates a saved run again from its saved prices, with its original engine, and shows whether it matches. */
+  async function reproduce(run: SavedRun) {
+    setView((v) => (v.kind === "saved" && v.run.id === run.id ? { ...v, reproduction: "running" } : v));
+    let outcome: ReproduceResult;
+    try {
+      outcome = await reproduceSavedRunAction(run.id);
+    } catch {
+      outcome = { ok: false, message: "Couldn't reach the server. Check your connection and try again." };
+    }
+    setView((v) => (v.kind === "saved" && v.run.id === run.id ? { ...v, reproduction: outcome } : v));
+  }
 
   // Opened from a share link (/backtest#run=…), on arrival or when a link is
   // pasted into the address bar: load and run those settings.
@@ -156,8 +197,36 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             )}
           </div>
           <div className="mt-3">
-            {view.kind === "result" && note && <p className="mb-3 text-sm text-muted">{note}</p>}
-            {view.kind === "result" && <BacktestResults config={view.config} outcome={view.outcome} />}
+            {(view.kind === "result" || view.kind === "saved") && note && <p className="mb-3 text-sm text-muted">{note}</p>}
+            {view.kind === "result" && (
+              <>
+                <BacktestResults config={view.config} outcome={view.outcome} />
+                <RunProvenance provenance={view.provenance} />
+              </>
+            )}
+            {view.kind === "saved" && (
+              <>
+                <SavedRunBar view={view} onRerun={() => openConfig(view.run.config)} onReproduce={() => reproduce(view.run)} />
+                <BacktestResults config={view.run.config} outcome={view.result.outcome} />
+                <RunProvenance provenance={view.result.provenance} saved={view.run} />
+              </>
+            )}
+            {view.kind === "legacy" && (
+              <div className="py-12 text-center text-sm">
+                <p className="font-medium">{view.run.name}</p>
+                <p className="mx-auto mt-2 max-w-md text-muted">
+                  Saved {formatDate(view.run.createdAt)}, before MarketLab kept results and the prices they came from, so only its settings were saved and it can&apos;t be
+                  reproduced exactly. Its settings are in the form.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => openConfig(view.run.config)}
+                  className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                >
+                  Run with current prices
+                </button>
+              </div>
+            )}
             {view.kind === "compare" && <RunComparison runs={view.runs} outcomes={view.outcomes} />}
             {view.kind === "sweep" &&
               (sweep.state.status === "done" ? (
@@ -263,3 +332,45 @@ function CopyLink({ config }: { config: BacktestConfig }) {
     </button>
   );
 }
+
+/** Above a saved result: what it is, and the two ways to calculate it again. */
+function SavedRunBar({ view, onRerun, onReproduce }: { view: Extract<View, { kind: "saved" }>; onRerun: () => void; onReproduce: () => void }) {
+  const r = view.reproduction;
+  const engine = view.result.provenance.engine;
+  return (
+    <div className="mb-4 rounded-xl border border-accent/20 bg-accent/5 px-3.5 py-3 text-sm">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p>
+          <span className="font-medium">{view.run.name}</span>: the result as saved on {formatDate(view.run.createdAt)}, not re-run.
+        </p>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={onReproduce}
+            disabled={r === "running"}
+            className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
+          >
+            {r === "running" ? "Reproducing…" : "Reproduce from saved inputs"}
+          </button>
+          <button
+            type="button"
+            onClick={onRerun}
+            className="rounded-full border border-border bg-surface px-3 py-1.5 text-xs font-medium hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent"
+          >
+            Re-run with current prices
+          </button>
+        </div>
+      </div>
+      {r && r !== "running" && (
+        <p role="status" className={`mt-2 text-xs ${!r.ok || !r.comparison.matches ? "text-loss" : "text-gain"}`}>
+          {!r.ok
+            ? r.message
+            : r.comparison.matches
+              ? `Reproduced from the saved prices (dataset ${view.result.provenance.dataset.datasetVersion}) with the ${engine.name === "python" ? "Python" : "TypeScript"} engine ${r.reproduced.provenance.engine.version}: the same result ✓${r.comparison.largestDifference > 0 ? ` (largest difference ${r.comparison.largestDifference.toExponential(1)})` : ", identical"}.`
+              : `Reproduced, but the result differs: ${r.comparison.differences.join("; ")}.`}
+        </p>
+      )}
+    </div>
+  );
+}
+

@@ -2,15 +2,17 @@
  * Saved backtests, for signed-in users and guests alike. Every query is filtered by the user's
  * ID, so one user can never read or delete another's runs.
  */
-import { and, count, desc, eq, inArray } from "drizzle-orm";
+import { and, count, desc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun } from "../backtest/config";
+import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun, type StoredInfo } from "../backtest/config";
+import { parseSnapshot, type PriceSnapshot } from "../backtest/snapshot";
+import { parseStoredResult, type StoredResult } from "../backtest/stored";
 import { isSymbolFormat } from "../market/symbols";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
-const { backtestRun } = schema;
+const { backtestRun, priceSnapshot } = schema;
 
 /**
  * Hands one user's saved runs to another (a guest signing in), newest first,
@@ -25,31 +27,93 @@ export async function moveRuns(ex: Executor, fromUserId: string, toUserId: strin
   if (ids.length) await ex.update(backtestRun).set({ userId: toUserId }).where(and(eq(backtestRun.userId, fromUserId), inArray(backtestRun.id, ids)));
 }
 
+/** A saved run's full result and its input prices, saved with it (migration 0006). */
+export interface StoredRun {
+  result: StoredResult;
+  snapshot: PriceSnapshot;
+}
+
+const listColumns = {
+  id: backtestRun.id,
+  name: backtestRun.name,
+  config: backtestRun.config,
+  summary: backtestRun.summary,
+  createdAt: backtestRun.createdAt,
+  engine: backtestRun.engine,
+  engineVersion: backtestRun.engineVersion,
+  dataSource: backtestRun.dataSource,
+  simulated: backtestRun.simulated,
+  datasetVersion: backtestRun.datasetVersion,
+};
+
+function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }): SavedRun | null {
+  let run: SavedRun | null;
+  try {
+    run = parseSavedRun({ ...row, config: JSON.parse(row.config as string), summary: JSON.parse(row.summary as string) }, isSymbolFormat);
+  } catch {
+    return null;
+  }
+  if (!run) return null;
+  const stored: StoredInfo | undefined =
+    typeof row.engine === "string" && typeof row.engineVersion === "string" && typeof row.dataSource === "string" && typeof row.datasetVersion === "string"
+      ? { engine: { name: row.engine, version: row.engineVersion }, dataSource: row.dataSource, simulated: row.simulated === true, datasetVersion: row.datasetVersion }
+      : undefined;
+  return stored ? { ...run, stored } : run;
+}
+
 export function createBacktestRepository(db: Db) {
   return {
     /**
-     * The user's saved runs, newest first. Symbols are only checked for their
-     * format, so a run on a stock missing from today's data still lists; rows
-     * that are malformed are skipped.
+     * The user's saved runs, newest first, without their stored results
+     * (which can be large: see `get`). Symbols are only checked for their
+     * format, so a run on a stock missing from today's data still lists;
+     * rows that are malformed are skipped.
      */
     async list(userId: string): Promise<SavedRun[]> {
-      const rows = await db.select().from(backtestRun).where(eq(backtestRun.userId, userId)).orderBy(desc(backtestRun.createdAt));
-      return rows
-        .map((row) => {
-          try {
-            return parseSavedRun({ ...row, config: JSON.parse(row.config), summary: JSON.parse(row.summary) }, isSymbolFormat);
-          } catch {
-            return null;
-          }
-        })
-        .filter((run): run is SavedRun => run !== null);
+      const rows = await db.select(listColumns).from(backtestRun).where(eq(backtestRun.userId, userId)).orderBy(desc(backtestRun.createdAt));
+      return rows.map(toSavedRun).filter((run): run is SavedRun => run !== null);
     },
 
-    /** Saves a run; returns false (saving nothing) if the user already has the maximum. */
-    save: (userId: string, run: SavedRun) =>
+    /**
+     * One of the user's saved runs, with its stored result and input prices
+     * when it has them (null for runs saved before results were stored).
+     * Someone else's ID finds nothing.
+     */
+    async get(userId: string, id: string): Promise<{ run: SavedRun; stored: StoredRun | null } | null> {
+      const [row] = await db
+        .select({ ...listColumns, result: backtestRun.result, snapshot: priceSnapshot.data })
+        .from(backtestRun)
+        .leftJoin(priceSnapshot, eq(priceSnapshot.checksum, backtestRun.snapshotChecksum))
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id)));
+      if (!row) return null;
+      const run = toSavedRun(row);
+      if (!run) return null;
+      let stored: StoredRun | null = null;
+      try {
+        const result = row.result ? parseStoredResult(JSON.parse(row.result)) : null;
+        const snapshot = row.snapshot ? parseSnapshot(JSON.parse(row.snapshot)) : null;
+        stored = result && snapshot ? { result, snapshot } : null;
+      } catch {
+        stored = null;
+      }
+      return { run, stored };
+    },
+
+    /**
+     * Saves a run, with its full result and input prices when given. The
+     * snapshot is stored once per checksum and shared. Returns false (saving
+     * nothing) if the user already has the maximum.
+     */
+    save: (userId: string, run: SavedRun, stored?: StoredRun & { checksum: string }) =>
       writeTransaction(db, async (tx) => {
         const [{ total }] = await tx.select({ total: count() }).from(backtestRun).where(eq(backtestRun.userId, userId));
         if (total >= MAX_SAVED_RUNS) return false;
+        if (stored) {
+          await tx
+            .insert(priceSnapshot)
+            .values({ checksum: stored.checksum, data: JSON.stringify(stored.snapshot), source: stored.snapshot.source, simulated: stored.snapshot.simulated, asOf: stored.snapshot.asOf, createdAt: Date.now() })
+            .onConflictDoNothing();
+        }
         await tx.insert(backtestRun).values({
           id: run.id,
           userId,
@@ -57,6 +121,15 @@ export function createBacktestRepository(db: Db) {
           config: JSON.stringify(run.config),
           summary: JSON.stringify(run.summary),
           createdAt: run.createdAt,
+          ...(stored && {
+            result: JSON.stringify(stored.result),
+            snapshotChecksum: stored.checksum,
+            engine: stored.result.provenance.engine.name,
+            engineVersion: stored.result.provenance.engine.version,
+            dataSource: stored.result.provenance.dataset.source,
+            simulated: stored.result.provenance.dataset.simulated,
+            datasetVersion: stored.result.provenance.dataset.datasetVersion,
+          }),
         });
         return true;
       }),
@@ -65,5 +138,17 @@ export function createBacktestRepository(db: Db) {
     async remove(userId: string, id: string): Promise<void> {
       await db.delete(backtestRun).where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id)));
     },
+
+    /** Deletes snapshots no saved run refers to any more (the daily job). Returns how many went. */
+    deleteOrphanSnapshots: (limit: number) =>
+      writeTransaction(db, async (tx) => {
+        const orphans = await tx
+          .select({ checksum: priceSnapshot.checksum })
+          .from(priceSnapshot)
+          .where(notExists(tx.select({ one: sql`1` }).from(backtestRun).where(eq(backtestRun.snapshotChecksum, priceSnapshot.checksum))))
+          .limit(limit);
+        if (orphans.length) await tx.delete(priceSnapshot).where(inArray(priceSnapshot.checksum, orphans.map((o) => o.checksum)));
+        return orphans.length;
+      }),
   };
 }

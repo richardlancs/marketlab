@@ -181,9 +181,36 @@ export const backtestRun = sqliteTable(
     config: text("config").notNull(),
     summary: text("summary").notNull(),
     createdAt: integer("created_at").notNull(),
+    // Reproducibility (migration 0006). All null for runs saved before it,
+    // which kept only their settings and are shown as such.
+    /** The full stored result as JSON: the outcome (equity curve, trades, metrics, benchmark), note and provenance. */
+    result: text("result"),
+    /** The input prices, in price_snapshot. */
+    snapshotChecksum: text("snapshot_checksum"),
+    engine: text("engine"),
+    engineVersion: text("engine_version"),
+    dataSource: text("data_source"),
+    simulated: integer("simulated", { mode: "boolean" }),
+    datasetVersion: text("dataset_version"),
   },
   (table) => [index("backtest_run_user_idx").on(table.userId, table.createdAt)],
 );
+
+/**
+ * The exact input prices of saved backtests (lib/backtest/snapshot.ts), one
+ * row per distinct set, keyed by its SHA-256 checksum: immutable, and shared
+ * by every run calculated from the same prices. Rows no saved run refers to
+ * are deleted by the daily job.
+ */
+export const priceSnapshot = sqliteTable("price_snapshot", {
+  checksum: text("checksum").primaryKey(),
+  /** The snapshot as JSON. */
+  data: text("data").notNull(),
+  source: text("source").notNull(),
+  simulated: integer("simulated", { mode: "boolean" }).notNull(),
+  asOf: integer("as_of").notNull(),
+  createdAt: integer("created_at").notNull(),
+});
 
 /** Dividends and splits applied to the account. IDs are per user ("dividend:KO:<time>"), so the key includes the user. */
 export const accountEvent = sqliteTable(

@@ -1,5 +1,5 @@
 import { revalidateTag } from "next/cache";
-import { accounts, guests, learning } from "@/lib/db";
+import { accounts, backtests, guests, learning } from "@/lib/db";
 import { getMarket, getProcessingData } from "@/lib/market";
 import { runDaily } from "@/lib/maintenance";
 import { symbolsToProcess } from "@/lib/processing";
@@ -38,6 +38,7 @@ export async function GET(request: Request) {
     deleteInactiveGuests: (cutoff, limit) => guests.deleteInactive(cutoff, limit),
     deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
     pruneRateLimits,
+    deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
   });
   console.log("[cron] daily job:", JSON.stringify(summary));
   return Response.json(summary, { headers: { "Cache-Control": "no-store" } });

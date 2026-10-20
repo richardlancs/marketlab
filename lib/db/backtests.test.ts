@@ -95,6 +95,63 @@ describe("backtest repository", () => {
   });
 });
 
+describe("stored results (reproducibility)", () => {
+  const snapshot = {
+    version: 1 as const,
+    source: "mock" as const,
+    simulated: true,
+    asOf: 2,
+    adjustment: "split-and-dividend-adjusted-closes" as const,
+    series: { AAPL: { times: [1, 2], prices: [100, 110] } },
+    market: null,
+  };
+  const equity = [{ time: 1, price: 10_000 }, { time: 2, price: 11_000 }];
+  const metrics = { finalValue: 11_000, totalReturn: 0.1, cagr: 0, maxDrawdown: 0, drawdownPeak: null, drawdownTrough: null, volatility: 0, sharpe: null, trades: 1, exposure: 1 };
+  const result = {
+    outcome: { run: { equity, trades: [], metrics }, benchmark: { equity, trades: [], metrics } },
+    note: null,
+    provenance: {
+      engine: { name: "python", version: "1.0.0" },
+      dataset: { checksum: "abc123", datasetVersion: "mock:abc123", source: "mock", simulated: true, asOf: 2, firstDate: 1, lastDate: 2, observations: 2 },
+      assumptions: { signals: "…" },
+      computedAt: 3,
+    },
+  };
+
+  it("saves the full result with its prices, and lists what it came from without loading it", async () => {
+    await repo.save(userId, run("kept", 1), { result, snapshot, checksum: "abc123" });
+    const [listed] = await repo.list(userId);
+    expect(listed.stored).toEqual({ engine: { name: "python", version: "1.0.0" }, dataSource: "mock", simulated: true, datasetVersion: "mock:abc123" });
+    const found = await repo.get(userId, listed.id);
+    expect(found?.stored).toEqual({ result, snapshot });
+  });
+
+  it("reads runs saved before results were kept, and marks them", async () => {
+    await repo.save(userId, run("old", 1));
+    const [listed] = await repo.list(userId);
+    expect(listed.stored).toBeUndefined();
+    expect((await repo.get(userId, listed.id))?.stored).toBeNull();
+  });
+
+  it("finds only the owner's runs", async () => {
+    await repo.save(userId, run("mine", 1), { result, snapshot, checksum: "abc123" });
+    expect(await repo.get("someone-else", `${userId}-mine`)).toBeNull();
+  });
+
+  it("stores each snapshot once, and deletes it when no run uses it", async () => {
+    await repo.save(userId, run("a", 1), { result, snapshot, checksum: "shared" });
+    await repo.save(userId, run("b", 2), { result, snapshot, checksum: "shared" });
+    const count = async () => (await db.select().from(schema.priceSnapshot).where(eq(schema.priceSnapshot.checksum, "shared"))).length;
+    expect(await count()).toBe(1);
+    await repo.remove(userId, `${userId}-a`);
+    await repo.deleteOrphanSnapshots(100);
+    expect(await count()).toBe(1); // still used by "b"
+    await repo.remove(userId, `${userId}-b`);
+    await repo.deleteOrphanSnapshots(100);
+    expect(await count()).toBe(0);
+  });
+});
+
 describe("leaderboard repository", async () => {
   const { createLeaderboardRepository } = await import("./leaderboard");
   it("joins once per user, keeps names unique ignoring case, and leaves", async () => {

@@ -16,6 +16,7 @@ function world(behind: string[], { tick = 1, stuck = [] as string[], broken = []
     deleteInactiveGuests: vi.fn(async () => 3),
     deleteOrphanLearners: vi.fn(async () => 1),
     pruneRateLimits: vi.fn(async () => {}),
+    deleteOrphanSnapshots: vi.fn(async () => 2),
   };
   return { deps, pending };
 }
@@ -24,7 +25,7 @@ describe("the daily job", () => {
   it("catches up every account that's behind, in batches", async () => {
     const { deps, pending } = world(Array.from({ length: 120 }, (_, i) => `u${i}`));
     const summary = await runDaily(deps, { batch: 50 });
-    expect(summary).toMatchObject({ latestClose: 500, caughtUp: 120, failed: 0, unfinished: false, guestsDeleted: 3, learnersDeleted: 1 });
+    expect(summary).toMatchObject({ latestClose: 500, caughtUp: 120, failed: 0, unfinished: false, guestsDeleted: 3, learnersDeleted: 1, snapshotsDeleted: 2 });
     expect(pending.size).toBe(0);
   });
 

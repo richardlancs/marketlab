@@ -11,7 +11,11 @@
     "test:watch": "vitest",
     "check": "npm run lint && npm test && MARKET_DATA_SOURCE=mock npm run build",
     "db:generate": "drizzle-kit generate",
-    "db:migrate": "drizzle-kit migrate"
+    "db:migrate": "drizzle-kit migrate",
+    "analytics:install": "cd services/analytics && uv sync --extra dev --locked",
+    "analytics:dev": "cd services/analytics && uv run --extra dev --env-file ../../.env.local uvicorn main:app --host 127.0.0.1 --port 8000",
+    "test:python": "cd services/analytics && uv run --extra dev pytest -q",
+    "test:parity": "vitest run lib/backtest/parity.test.ts && npm run test:python -- tests/test_parity.py"
   },
   "dependencies": {
     "@libsql/client": "0.18.0",

@@ -188,6 +188,14 @@ export const summarize = ({ run, benchmark }: BacktestOutcome): RunSummary => ({
   benchmarkTotalReturn: benchmark.metrics.totalReturn,
 });
 
+/** What a saved run's stored result came from: shown in the list, without loading the result itself. */
+export interface StoredInfo {
+  engine: { name: string; version: string };
+  dataSource: string;
+  simulated: boolean;
+  datasetVersion: string;
+}
+
 /** A backtest saved by the user: its settings, a name, and its results when saved. */
 export interface SavedRun {
   id: string;
@@ -195,6 +203,8 @@ export interface SavedRun {
   createdAt: number;
   config: BacktestConfig;
   summary: RunSummary;
+  /** Present when the full result and its input prices were saved (from migration 0006 on); absent for older runs, which kept only their settings. */
+  stored?: StoredInfo;
 }
 
 export const MAX_SAVED_RUNS = 50;

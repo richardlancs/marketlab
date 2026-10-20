@@ -82,6 +82,122 @@ Signing up sends a link (valid for 24 hours) that confirms the address (`user.em
 
 Emails go through [Resend](https://resend.com)'s HTTP API (`lib/email.ts`), set up with `RESEND_API_KEY` and `EMAIL_FROM` (an address on a domain you've verified with Resend). Without them, production offers no verification at all, so nothing promises an email that never comes; in development each email is printed to the server console instead, so the flow can be tried locally. Guests' placeholder addresses are never mailed.
 
+## Python analytics service and reproducible backtests
+
+Backtests can be calculated by the TypeScript engine in the Next.js server (the default) or by a Python service, `services/analytics/`. That service uses FastAPI, Pydantic, pandas and NumPy, and its own README covers setup, the API contract and the simulation rules.
+
+### Choosing the engine
+
+`BACKTEST_ENGINE` is server-side only and is either `typescript` (the default) or `python`.
+- **With `python`:** buy-and-hold and moving-average crossover runs go to Python. Every other strategy, and every parameter sweep, stays on TypeScript.
+- **Labelling:** every result says which engine calculated it.
+- **Failures:** if the Python service fails, times out or refuses a request, the page shows an error. It never quietly falls back to TypeScript.
+- **Switching back:** set `BACKTEST_ENGINE=typescript`, or remove the variable, and restart.
+
+Both engines follow the same rules and give identical results on fixed datasets (`npm run test:parity`).
+
+**How a run works.** The browser sends only settings. The server:
+1. checks the settings and the per-visitor rate limit;
+2. loads prices through the existing market-data layer;
+3. sends them to the engine, with the shared `ANALYTICS_SERVICE_TOKEN` when it's Python;
+4. checks the answer before using it.
+
+Results are cached for an hour, keyed by the settings, the input dataset's checksum and the engine's version. New prices, or a new Python engine version (read from its `/health`), therefore recalculate.
+
+### Where a result's data comes from
+
+Under every result, MarketLab shows:
+- which engine calculated it, and its version;
+- whether the prices are **simulated** (the mock market) or real (Tiingo);
+- the date the data runs to, and the first and last dates used;
+- the dataset version (`<source>:<checksum prefix>`);
+- the simulation assumptions.
+
+**Real data is never mixed with simulated data.** If real prices are selected but the provider is unavailable (so the market cache fell back to the mock market), the run fails with a clear message rather than running on simulated prices or mixing the two. Tiingo's personal-use restriction is unchanged: public deployments stay on the mock market.
+
+### Saved runs keep their result
+
+Saving a run stores:
+- its **full result**: equity curve, trades, metrics, benchmark, note and assumptions;
+- the **exact input prices** as an immutable snapshot. Each snapshot is identified by its SHA-256 checksum and stored once, even if several runs use it;
+- the snapshot's source, the engine and its version.
+
+| Action | What it does |
+|---|---|
+| **Open** a saved run | Shows the stored result exactly as it was saved, without recalculating. |
+| **Reproduce from saved inputs** | Recalculates from the saved prices with the engine that produced it (skipping the cache) and reports whether the result is identical. |
+| **Re-run with current prices** | A fresh run on today's data. |
+
+Runs saved before this change still open; they're labelled *"Older run: settings only, no saved result"* and offer a fresh run. Snapshots that no saved run uses any more are deleted by the daily job.
+
+**Migration 0006** adds the `price_snapshot` table and nullable columns on `backtest_run`. It only adds things, so it's safe to apply before deploying, and existing rows stay valid:
+
+```bash
+npm run db:migrate                                                    # local.db
+DATABASE_URL=libsql://… DATABASE_AUTH_TOKEN=… npm run db:migrate      # each Turso database, before deploying
+```
+
+### Running both services locally
+
+```bash
+brew install uv                  # or: pipx install uv / pip install uv
+npm run analytics:install
+# .env.local: BACKTEST_ENGINE=python, ANALYTICS_URL=http://127.0.0.1:8000, ANALYTICS_SERVICE_TOKEN=<random>
+npm run analytics:dev            # terminal 1: the Python service on :8000
+npm run dev                      # terminal 2: Next.js on :3000
+```
+
+Then, on `/backtest`, check the following:
+1. Run AAPL with the moving-average crossover. The line under the results says *"Calculated by the Python engine"*.
+2. Save the run, reload the page, and open it. It shows *"the result as saved on …, not re-run"*.
+3. Click **Reproduce from saved inputs**. It reports *"the same result ✓, identical"*.
+4. Stop the Python service and run again. You get *"The Python engine couldn't be reached"*, and no TypeScript fallback.
+
+To check the other engine, set `BACKTEST_ENGINE=typescript` and restart.
+
+### Deploying the Python service on Vercel
+
+Vercel **[Services](https://vercel.com/docs/services)** can run the Next.js app and the FastAPI service in **one project**:
+- requests are routed per service by top-level rewrites;
+- one service calls another privately through a **binding**, which injects the target's URL as an environment variable, here `ANALYTICS_URL`;
+- a service with no public rewrite isn't reachable from the internet.
+
+Things to know before switching:
+- **Services is in Beta** (on all plans).
+- **Bindings don't authenticate calls.** That's why the service also checks `ANALYTICS_SERVICE_TOKEN`.
+- **Each service follows the usual Vercel Functions limits** (memory, duration).
+- **Build settings move into each service.** With `services` present, top-level `buildCommand`, `framework` and similar keys aren't allowed.
+- **The project's Framework setting must be "Services".**
+- **Two parts of this setup aren't covered by the docs as of Oct 2026:**
+  - a Next.js service whose `root` is the repository root (`./`) while another service lives in a subfolder;
+  - top-level `crons` (the daily job) alongside `services`.
+
+  Both need checking on a preview deployment before production.
+
+**Recommendation: one project with Services**, prepared in `deploy/vercel.services.json`:
+- `web` is the Next.js app at the repository root, with a binding to `analytics` that sets `ANALYTICS_URL`;
+- `analytics` is `services/analytics/` (`main:app`), and stays private, with no public rewrite;
+- every public path goes to `web`, and the cron entry is kept.
+
+The live `vercel.json` is unchanged until this has been verified, so production keeps building exactly as now. To switch:
+
+1. **Apply migration 0006** to both Turso databases.
+2. **Set environment variables** in Project → Settings → Environment Variables:
+   - `ANALYTICS_SERVICE_TOKEN`: a new random value, for Production and Preview. Both services read the project's variables.
+   - `BACKTEST_ENGINE`: start with `typescript`, then set it to `python` when ready.
+   - Don't set `ANALYTICS_URL`; the binding provides it.
+3. **On a branch:** replace `vercel.json` with `deploy/vercel.services.json` and push to get a preview. Set the project's Framework to Services when Vercel asks.
+4. **On that preview, check:**
+   - `/`, `/stocks/AAPL`, sign-in, `/backtest` with `BACKTEST_ENGINE=python` (results say "Python engine"), saving and reproducing;
+   - that `/api/cron/daily` still answers 401 without the secret;
+   - after merging, in Vercel → Cron Jobs, that the daily job is listed and runs.
+5. **Merge to production.** To undo, use Instant Rollback to the previous deployment, or set `BACKTEST_ENGINE=typescript`. That turns Python off without touching routing.
+
+**If the cron job or the root-level Next.js service turns out not to work with Services**, the alternative is a **separate Vercel project** for `services/analytics/`, with its root directory set to it:
+- set `ANALYTICS_URL` to that project's URL;
+- keep `ANALYTICS_SERVICE_TOKEN` the same in both projects;
+- because that service is public, the token is its only protection.
+
 ## Running it locally
 
 ```bash
@@ -110,6 +226,10 @@ In `.env.local`:
 | `npm run check`       | Lint, test and build: run before deploying                      |
 | `npm run db:generate` | Write a new migration in `drizzle/` after changing `lib/db/schema.ts` |
 | `npm run db:migrate`  | Apply migrations to the database in `DATABASE_URL`              |
+| `npm run analytics:install` | Install the Python service's locked dependencies (needs `uv`) |
+| `npm run analytics:dev` | Start the Python service on :8000, reading `.env.local` |
+| `npm run test:python` | The Python tests (engine, API, parity) |
+| `npm run test:parity` | Check the TypeScript reference results, then Python against them |
 
 ## Deploying
 
@@ -165,11 +285,13 @@ If you self-host on more than one server instance (not needed on Vercel), also s
 - `lib/glossary.ts`: every explained term (the ⓘ popovers, `/learn` and each lesson's opening), in learning-path order.
 - `lib/lessons/`: the lessons at `/learn/<slug>`. `content/` holds the text, one file per group, with tests that recompute every worked example; `slugs.ts` the addresses (proxy.ts 404s any other); `demos.ts` the math behind the interactive demos (`components/learn/demos/`), which uses arithmetic only so the server and browser draw identical charts; `progress.ts` the rules for answers, scores, passes and merging a guest's progress into an account. `lessons.test.ts` holds every lesson to the format: 3–5 minutes, every part filled in, a quiz covering terminology, use and the real world, and only valid links.
 - `lib/backtest/share.ts`: backtest share links (`/backtest#run=…`).
+- `lib/backtest/engines.ts`, `python-client.ts`, `snapshot.ts`, `stored.ts`, `server.ts`: choosing and calling an engine, the Python client, price snapshots and their checksums, stored results and the comparison used when reproducing them, and the shared run service the Server Actions call.
+- `services/analytics/`: the Python backtesting service (see its README). `deploy/vercel.services.json`: the prepared one-project Vercel Services configuration.
 - `lib/leaderboard.ts`, `lib/leaderboard-data.ts`, `lib/leaderboard-actions.ts`: display-name rules and standings, the cached public standings, and joining or leaving.
 
 ### Saved backtests and versions
 
-A saved run stores its settings as JSON. Settings carry a `version` (now 2: custom rules were added). Older settings are upgraded when they're read, and settings from a newer version are refused rather than misread, so adding a strategy never needs a database migration. (`lib/backtest/saved-local.ts` only reads the list of runs browsers kept in localStorage before saved runs moved to the database, to import them once.)
+A saved run stores its settings as JSON (and, from migration 0006, its full result and a reference to its price snapshot: see [Saved runs keep their result](#saved-runs-keep-their-result)). Settings carry a `version` (now 2: custom rules were added). Older settings are upgraded when they're read, and settings from a newer version are refused rather than misread, so adding a strategy never needs a database migration. (`lib/backtest/saved-local.ts` only reads the list of runs browsers kept in localStorage before saved runs moved to the database, to import them once.)
 - `lib/db/`: the database schema (Drizzle), and the code that reads and writes accounts, saved backtests, the leaderboard and lesson progress (`learning.ts`).
 - `lib/owner.ts`: whose data a request is about (signed-in user or guest cookie), and the handover when a guest signs in. `lib/db/guests.ts` holds the guest rules.
 - `lib/learn-actions.ts`, `app/api/learn-progress`: saving answers and loading lesson progress.

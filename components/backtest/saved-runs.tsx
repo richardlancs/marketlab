@@ -31,7 +31,7 @@ export function SavedRuns({ runs, signedIn, selected, onToggle, onCompare, onOpe
         <h2 id="saved-runs" className="text-lg font-semibold tracking-tight">
           Saved runs
         </h2>
-        <span className="text-xs text-muted">{signedIn ? "In your account" : "In this browser"}</span>
+        <span className="text-xs text-muted">{signedIn ? "In your account" : "For this browser"}</span>
       </div>
 
       {runs === null ? (
@@ -69,6 +69,11 @@ export function SavedRuns({ runs, signedIn, selected, onToggle, onCompare, onOpe
                     <p className={`text-xs font-medium tabular-nums ${run.summary.totalReturn >= 0 ? "text-gain" : "text-loss"}`}>
                       {formatPercent(run.summary.totalReturn)}
                       <span className="font-normal text-muted"> vs {formatPercent(run.summary.benchmarkTotalReturn)}</span>
+                    </p>
+                    <p className="truncate text-[11px] text-muted">
+                      {run.stored
+                        ? `Saved result · ${run.stored.engine.name === "python" ? "Python" : "TypeScript"} ${run.stored.engine.version} · ${run.stored.simulated ? "simulated" : "real"} prices`
+                        : "Older run: settings only, no saved result"}
                     </p>
                   </div>
                   <button

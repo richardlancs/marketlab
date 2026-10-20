@@ -8,7 +8,10 @@
  * than taken from the browser.
  */
 import { MAX_RUN_NAME, MAX_SAVED_RUNS, parseConfig, parseSavedRun, summarize, type BacktestConfig, type SavedRun } from "./backtest/config";
-import { runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
+import type { EngineName } from "./backtest/engines";
+import { runFromSnapshot, runFull, runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
+import { checksumOf } from "./backtest/snapshot";
+import { compareResults, type Comparison, type StoredResult } from "./backtest/stored";
 import type { Axis } from "./backtest/sweep";
 import { backtests } from "./db";
 import { isSymbolFormat } from "./market/symbols";
@@ -23,15 +26,26 @@ export async function saveBacktestAction(name: unknown, config: unknown): Promis
   const parsed = parseConfig(config, isSymbolFormat);
   if (!parsed) return { ok: false, message: "Those backtest settings aren't valid." };
 
-  // Each stock must exist, and the summary comes from the server's own run (cached: usually the one just shown).
-  const result = await runOnServer(parsed);
+  // Each stock must exist, and the result comes from the server's own run
+  // (cached: usually the one just shown), never from the browser. It's saved
+  // whole, with the exact prices it was calculated from.
+  const result = await runFull(parsed);
   if (!result.ok) return { ok: false, message: result.message };
   const summary = summarize(result.outcome);
+  const { snapshot, ok: _ok, ...stored } = result;
+  void _ok;
 
   const owner = await currentOwner({ create: true });
   if (!owner) return { ok: false, message: "Couldn't save the run. Reload the page and try again." };
-  const run: SavedRun = { id: crypto.randomUUID(), name: cleanName, createdAt: Date.now(), config: parsed, summary };
-  if (!(await backtests.save(owner.id, run))) return { ok: false, message: `You can save up to ${MAX_SAVED_RUNS} runs. Delete one to make room.` };
+  const run: SavedRun = {
+    id: crypto.randomUUID(),
+    name: cleanName,
+    createdAt: Date.now(),
+    config: parsed,
+    summary,
+    stored: { engine: stored.provenance.engine, dataSource: stored.provenance.dataset.source, simulated: stored.provenance.dataset.simulated, datasetVersion: stored.provenance.dataset.datasetVersion },
+  };
+  if (!(await backtests.save(owner.id, run, { result: stored, snapshot, checksum: checksumOf(snapshot) }))) return { ok: false, message: `You can save up to ${MAX_SAVED_RUNS} runs. Delete one to make room.` };
   return { ok: true, run };
 }
 
@@ -104,4 +118,46 @@ export async function runSweepAction(base: unknown, axes: unknown): Promise<Swee
   if (!Array.isArray(axes) || axes.length < 1 || axes.length > 2 || !axes.every(isAxis)) return { ok: false, message: "Choose one or two settings to vary." };
   if (!(await allow("sweep", 6, 60))) return { ok: false, message: "You're running a lot of sweeps. Wait a minute and try again." };
   return sweepOnServer(parsed, axes.map(({ param, from, to, step }) => ({ param, from, to, step })));
+}
+
+export type SavedResult = { ok: true; run: SavedRun; stored: StoredResult | null } | { ok: false; message: string };
+
+/**
+ * One of this visitor's saved runs, with its stored result: what opening a
+ * saved run shows, exactly as it was calculated. Older runs (saved before
+ * results were kept) come back with `stored: null`.
+ */
+export async function loadSavedRunAction(id: unknown): Promise<SavedResult> {
+  if (typeof id !== "string" || id.length > 64) return { ok: false, message: "That saved run doesn't exist." };
+  const owner = await currentOwner({ create: false });
+  const found = owner ? await backtests.get(owner.id, id) : null; // only the owner's own runs
+  if (!found) return { ok: false, message: "That saved run doesn't exist." };
+  return { ok: true, run: found.run, stored: found.stored?.result ?? null };
+}
+
+export type ReproduceResult = { ok: true; reproduced: StoredResult; comparison: Comparison } | { ok: false; message: string };
+
+/**
+ * Calculates a saved run again from its saved input prices, with the engine
+ * that calculated it, and compares the two: proof that the stored result
+ * follows from its inputs. (Re-running with current prices is the separate
+ * runBacktestAction.)
+ */
+export async function reproduceSavedRunAction(id: unknown): Promise<ReproduceResult> {
+  if (typeof id !== "string" || id.length > 64) return { ok: false, message: "That saved run doesn't exist." };
+  const owner = await currentOwner({ create: false });
+  const found = owner ? await backtests.get(owner.id, id) : null;
+  if (!found) return { ok: false, message: "That saved run doesn't exist." };
+  if (!found.stored) return { ok: false, message: "This run was saved before MarketLab kept results and their input prices, so it can't be reproduced. Re-run it with current prices instead." };
+  const config = parseConfig(found.run.config, isSymbolFormat);
+  if (!config) return { ok: false, message: INVALID };
+  const engine = found.stored.result.provenance.engine.name;
+  if (engine !== "typescript" && engine !== "python") return { ok: false, message: `This run was calculated by an engine this server doesn't have (${engine}).` };
+  if (!(await allow("backtest", 60, 60))) return { ok: false, message: TOO_MANY };
+  // Fresh, not from the cache: otherwise a recent run would just be handed back to itself.
+  const result = await runFromSnapshot(config, found.stored.snapshot, engine as EngineName, { fresh: true });
+  if (!result.ok) return { ok: false, message: result.message };
+  const { ok: _ok, ...reproduced } = result;
+  void _ok;
+  return { ok: true, reproduced, comparison: compareResults(found.stored.result.outcome, reproduced.outcome) };
 }
