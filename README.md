@@ -96,6 +96,10 @@ Backtests can be calculated by the TypeScript engine in the Next.js server (the 
 
 Both engines follow the same rules and give identical results on fixed datasets (`npm run test:parity`).
 
+**The Python service also uses the database.** When a Python-engine run is saved, the Python service recalculates the result from the price snapshot itself and writes it, with the snapshot, to Turso. When one is reproduced, the Python service reads the run and its saved prices from the database. Python uses the same `DATABASE_URL` and `DATABASE_AUTH_TOKEN` as the Next.js server.
+
+The Next.js server stays the gatekeeper: it checks the session or guest cookie and the rate limits, and sends the verified owner's ID, which Python accepts only with the service token. Everything else (accounts, guests, lesson progress, TypeScript runs, and listing and opening saved runs) is still read and written by Next.js. See `services/analytics/README.md`, under "Database access".
+
 **How a run works.** The browser sends only settings. The server:
 1. checks the settings and the per-visitor rate limit;
 2. loads prices through the existing market-data layer;
@@ -183,7 +187,7 @@ The live `vercel.json` is unchanged until this has been verified, so production 
 
 1. **Apply migration 0006** to both Turso databases.
 2. **Set environment variables** in Project → Settings → Environment Variables:
-   - `ANALYTICS_SERVICE_TOKEN`: a new random value, for Production and Preview. Both services read the project's variables.
+   - `ANALYTICS_SERVICE_TOKEN`: a new random value, for Production and Preview. Both services read the project's variables, including `DATABASE_URL` and `DATABASE_AUTH_TOKEN`, which the Python service also uses.
    - `BACKTEST_ENGINE`: start with `typescript`, then set it to `python` when ready.
    - Don't set `ANALYTICS_URL`; the binding provides it.
 3. **On a branch:** replace `vercel.json` with `deploy/vercel.services.json` and push to get a preview. Set the project's Framework to Services when Vercel asks.

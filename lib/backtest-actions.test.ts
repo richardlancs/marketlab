@@ -15,6 +15,11 @@ vi.mock("./rate-limit", () => ({
   },
 }));
 vi.mock("./db", () => db);
+const python = vi.hoisted(() => {
+  class PythonEngineError extends Error {}
+  return { PythonEngineError, savePythonRun: vi.fn(), reproducePythonRun: vi.fn() };
+});
+vi.mock("./backtest/python-client", () => python);
 vi.mock("./owner", () => ({ currentOwner: async () => owner.current }));
 
 const { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, runSweepAction, saveBacktestAction } = await import("./backtest-actions");
@@ -96,20 +101,42 @@ describe("saved results", () => {
     expect(await reproduceSavedRunAction("run-1")).toMatchObject({ ok: false, message: expect.stringContaining("Re-run it with current prices") });
   });
 
-  it("reproduce with the stored engine, from the saved prices, not from the cache", async () => {
-    db.backtests.get.mockResolvedValue({ run: savedRun, stored });
-    server.runFromSnapshot.mockResolvedValue({ ok: true, ...stored.result });
+  it("reproduce a TypeScript run here, from the saved prices, not from the cache", async () => {
+    const tsStored = { ...stored, result: { ...stored.result, provenance: { engine: { name: "typescript", version: "1.0.0" } } } };
+    db.backtests.get.mockResolvedValue({ run: savedRun, stored: tsStored });
+    server.runFromSnapshot.mockResolvedValue({ ok: true, ...tsStored.result });
     const result = await reproduceSavedRunAction("run-1");
-    expect(server.runFromSnapshot).toHaveBeenCalledWith(config, stored.snapshot, "python", { fresh: true });
+    expect(server.runFromSnapshot).toHaveBeenCalledWith(config, tsStored.snapshot, "typescript", { fresh: true });
     expect(result).toMatchObject({ ok: true, comparison: { matches: true } });
   });
 
-  it("save the server's own result with its prices", async () => {
-    server.runFull.mockResolvedValue({ ok: true, ...stored.result, provenance: { ...stored.result.provenance, dataset: { source: "mock", simulated: true, datasetVersion: "mock:1" } }, snapshot: { version: 1, series: {} } });
+  it("have the Python service reproduce a Python run, from the database, for the verified owner", async () => {
+    db.backtests.get.mockResolvedValue({ run: savedRun, stored });
+    python.reproducePythonRun.mockResolvedValue({ reproduced: stored.result, comparison: { matches: true, largestDifference: 0, differences: [] } });
+    expect(await reproduceSavedRunAction("run-1")).toMatchObject({ ok: true, comparison: { matches: true } });
+    expect(python.reproducePythonRun).toHaveBeenCalledWith("run-1", "user-1");
+    expect(server.runFromSnapshot).not.toHaveBeenCalled();
+    python.reproducePythonRun.mockRejectedValue(new python.PythonEngineError("The database couldn't be reached. Try again in a minute."));
+    expect(await reproduceSavedRunAction("run-1")).toEqual({ ok: false, message: "The database couldn't be reached. Try again in a minute." });
+  });
+
+  it("have the Python service save a Python run, for the verified owner, and never fall back", async () => {
+    server.runFull.mockResolvedValue({ ok: true, ...stored.result, provenance: { ...stored.result.provenance, assumptions: {}, dataset: { source: "mock", simulated: true, datasetVersion: "mock:1" } }, snapshot: { version: 1, series: {} } });
+    python.savePythonRun.mockResolvedValue({ summary: { finalValue: 1, totalReturn: 0, cagr: 0, maxDrawdown: 0, benchmarkTotalReturn: 0 }, result: stored.result });
+    expect(await saveBacktestAction("Mine", config)).toMatchObject({ ok: true, run: { name: "Mine", summary: { finalValue: 1 } } });
+    expect(python.savePythonRun.mock.calls[0][0]).toMatchObject({ ownerId: "user-1", config, snapshot: { version: 1, series: {} } });
+    expect(db.backtests.save).not.toHaveBeenCalled();
+    python.savePythonRun.mockRejectedValue(new python.PythonEngineError("You can save up to 50 runs. Delete one to make room."));
+    expect(await saveBacktestAction("Mine", config)).toEqual({ ok: false, message: "You can save up to 50 runs. Delete one to make room." });
+    expect(db.backtests.save).not.toHaveBeenCalled();
+  });
+
+  it("save a TypeScript run's own result with its prices", async () => {
+    server.runFull.mockResolvedValue({ ok: true, ...stored.result, provenance: { ...stored.result.provenance, engine: { name: "typescript", version: "1.0.0" }, dataset: { source: "mock", simulated: true, datasetVersion: "mock:1" } }, snapshot: { version: 1, series: {} } });
     db.backtests.save.mockResolvedValue(true);
     await saveBacktestAction("Mine", config);
     const [, run, kept] = db.backtests.save.mock.calls[0];
-    expect(run.stored).toEqual({ engine: { name: "python", version: "1.0.0" }, dataSource: "mock", simulated: true, datasetVersion: "mock:1" });
+    expect(run.stored).toEqual({ engine: { name: "typescript", version: "1.0.0" }, dataSource: "mock", simulated: true, datasetVersion: "mock:1" });
     expect(kept.snapshot).toEqual({ version: 1, series: {} });
     expect(kept.checksum).toMatch(/^[0-9a-f]{64}$/);
   });

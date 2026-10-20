@@ -6,24 +6,28 @@ Only MarketLab's Next.js server calls it: requests carry the shared secret
 ANALYTICS_SERVICE_TOKEN as a bearer token, and the prices come from the
 Next.js server's own market data, never from a browser.
 
-    GET  /health        Liveness, and the engine version. No token needed.
-    POST /v1/backtests  Runs one backtest. See BacktestRequest / BacktestResponse.
+    GET  /health                             Liveness, and the engine version. No token needed.
+    POST /v1/backtests                       Runs one backtest. See BacktestRequest / BacktestResponse.
+    POST /v1/saved-runs                      Calculates a run from a snapshot and saves it (database).
+    POST /v1/saved-runs/{id}/reproduce       Reads a saved run (database), recalculates it, compares.
 """
 
 from __future__ import annotations
 
 import hmac
+import json
 import math
 import os
 from typing import Annotated, Literal, Union
 
-from fastapi import Depends, FastAPI, Header, HTTPException, Request
+from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 from pydantic.alias_generators import to_camel
 
-from . import engine
+from . import db as database
+from . import engine, saved
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -101,6 +105,60 @@ class SeriesModel(Model):
         if not all(math.isfinite(p) for p in prices):
             raise ValueError("every price must be a finite number")
         return prices
+
+
+class SnapshotMarket(Model):
+    symbol: str
+    name: str
+    data: SeriesModel
+
+
+class SnapshotModel(Model):
+    """A price snapshot (lib/backtest/snapshot.ts): the exact prices a run used."""
+
+    version: Literal[1]
+    source: Literal["mock", "tiingo"]
+    simulated: bool
+    as_of: int
+    adjustment: Literal["split-and-dividend-adjusted-closes"]
+    series: Annotated[dict[str, SeriesModel], Field(min_length=1, max_length=5)]
+    market: SnapshotMarket | None
+
+
+class DatasetModel(Model):
+    checksum: Annotated[str, Field(pattern=r"^[0-9a-f]{64}$")]
+    dataset_version: Annotated[str, Field(max_length=40)]
+    source: Literal["mock", "tiingo"]
+    simulated: bool
+    as_of: int
+    first_date: int | None
+    last_date: int | None
+    observations: int
+
+
+OwnerId = Annotated[str, Field(min_length=1, max_length=64)]
+
+
+class SavedRunInfo(Model):
+    id: Annotated[str, Field(min_length=1, max_length=64)]
+    name: Annotated[str, Field(min_length=1, max_length=80)]
+    created_at: int
+
+
+class SaveRequest(Model):
+    """Save a run: the service calculates it from the snapshot itself, then stores the result and the snapshot."""
+
+    owner_id: OwnerId
+    run: SavedRunInfo
+    config: "ConfigModel"
+    snapshot: SnapshotModel
+    dataset: DatasetModel
+    note: Annotated[str, Field(max_length=2000)] | None = None
+    assumptions: dict[str, Annotated[str, Field(max_length=500)]]
+
+
+class OwnerRequest(Model):
+    owner_id: OwnerId
 
 
 class BacktestRequest(Model):
@@ -207,24 +265,37 @@ def health() -> dict:
     return {"status": "ok", "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION}}
 
 
+def to_engine_config(c: ConfigModel) -> engine.Config:
+    return engine.Config(
+        holdings=[(h.symbol, h.weight) for h in c.holdings],
+        strategy=c.strategy.kind,
+        start=c.start,
+        end=c.end,
+        initial_cash=c.initial_cash,
+        costs=engine.Costs(commission=c.costs.commission, slippage_bps=c.costs.slippage_bps),
+        benchmark=c.benchmark,
+        fast=getattr(c.strategy, "fast", None),
+        slow=getattr(c.strategy, "slow", None),
+    )
+
+
+def get_database() -> database.Database:
+    """MarketLab's database (overridden in tests)."""
+    return database.from_environment()
+
+
+@app.exception_handler(database.DatabaseError)
+async def database_error(_request: Request, exc: database.DatabaseError):
+    print(f"[analytics] database error: {exc}")
+    return JSONResponse(status_code=503, content={"error": "The database couldn't be reached. Try again in a minute."})
+
+
 @app.post("/v1/backtests", response_model=BacktestResponse, response_model_by_alias=True, dependencies=[Depends(require_token)])
 def run_backtest(body: BacktestRequest) -> BacktestResponse:
-    c = body.config
     try:
         prices = {symbol: engine.to_series(symbol, s.times, s.prices) for symbol, s in body.prices.items()}
         market = engine.to_series("Market", body.market.times, body.market.prices) if body.market else None
-        config = engine.Config(
-            holdings=[(h.symbol, h.weight) for h in c.holdings],
-            strategy=c.strategy.kind,
-            start=c.start,
-            end=c.end,
-            initial_cash=c.initial_cash,
-            costs=engine.Costs(commission=c.costs.commission, slippage_bps=c.costs.slippage_bps),
-            benchmark=c.benchmark,
-            fast=getattr(c.strategy, "fast", None),
-            slow=getattr(c.strategy, "slow", None),
-        )
-        outcome = engine.run_config(config, prices, market)
+        outcome = engine.run_config(to_engine_config(body.config), prices, market)
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return BacktestResponse(
@@ -233,3 +304,56 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
         benchmark=_run_model(outcome.benchmark),
         warnings=outcome.warnings,
     )
+
+
+@app.post("/v1/saved-runs", dependencies=[Depends(require_token)])
+def save_run(body: SaveRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """
+    Calculates a run from its snapshot and saves it, with the snapshot, for
+    `ownerId` (the Next.js server has already checked who that is). The
+    result stored is this service's own calculation, not one sent to it.
+    """
+    snapshot = body.snapshot.model_dump(by_alias=True)
+    try:
+        outcome = saved.outcome_from_snapshot(to_engine_config(body.config), snapshot)
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    dataset = body.dataset.model_dump(by_alias=True)
+    result = saved.stored_result(outcome, note=body.note, dataset=dataset, assumptions=body.assumptions)
+    summary = saved.summary_of(outcome)
+    ok = database.save_run(
+        db,
+        body.owner_id,
+        run_id=body.run.id,
+        name=body.run.name,
+        created_at=body.run.created_at,
+        config_json=json.dumps(body.config.model_dump(by_alias=True)),
+        summary_json=json.dumps(summary),
+        result_json=json.dumps(result),
+        snapshot_json=json.dumps(snapshot),
+        checksum=body.dataset.checksum,
+        source=body.snapshot.source,
+        simulated=body.snapshot.simulated,
+        as_of=body.snapshot.as_of,
+        engine=engine.ENGINE_NAME,
+        engine_version=engine.ENGINE_VERSION,
+        dataset_version=body.dataset.dataset_version,
+    )
+    if not ok:
+        if not db.query("SELECT 1 FROM user WHERE id = ?", [body.owner_id]):
+            raise HTTPException(status_code=404, detail="That account doesn't exist.")
+        raise HTTPException(status_code=409, detail=f"You can save up to {database.MAX_SAVED_RUNS} runs. Delete one to make room.")
+    return {"summary": summary, "result": result}
+
+
+@app.post("/v1/saved-runs/{run_id}/reproduce", dependencies=[Depends(require_token)])
+def reproduce_run(run_id: Annotated[str, Path(min_length=1, max_length=64)], body: OwnerRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Reads one of the owner's saved runs from the database, calculates it again from its saved prices, and compares."""
+    try:
+        return saved.reproduce(db, body.owner_id, run_id, lambda config: to_engine_config(ConfigModel.model_validate(config)))
+    except saved.NotFound as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except saved.NotReproducible as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
