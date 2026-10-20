@@ -1,10 +1,11 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { termForSlug } from "@/lib/lessons/slugs";
 import { catalogEntry } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
 import { isSymbolFormat, normalizeSymbol } from "@/lib/market/symbols";
 
 /**
- * Runs before a /stocks/<symbol> request reaches the page.
+ * Runs before a /stocks/<symbol> or /learn/<slug> request reaches the page.
  *
  * Why not do this in the page itself? Pages for symbols that weren't
  * pre-rendered start streaming their HTML right away, and once streaming has
@@ -19,6 +20,8 @@ import { isSymbolFormat, normalizeSymbol } from "@/lib/market/symbols";
  * found" for the rest (with a 200 status, which is fine on a private site).
  */
 export function proxy(request: NextRequest) {
+  if (request.nextUrl.pathname.startsWith("/learn/")) return lessonProxy(request);
+
   let raw: string;
   try {
     raw = decodeURIComponent(request.nextUrl.pathname.split("/")[2] ?? "");
@@ -28,11 +31,7 @@ export function proxy(request: NextRequest) {
   const canonical = normalizeSymbol(raw);
   const exists = isSymbolFormat(canonical) && (marketMode() === "tiingo" || catalogEntry(canonical) !== undefined);
 
-  if (!exists) {
-    // Show app/not-found.tsx with a real 404 status. "/_not-found" is the
-    // version of it Next.js pre-renders at build, so nothing has to stream.
-    return NextResponse.rewrite(new URL("/_not-found", request.url), { status: 404 });
-  }
+  if (!exists) return notFound(request);
 
   if (raw !== canonical) {
     // One URL per stock: /stocks/aapl → /stocks/AAPL, /stocks/brk.b → /stocks/BRK-B (308 = permanent redirect).
@@ -42,7 +41,24 @@ export function proxy(request: NextRequest) {
   return NextResponse.next();
 }
 
+/**
+ * Lessons are a fixed list (lib/lessons/slugs.ts), so any other /learn/…
+ * address is a real 404, for the same reasons as unknown stocks above.
+ */
+function lessonProxy(request: NextRequest) {
+  const slug = request.nextUrl.pathname.split("/")[2] ?? "";
+  return termForSlug(slug) ? NextResponse.next() : notFound(request);
+}
+
+/**
+ * Shows app/not-found.tsx with a real 404 status. "/_not-found" is the
+ * version of it Next.js pre-renders at build, so nothing has to stream.
+ */
+function notFound(request: NextRequest) {
+  return NextResponse.rewrite(new URL("/_not-found", request.url), { status: 404 });
+}
+
 export const config = {
-  // Only stock pages; everything else (the dashboard, /_next assets…) skips Proxy.
-  matcher: "/stocks/:symbol",
+  // Only stock and lesson pages; everything else (the dashboard, /_next assets…) skips Proxy.
+  matcher: ["/stocks/:symbol", "/learn/:slug"],
 };

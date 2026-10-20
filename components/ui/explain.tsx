@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useId } from "react";
 import { GLOSSARY, type TermKey } from "@/lib/glossary";
+import { lessonHref } from "@/lib/lessons/slugs";
 
 /**
  * An ⓘ button that explains a term in plain English (lib/glossary.ts). It
@@ -32,8 +33,8 @@ export function Explain({ term, className = "" }: { term: TermKey; className?: s
         <p className="font-semibold">{entry.title}</p>
         <p className="mt-1">{entry.short}</p>
         <p className="mt-2 text-muted">{entry.more}</p>
-        <Link href={`/learn#${term}`} className="mt-3 inline-block text-xs font-medium text-accent hover:underline">
-          All terms →
+        <Link href={lessonHref(term)} className="mt-3 inline-block text-xs font-medium text-accent hover:underline">
+          Full lesson →
         </Link>
       </div>
     </>
