@@ -367,7 +367,9 @@ function SavedRunBar({ view, onRerun, onReproduce }: { view: Extract<View, { kin
             ? r.message
             : r.comparison.matches
               ? `Reproduced from the saved prices (dataset ${view.result.provenance.dataset.datasetVersion}) with the ${engine.name === "python" ? "Python" : "TypeScript"} engine ${r.reproduced.provenance.engine.version}: the same result ✓${r.comparison.largestDifference > 0 ? ` (largest difference ${r.comparison.largestDifference.toExponential(1)})` : ", identical"}.`
-              : `Reproduced, but the result differs: ${r.comparison.differences.join("; ")}.`}
+              : r.reproduced.provenance.engine.version !== engine.version
+                ? `Reproduced with engine ${r.reproduced.provenance.engine.version}, which differs from the ${engine.version} this run was saved with: ${r.comparison.differences.join("; ")}.`
+                : `Reproduced, but the result differs: ${r.comparison.differences.join("; ")}.`}
         </p>
       )}
     </div>

@@ -86,3 +86,9 @@ def test_fixtures_cover_the_edge_cases():
 def test_warm_up_longer_than_the_data_is_explained():
     case = next(c for c in FIXTURES if c["name"] == "warm-up-longer-than-data")
     assert run_case(case).warnings and "never traded" in run_case(case).warnings[0]
+
+
+def test_assumptions_match_the_typescript_engines():
+    source = (Path(__file__).parents[3] / "lib" / "backtest" / "engines.ts").read_text()
+    for key, text in engine.ASSUMPTIONS.items():
+        assert f'{key}: "{text}"' in source, key

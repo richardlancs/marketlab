@@ -47,9 +47,9 @@ class TestInputs:
     def test_aligns_on_shared_days_only(self):
         a = series("A", [1.0, 2.0, 3.0, 4.0])
         b = engine.to_series("B", [T0, T0 + 2 * DAY, T0 + 3 * DAY], [10.0, 30.0, 40.0])  # missing day 1
-        times, closes = engine.align({"A": a, "B": b}, T0, T0 + 3 * DAY)
-        assert times == [T0, T0 + 2 * DAY, T0 + 3 * DAY]
-        assert closes == {"A": [1.0, 3.0, 4.0], "B": [10.0, 30.0, 40.0]}
+        sessions = engine.align({"A": a, "B": b}, T0, T0 + 3 * DAY)
+        assert sessions.times == (T0, T0 + 2 * DAY, T0 + 3 * DAY)
+        assert sessions.closes == {"A": (1.0, 3.0, 4.0), "B": (10.0, 30.0, 40.0)}
 
     def test_refuses_too_little_history(self):
         with pytest.raises(engine.InputError, match="Not enough price history"):
@@ -57,9 +57,9 @@ class TestInputs:
 
     def test_refuses_invalid_windows(self):
         with pytest.raises(engine.InputError, match="shorter than the long"):
-            engine.moving_average_crossover({"AAPL": 1.0}, 50, 20)
+            engine.MovingAverageCrossover({"AAPL": 1.0}, 50, 20)
         with pytest.raises(engine.InputError, match="at least 2"):
-            engine.moving_average_crossover({"AAPL": 1.0}, 1, 20)
+            engine.MovingAverageCrossover({"AAPL": 1.0}, 1, 20)
 
     def test_needs_the_market_for_a_market_benchmark(self):
         with pytest.raises(engine.InputError, match="market index"):

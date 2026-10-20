@@ -84,6 +84,15 @@ describe("strategies", () => {
     expect(run.equity.at(-1)?.price).toBeCloseTo(run.equity.at(-2)?.price ?? 0); // in cash at the end
   });
 
+  it("moving-average crossover buys again after selling out", () => {
+    // Bought at 102 and sold at 112: 1000 / 102 shares, times 112, divided by 112 comes out a hair
+    // under 1000 / 102. A full sell must still sell every share, or the leftover sliver would count
+    // as holding the stock and the strategy would never buy again.
+    const prices = [...Array(10).fill(100), 101, 102, 110, 120, 132, 132, 122, 112, 112, 112, 112, 112, 117, 122, 127, 132];
+    const run = runBacktest([{ symbol: "A", points: series(prices) }], movingAverageCrossover({ A: 1 }, 2, 5), all);
+    expect(run.trades.map((t) => `${t.side} ${t.price}`)).toEqual(["buy 102", "sell 112", "buy 122"]);
+  });
+
   it("dollar-cost averaging buys at the start of each month until the cash is spent", () => {
     const points = series(Array(70).fill(50)); // about 3 months of weekdays
     const run = runBacktest([{ symbol: "A", points }], dollarCostAveraging({ A: 1 }, 3), all);

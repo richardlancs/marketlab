@@ -72,6 +72,8 @@ function makeCases(): Case[] {
   const koGaps = ko.filter((_, i) => i % 7 !== 3);
   // A sawtooth: up 3 days, down 3 days, so a 2/3 crossover trades constantly.
   const saw = times.slice(0, 120).map((time, i) => ({ time, price: 100 + [0, 2, 4, 6, 4, 2][i % 6] + i * 0.01 }));
+  // Bought at 102, sold at 112, then up again: a full sell must leave no sliver of shares, or it never buys again.
+  const reentry = [...Array(10).fill(100), 101, 102, 110, 120, 132, 132, 122, 112, 112, 112, 112, 112, 117, 122, 127, 132].map((price, i) => ({ time: times[i], price }));
   return [
     {
       name: "aapl-ma-20-50-costs",
@@ -128,6 +130,13 @@ function makeCases(): Case[] {
       config: base([["AAPL", 1]], { kind: "moving-average", fast: 2, slow: 3 }, times.slice(0, 120), { costs: { commission: 0.5, slippageBps: 3 } }),
       prices: { AAPL: saw },
       market: market.slice(0, 120),
+    },
+    {
+      name: "re-entry-after-full-sell",
+      description: "A 2/5-day crossover that sells out and later buys back in.",
+      config: base([["AAPL", 1]], { kind: "moving-average", fast: 2, slow: 5 }, times.slice(0, reentry.length), { initialCash: 1000 }),
+      prices: { AAPL: reentry },
+      market: market.slice(0, reentry.length),
     },
   ];
 }

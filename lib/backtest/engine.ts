@@ -116,7 +116,9 @@ export function runBacktest(series: Series[], strategy: Strategy, options: { sta
   const equity: PricePoint[] = [];
   let investedDays = 0;
 
-  const fill = (time: number, symbol: string, side: "buy" | "sell", value: number, close: number) => {
+  // `exit`: a sell to a 0% target sells every share held. (value / close can come out a hair under
+  // the shares held, which would leave a sliver that still counts as a position.)
+  const fill = (time: number, symbol: string, side: "buy" | "sell", value: number, close: number, exit = false) => {
     // `value` is dollars at the close; slippage moves the fill price against us.
     const price = side === "buy" ? close * (1 + slip) : close * (1 - slip);
     if (side === "buy") {
@@ -127,7 +129,7 @@ export function runBacktest(series: Series[], strategy: Strategy, options: { sta
       shares[symbol] += qty;
       trades.push({ time, symbol, side, shares: qty, price, commission: costs.commission });
     } else {
-      const qty = Math.min(value / close, shares[symbol]); // can't sell more than we hold
+      const qty = exit ? shares[symbol] : Math.min(value / close, shares[symbol]); // can't sell more than we hold
       if (qty * close < MIN_TRADE_VALUE) return;
       cash += qty * price - costs.commission;
       shares[symbol] -= qty;
@@ -155,7 +157,7 @@ export function runBacktest(series: Series[], strategy: Strategy, options: { sta
       const total = cash + symbols.reduce((sum, s) => sum + shares[s] * today[s], 0);
       const deltas = symbols.map((s) => ({ s, delta: (decision.weights[s] ?? 0) * total - shares[s] * today[s] }));
       // Sell first, so the cash is there for the buys.
-      for (const { s, delta } of deltas) if (delta < 0) fill(time, s, "sell", -delta, today[s]);
+      for (const { s, delta } of deltas) if (delta < 0) fill(time, s, "sell", -delta, today[s], !((decision.weights[s] ?? 0) > 0));
       for (const { s, delta } of deltas) if (delta > 0) fill(time, s, "buy", delta, today[s]);
     }
 

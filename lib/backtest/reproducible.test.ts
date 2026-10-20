@@ -88,7 +88,7 @@ describe("choosing an engine", () => {
   it("labels TypeScript results, and explains a crossover that never warmed up", async () => {
     const snap = makeSnapshot(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), history, market, "mock", T0);
     const result = await compute(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), snap, "typescript");
-    expect(result.engine).toEqual({ name: "typescript", version: "1.0.0" });
+    expect(result.engine).toEqual({ name: "typescript", version: "1.1.0" });
     expect(result.warnings[0]).toMatch(/never traded/);
   });
 });

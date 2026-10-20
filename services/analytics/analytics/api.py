@@ -167,6 +167,10 @@ class BacktestRequest(Model):
     """Each holding's adjusted daily closes."""
     market: SeriesModel | None = None
     """The market index, needed when the benchmark is "market"."""
+    warmup: Literal["within-period", "pre-start"] = "within-period"
+    """Where a moving average's warm-up sessions come from (see engine.py). "pre-start" uses sessions before the start date, if the prices include them."""
+    include_ledger: bool = False
+    """Also return each session's cash, shares and value, and the decisions made."""
 
 
 # --- Response --------------------------------------------------------------
@@ -199,10 +203,27 @@ class MetricsModel(Model):
     exposure: float
 
 
+class LedgerRow(Model):
+    time: int
+    cash: float
+    shares: dict[str, float]
+    holdings_value: float
+    total_value: float
+    decided: bool
+
+
+class DecisionModel(Model):
+    time: int
+    target: dict[str, float]
+    based_on: int | None
+
+
 class RunModel(Model):
     equity: list[Point]
     trades: list[TradeModel]
     metrics: MetricsModel
+    ledger: list[LedgerRow] | None = None
+    decisions: list[DecisionModel] | None = None
 
 
 class EngineInfo(Model):
@@ -215,13 +236,17 @@ class BacktestResponse(Model):
     run: RunModel
     benchmark: RunModel
     warnings: list[str]
+    assumptions: dict[str, str]
+    warmup: Literal["within-period", "pre-start"]
 
 
-def _run_model(run: engine.Run) -> RunModel:
+def _run_model(run: engine.Run, include_ledger: bool = False) -> RunModel:
     return RunModel(
         equity=[Point(time=t, price=v) for t, v in run.equity],
         trades=[TradeModel(**t.__dict__) for t in run.trades],
         metrics=MetricsModel(**run.metrics.__dict__),
+        ledger=[LedgerRow(**{**r.__dict__, "shares": dict(r.shares)}) for r in run.ledger] if include_ledger else None,
+        decisions=[DecisionModel(time=d.time, target=dict(d.target), based_on=d.based_on) for d in run.decisions] if include_ledger else None,
     )
 
 
@@ -265,7 +290,7 @@ def health() -> dict:
     return {"status": "ok", "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION}}
 
 
-def to_engine_config(c: ConfigModel) -> engine.Config:
+def to_engine_config(c: ConfigModel, warmup: str = "within-period") -> engine.Config:
     return engine.Config(
         holdings=[(h.symbol, h.weight) for h in c.holdings],
         strategy=c.strategy.kind,
@@ -276,6 +301,7 @@ def to_engine_config(c: ConfigModel) -> engine.Config:
         benchmark=c.benchmark,
         fast=getattr(c.strategy, "fast", None),
         slow=getattr(c.strategy, "slow", None),
+        warmup=warmup,
     )
 
 
@@ -295,14 +321,16 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
     try:
         prices = {symbol: engine.to_series(symbol, s.times, s.prices) for symbol, s in body.prices.items()}
         market = engine.to_series("Market", body.market.times, body.market.prices) if body.market else None
-        outcome = engine.run_config(to_engine_config(body.config), prices, market)
+        outcome = engine.run_config(to_engine_config(body.config, body.warmup), prices, market)
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return BacktestResponse(
         engine=EngineInfo(name=engine.ENGINE_NAME, version=engine.ENGINE_VERSION),
-        run=_run_model(outcome.run),
-        benchmark=_run_model(outcome.benchmark),
+        run=_run_model(outcome.run, body.include_ledger),
+        benchmark=_run_model(outcome.benchmark, body.include_ledger),
         warnings=outcome.warnings,
+        assumptions=engine.ASSUMPTIONS,
+        warmup=body.warmup,
     )
 
 

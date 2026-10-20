@@ -2,12 +2,20 @@
 
 A FastAPI service that calculates backtests with the same rules as MarketLab's TypeScript engine (`lib/backtest/engine.ts`). The Next.js server calls it when `BACKTEST_ENGINE=python`. It supports **buy and hold** and the **moving-average crossover**; everything else stays on TypeScript.
 
-- `analytics/engine.py`: the engine. Pure functions on plain data, with no FastAPI involved, so it works in notebooks and tests.
+- The engine: pure functions on plain data, with no FastAPI involved, so it works in notebooks and tests. Each part is its own module:
+  - `analytics/data.py`: validates prices and aligns them into trading sessions;
+  - `analytics/indicators.py`: trailing indicators, each already ending at the previous session;
+  - `analytics/strategies.py`: decisions, made from completed sessions only;
+  - `analytics/execution.py`: fills at the session's close, with commission and slippage;
+  - `analytics/accounting.py`: cash, shares and a ledger row per session;
+  - `analytics/metrics.py`: returns, drawdown, volatility, Sharpe and exposure;
+  - `analytics/engine.py`: runs them in order and is the public interface (`run_config`, `Config`, `Outcome`).
 - `analytics/api.py`: the HTTP layer: Pydantic models, authentication and limits.
 - `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing Python-engine runs (see [Database access](#database-access)).
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
 - `tests/`:
   - `test_engine.py`: the engine's rules;
+  - `test_timing.py`: the timing rule and no look-ahead, warm-up, missing and duplicate data, costs, and the ledger;
   - `test_api.py`: authentication, validation and limits;
   - `test_parity.py`: results compared with the TypeScript engine on fixed datasets;
   - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client.
@@ -37,7 +45,7 @@ npm run dev                    # Next.js, in another terminal
 curl http://127.0.0.1:8000/health
 ```
 
-Then run a buy-and-hold or moving-average backtest on `/backtest`. The line under the results says "Calculated by the Python engine 1.0.0".
+Then run a buy-and-hold or moving-average backtest on `/backtest`. The line under the results says "Calculated by the Python engine 1.1.0".
 
 ## Tests
 
@@ -52,7 +60,7 @@ Every `/v1` request needs `Authorization: Bearer <ANALYTICS_SERVICE_TOKEN>`. Err
 
 ### `GET /health`
 
-No token needed. Returns `{ "status": "ok", "engine": { "name": "python", "version": "1.0.0" } }`. Next.js reads the version, and includes it in each result's cache key.
+No token needed. Returns `{ "status": "ok", "engine": { "name": "python", "version": "1.1.0" } }`. Next.js reads the version, and includes it in each result's cache key.
 
 ### `POST /v1/backtests`
 
@@ -72,7 +80,9 @@ JSON in camelCase, matching MarketLab's TypeScript types. Unknown fields are ref
   "prices": {                       // each holding's adjusted daily closes, oldest first
     "AAPL": { "times": [1634673600000, ...], "prices": [148.76, ...] }
   },
-  "market": null                    // { "times", "prices" } of the index, required when benchmark = "market"
+  "market": null,                   // { "times", "prices" } of the index, required when benchmark = "market"
+  "warmup": "within-period",        // optional; or "pre-start" (see "Warm-up" below). Next.js doesn't send it.
+  "includeLedger": false            // optional; true adds each session's books and the decisions to both runs
 }
 ```
 
@@ -80,12 +90,17 @@ Response, with the same shapes as the TypeScript engine's `BacktestOutcome`:
 
 ```jsonc
 {
-  "engine": { "name": "python", "version": "1.0.0" },
+  "engine": { "name": "python", "version": "1.1.0" },
   "run":       { "equity": [{ "time": ..., "price": ... }], "trades": [{ "time", "symbol", "side", "shares", "price", "commission" }],
                  "metrics": { "finalValue", "totalReturn", "cagr", "maxDrawdown", "drawdownPeak", "drawdownTrough",
-                              "volatility", "sharpe", "trades", "exposure" } },
+                              "volatility", "sharpe", "trades", "exposure" },
+                 "ledger": null,     // with includeLedger: [{ "time", "cash", "shares": { "AAPL": ... }, "holdingsValue", "totalValue", "decided" }]
+                 "decisions": null   // with includeLedger: [{ "time", "target": { "AAPL": 1 }, "basedOn" }]
+               },
   "benchmark": { ...same shape... },
-  "warnings":  ["The 100-day average needs 100 days of prices before the first signal; ..."]
+  "warnings":  ["The 100-day average needs 100 days of prices before the first signal; ..."],
+  "assumptions": { "signals": "Decisions use closes up to the previous trading day only; ...", ... },
+  "warmup": "within-period"
 }
 ```
 
@@ -94,7 +109,7 @@ Response, with the same shapes as the TypeScript engine's `BacktestOutcome`:
 | 200 | Calculated. |
 | 401 | Missing or wrong token. |
 | 413 | Body over 2 MB. |
-| 422 | Invalid settings or prices: a window that isn't short < long, weights not adding up to 1, duplicate or unsorted dates, prices that aren't positive and finite, too little history (under 2 shared days), or more than 4,000 points in a series. |
+| 422 | Invalid settings or prices: a window that isn't short < long, weights not adding up to 1, duplicate or unsorted dates, missing prices, prices that aren't positive and finite, too little history (under 2 shared days), or more than 4,000 points in a series. |
 | 503 | No token configured on the service. |
 
 The Next.js side (`lib/backtest/python-client.ts`) waits up to 10 seconds (`ANALYTICS_TIMEOUT_MS`). It validates the response before using it and turns every failure into a message for the user. It never falls back to TypeScript.
@@ -147,14 +162,78 @@ Ownership:
 
 The schema is defined once, in Drizzle (`lib/db/schema.ts` and `drizzle/`). The Python code uses those same tables and columns, and its tests build their database from the same migration files, so a schema change that breaks the Python side fails its tests.
 
+## The timing rule
+
+A *session* is a day with a recorded close for every stock in the run. Weekends, holidays and any day a series lacks aren't sessions, so "the previous session" is the previous day with prices, not the previous calendar day.
+
+For every session D, in this order:
+
+1. **Decide.** The strategy sees sessions up to D−1 only: their closes, and indicators computed from them. Session D's prices don't exist yet.
+2. **Execute.** Its orders fill at D's close, plus or minus slippage.
+3. **Value.** The portfolio is valued at D's close. That's D's equity and its ledger row.
+
+So **a signal formed from session D's close trades at session D+1's close**, never sooner and never later.
+
+How the code enforces it:
+- **Indicators are shifted once, and only once.** `sma_through_previous(closes, n)[D]` is the mean of closes D−n … D−1. Strategies use the value at D as it is. Shifting again would delay every signal by another session.
+- **Strategies never get a future price.** On session D a strategy receives a `DecisionContext` with:
+  - a `History` view that raises `LookAheadError` for session D or later;
+  - the indicator values for D;
+  - the holdings and cash before D's orders.
+
+  Session D's close is passed only to execution and accounting.
+- **Tests prove it** (`tests/test_timing.py`):
+  - changing any prices after D leaves every equity value, trade, ledger row and decision through D unchanged;
+  - changing D's own close doesn't change D's decision, only its fill price;
+  - a jump in D's close is first traded at D+1's close;
+  - a run cut off at session D equals the full run through D;
+  - a strategy that reads today's close is stopped.
+
+### Moving-average crossover
+
+- **Defaults:** 50 and 200 sessions (`MovingAverageCrossover(weights)`). MarketLab's page sends its own values.
+- **Rule:** hold a stock, at its weight, while its short average is *strictly above* its long average. **Equal averages mean cash.**
+- **Trades only on a change:** it asks for a trade only when some stock's wanted position (held or not) differs from the current one.
+- **Selling out sells every share,** so no fractional sliver is left that would still count as a position.
+
+### Warm-up
+
+The long average needs `slow` earlier sessions. Until then nothing is decided and the money stays in cash.
+
+- **`within-period` (the default, and what MarketLab uses):** the first `slow` sessions of the chosen period are the warm-up. They're held in cash and still count in every metric, just as in the TypeScript engine. If the period is too short, a warning says the strategy never traded.
+- **`pre-start` (API option):** up to `slow` sessions *before* the start date are used as earlier history, if the prices sent include them. They're never measured: equity, trades, metrics and the benchmark all start on the start date. Nothing is invented. If fewer earlier sessions exist, it uses those, and a warning says how many measured sessions the warm-up took.
+
+### A worked example
+
+One stock, $1,000, a 2/4-session crossover, a $1 commission and 10 bps slippage. Each row's averages end at the *previous* session (`within-period` warm-up):
+
+| Session | Close | 2-avg (to D−1) | 4-avg (to D−1) | Decision | Fill | Cash | Shares | Value at close |
+|---|---|---|---|---|---|---|---|---|
+| 1 | 10 | – | – | warming up | – | 1,000.00 | 0 | 1,000.00 |
+| 2 | 10 | – | – | warming up | – | 1,000.00 | 0 | 1,000.00 |
+| 3 | 10 | 10.0 | – | warming up | – | 1,000.00 | 0 | 1,000.00 |
+| 4 | 10 | 10.0 | – | warming up | – | 1,000.00 | 0 | 1,000.00 |
+| 5 | **12** | 10.0 | 10.0 | equal: cash | – | 1,000.00 | 0 | 1,000.00 |
+| 6 | 13 | **11.0** | **10.5** | short above long: buy | buy 76.7694 @ 13.013 | 0.00 | 76.7694 | 998.00 |
+| 7 | 11 | 12.5 | 11.25 | still held | – | 0.00 | 76.7694 | 844.46 |
+| 8 | **9** | 12.0 | 11.5 | still held | – | 0.00 | 76.7694 | 690.92 |
+| 9 | 9 | **10.0** | **11.25** | short below long: sell | sell 76.7694 @ 8.991 | 689.23 | 0 | 689.23 |
+| 10 | 10 | 9.0 | 10.5 | cash | – | 689.23 | 0 | 689.23 |
+
+- **Session 5:** the jump to 12 happens at session 5's close, which session 5's decision can't see. It shows in session 6's averages, so the buy fills at session 6's close of 13 (13.013 after slippage). It spends $999, the cash left after the commission.
+- **Session 9:** the drop to 9 on session 8 shows in session 9's averages, so the sell fills at session 9's close: 9 × 0.999 = 8.991, less $1.
+- **Result:** 2 trades, a final value of $689.23 (−31.1%), and exposure of 30% (invested on 3 of 10 sessions).
+
+To print this yourself, see [Using the engine directly](#using-the-engine-directly-notebooks).
+
 ## Simulation rules (shared with the TypeScript engine)
 
-- **Signal timing:** each day, a strategy sees closes up to the previous day only, and orders fill at that day's close, so there's no look-ahead. A moving-average crossover first trades once it has `slow` known closes, and only on a crossover.
+- **Signal timing:** see [The timing rule](#the-timing-rule).
 - **Costs:** a fixed commission per order, and slippage in basis points that fills buys above the close and sells below it.
 - **Cash and shares:**
   - shares are fractional;
   - a buy spends at most the cash left after its commission;
-  - a sell can't exceed the shares held;
+  - a sell can't exceed the shares held, and a sell to a 0% target sells every share;
   - trades under $1 are skipped.
 - **Targets:** a target sets each holding to a fraction of total value, and sells are filled before buys.
 - **Dates:** only days every series has are used, within the start and end dates (inclusive). A day missing from one series is skipped for all.
@@ -171,12 +250,13 @@ The schema is defined once, in Drizzle (`lib/db/schema.ts` and `drizzle/`). The 
 
 ## Parity with the TypeScript engine
 
-`tests/fixtures/parity.json` holds fixed inputs and the TypeScript engine's exact results, generated by `lib/backtest/parity.test.ts` with `UPDATE_PARITY_FIXTURES=1`. The 8 cases cover:
+`tests/fixtures/parity.json` holds fixed inputs and the TypeScript engine's exact results, generated by `lib/backtest/parity.test.ts` with `UPDATE_PARITY_FIXTURES=1`. The 9 cases cover:
 - costs, and both benchmark kinds;
 - two stocks, and missing dates;
 - a date window, and a warm-up longer than the data;
 - a commission larger than the cash;
-- a sawtooth price that forces many trades.
+- a sawtooth price that forces many trades;
+- a crossover that sells out and buys back in.
 
 | Compared | Tolerance |
 |---|---|
@@ -192,7 +272,12 @@ The Python engine rejects some inputs the TypeScript engine accepts. These are d
 1. **Duplicate dates.** TypeScript's `alignSeries` takes its days from the first series as given. A repeated date is simulated twice, with the last price for both, which adds a 0% day. Python refuses duplicate dates. MarketLab's market data has none, so the two never differ in practice.
 2. **Non-finite or non-positive prices.** TypeScript doesn't check them, so a `NaN` would silently produce `NaN` results. Python refuses them.
 3. **Benchmark in the mock market.** The mock market's indices pay no dividends (they're price indices), while its stocks are dividend-adjusted. A "market" benchmark therefore leaves out the index's dividends, which slightly flatters a strategy. Mock dividends began on Oct 19, 2026, so the effect is small for now but grows over time. With real data, the benchmark is SPY's adjusted price, which includes dividends.
-4. **Tiny leftover shares (harmless, reproduced as-is).** After selling everything, floating-point rounding can leave a sliver of a share. A crossover then keeps asking to sell it, but the trade is under $1 and is skipped.
+4. **Leftover shares after selling out (fixed in both engines, version 1.1.0).** A sell for a stock's whole value computed its shares as value ÷ close. Rounding could make that a hair less than the shares held, leaving about 1e-14 of a share. That sliver counted as "held", which caused three problems:
+   - the crossover and the rule builder never bought that stock again;
+   - exposure counted those days as invested;
+   - with two stocks, the strategy re-sent its target every day, which rebalanced the other stock in small trades.
+
+   A sell to a 0% target now sells every share. Results calculated by engine 1.0.0 can differ: on the AAPL 20/50 parity case, 6 trades became 21 and exposure went from 79% to 50%. Reproducing a 1.0.0 run under 1.1.0 says that the engine version changed.
 
 ## Using the engine directly (notebooks)
 
@@ -205,4 +290,8 @@ config = engine.Config(holdings=[("AAPL", 1.0)], strategy="moving-average", fast
                        costs=engine.Costs(commission=1, slippage_bps=5))
 outcome = engine.run_config(config, prices)
 outcome.run.metrics, outcome.run.trades[:3], outcome.benchmark.metrics
+outcome.run.ledger[:5]      # DayRecord(time, cash, shares, holdings_value, total_value, decided) per session
+outcome.run.decisions[:3]   # Decision(time, target, based_on): based_on is the previous session
 ```
+
+Pass `warmup="pre-start"` to `Config` to use sessions before `start` as history. A custom strategy implements `indicators(sessions)` and `decide(ctx)` (see `analytics/strategies.py`). It reads the past through `ctx.history`, which refuses the session being decided.

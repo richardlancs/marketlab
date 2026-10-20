@@ -96,6 +96,31 @@ Backtests can be calculated by the TypeScript engine in the Next.js server (the 
 
 Both engines follow the same rules and give identical results on fixed datasets (`npm run test:parity`).
 
+### When a backtest decides, trades and values
+
+For every trading session D, both engines do three things in order:
+
+1. **Decide** from closes through the previous session (D−1).
+2. **Fill** the orders at D's close.
+3. **Value** the portfolio at D's close.
+
+So a signal formed from D's close first trades at the next session's close.
+
+A session is a day with prices for every stock in the run, so a missing day is skipped rather than filled in.
+
+The Python engine (version 1.1.0) enforces this structurally:
+- its strategies get a history view that refuses the session being decided;
+- its indicators already end at D−1;
+- `services/analytics/tests/test_timing.py` checks that future prices can't change anything up to D.
+
+`services/analytics/README.md` ("The timing rule") also covers:
+- the crossover's equal-averages rule (cash);
+- the warm-up options;
+- each session's ledger;
+- a worked ten-session example.
+
+**Engine 1.1.0 fixes a bug in both engines.** After selling out, rounding could leave a sliver of a share that still counted as held. Crossover and rule-builder strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced, and the page says the engine version changed.
+
 **The Python service also uses the database.** When a Python-engine run is saved, the Python service recalculates the result from the price snapshot itself and writes it, with the snapshot, to Turso. When one is reproduced, the Python service reads the run and its saved prices from the database. Python uses the same `DATABASE_URL` and `DATABASE_AUTH_TOKEN` as the Next.js server.
 
 The Next.js server stays the gatekeeper: it checks the session or guest cookie and the rate limits, and sends the verified owner's ID, which Python accepts only with the service token. Everything else (accounts, guests, lesson progress, TypeScript runs, and listing and opening saved runs) is still read and written by Next.js. See `services/analytics/README.md`, under "Database access".

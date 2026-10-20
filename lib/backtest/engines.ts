@@ -21,7 +21,7 @@ export interface EngineInfo {
 }
 
 /** The TypeScript engine's version: bump it when its results would change for the same inputs. */
-export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.0.0" };
+export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.1.0" };
 
 /** The strategies the Python service runs. */
 const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new Set(["buy-and-hold", "moving-average"]);
@@ -33,7 +33,7 @@ const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new S
 export const ASSUMPTIONS = {
   signals: "Decisions use closes up to the previous trading day only; orders fill at the day's close.",
   prices: "Split- and dividend-adjusted daily closes. Dividends are part of the adjusted price and are never added again.",
-  shares: "Fractional shares. Buys never spend more than the cash left after the commission; sells never exceed the shares held. Trades under $1 are skipped.",
+  shares: "Fractional shares. Buys never spend more than the cash left after the commission; sells never exceed the shares held, and selling out sells every share. Trades under $1 are skipped.",
   costs: "A fixed commission per order; slippage in basis points fills buys above the close and sells below it.",
   rebalancing: "A target sets each holding to a fraction of total value; sells are filled before buys.",
   warmUp: "A moving-average crossover first trades once it has as many closes as its long average.",
