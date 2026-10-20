@@ -42,7 +42,7 @@ export async function MarketOverview() {
 
 /** `isFund`: real data shows a fund that tracks the index (SPY for the S&P 500), priced in dollars. */
 function IndexCard({ index, isFund }: { index: MarketIndex; isFund: boolean }) {
-  const trend = trendSeries(index.history);
+  const trend = trendSeries(index);
   return (
     <Card className="group transition-colors hover:border-foreground/15">
       <div className="flex items-baseline justify-between gap-2">

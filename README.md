@@ -25,6 +25,8 @@ Prices come from one of two sources:
 
 Every price chart, big or small, shows the same range: pick 1D, 1W, 1M, 6M, 1Y or 5Y on the dashboard, a stock page, the stocks table or the watchlist, and they all follow (remembered in your browser). A line is green if it ended that range higher than it started and red if lower, and small lines show that change beside them ("1M +4.2%"), next to today's change.
 
+With the mock market, the 1D, 1W and 1M charts show prices every 5 minutes through each trading day (9:30 AM to 4 PM New York time), so hovering moves through the day instead of jumping from close to close. They're built from each day's open, high, low and close (`lib/market/intraday.ts`): every day's path starts at its open, ends exactly at its close and reaches exactly its high and low, and is the same on every visit. Real data (Tiingo's end-of-day prices) has no intraday prices and none are made up for real stocks, so with a Tiingo key those charts stay daily. 6M and longer are always daily.
+
 ### How orders, dividends and alerts work
 
 Prices are end-of-day, so everything waiting for a price is checked once a day, at the close:

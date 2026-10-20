@@ -2,7 +2,7 @@
  * Turns a provider's raw daily bars into the quotes the app displays. Kept
  * free of Next.js imports so tests can run it directly.
  */
-import type { CorporateAction, DailyBar, MarketIndex, Quote, Stock } from "../types";
+import type { CorporateAction, DailyBar, MarketIndex, PricePoint, Quote, Stock } from "../types";
 import type { MarketDataProvider } from "./provider";
 import { INDICES, STOCKS } from "./universe";
 
@@ -19,7 +19,7 @@ export interface Market {
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** A quote from bars: the last bar is "today", the one before it "yesterday". */
-export function toQuote(symbol: string, name: string, bars: DailyBar[], actions: CorporateAction[] = []): Quote {
+export function toQuote(symbol: string, name: string, bars: DailyBar[], actions: CorporateAction[] = [], intraday: PricePoint[] = []): Quote {
   if (bars.length === 0) throw new Error(`No price data for ${symbol}`);
   const last = bars[bars.length - 1];
   const previous = bars[bars.length - 2] ?? last;
@@ -37,6 +37,7 @@ export function toQuote(symbol: string, name: string, bars: DailyBar[], actions:
     volume: last.volume,
     history: bars.map((bar) => ({ time: bar.time, price: bar.adjClose })),
     raw: bars.map((bar) => ({ time: bar.time, price: bar.close })),
+    intraday,
     actions,
   };
 }
@@ -47,7 +48,7 @@ export async function buildMarket(provider: MarketDataProvider, now: number): Pr
       STOCKS.map(async (listing): Promise<Stock> => {
         const series = await provider.getSeries(listing.symbol, now);
         return {
-          ...toQuote(listing.symbol, listing.name, series.bars, series.actions),
+          ...toQuote(listing.symbol, listing.name, series.bars, series.actions, series.intraday),
           sector: listing.sector,
           marketCap: series.marketCap,
           peRatio: series.peRatio,
@@ -57,7 +58,8 @@ export async function buildMarket(provider: MarketDataProvider, now: number): Pr
     Promise.all(
       INDICES.map(async (listing) => {
         const symbol = provider.indexSymbol(listing);
-        return toQuote(symbol, listing.name, (await provider.getSeries(symbol, now)).bars);
+        const series = await provider.getSeries(symbol, now);
+        return toQuote(symbol, listing.name, series.bars, [], series.intraday);
       }),
     ),
   ]);

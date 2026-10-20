@@ -112,7 +112,7 @@ async function cachedExtraStock(listing: Listing): Promise<Stock | null> {
   try {
     const series = await selectProvider().getSeries(listing.symbol, Date.now());
     cacheLife("hours");
-    return { ...toQuote(listing.symbol, listing.name, series.bars, series.actions), sector: listing.sector, marketCap: series.marketCap, peRatio: series.peRatio };
+    return { ...toQuote(listing.symbol, listing.name, series.bars, series.actions, series.intraday), sector: listing.sector, marketCap: series.marketCap, peRatio: series.peRatio };
   } catch (error) {
     // Unlike the core market, there's no mock fallback here: made-up prices
     // next to a real ticker would mislead. Retried after a minute.

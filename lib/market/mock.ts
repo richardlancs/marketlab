@@ -11,6 +11,7 @@
  *   matter when you look: tomorrow simply adds one more day.
  */
 import { bridge, gaussian, hashString, mulberry32, type Rng } from "../random";
+import { intradayPrices } from "./intraday";
 import type { CorporateAction, DailyBar } from "../types";
 import { ANCHORS, INDEX_ANCHORS } from "./anchors";
 import { catalogEntry } from "./catalog";
@@ -219,6 +220,7 @@ export function mockSeries(symbol: string, now: number): Series {
     marketCap: spec.sharesOutstanding ? price * spec.sharesOutstanding * splits : null,
     peRatio: spec.earningsPerShare ? Math.round((price / (spec.earningsPerShare / splits)) * 10) / 10 : null,
     actions: actions.filter((a) => a.time >= bars[0].time),
+    intraday: intradayPrices(symbol, bars),
   };
 }
 

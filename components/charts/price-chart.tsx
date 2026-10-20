@@ -2,8 +2,8 @@
 
 import { useId, useState, type KeyboardEvent, type PointerEvent, type ReactNode } from "react";
 import { ChangeBadge } from "@/components/ui/change-badge";
-import { areaPath, extent, linePath, nearestIndex, niceTicks, scaleY, sliceTimeframe, toPoints } from "@/lib/chart";
-import { formatAxisValue, formatCurrency, formatDate, formatShortDate } from "@/lib/format";
+import { areaPath, extent, INTRADAY_TIMEFRAMES, linePath, nearestIndex, niceTicks, scaleY, timeframePoints, toPoints } from "@/lib/chart";
+import { formatAxisValue, formatCurrency, formatDate, formatShortDate, formatTime } from "@/lib/format";
 import type { PricePoint, Timeframe } from "@/lib/types";
 import { TimeframePicker } from "./timeframe-picker";
 import { useTrendRange } from "./trend-range";
@@ -21,8 +21,15 @@ const RANGE_LABELS: Record<Timeframe, string> = {
   "5Y": "Past 5 years",
 };
 
-/** Points are daily; within a month the year is obvious, beyond that it isn't. */
-const formatPointTime = (time: number, timeframe: Timeframe) => (timeframe === "1D" || timeframe === "1W" || timeframe === "1M" ? formatShortDate(time) : formatDate(time));
+/**
+ * A point's date, and its time of day when the points are 5 minutes apart
+ * (1D, 1W and 1M with intraday prices). Within a month the year is obvious;
+ * beyond that it isn't.
+ */
+function formatPointTime(time: number, timeframe: Timeframe, intraday: boolean) {
+  if (!INTRADAY_TIMEFRAMES.includes(timeframe)) return formatDate(time);
+  return intraday ? `${formatShortDate(time)}, ${formatTime(time)}` : formatShortDate(time);
+}
 
 /** Converts SVG coordinates to CSS percentages, for HTML laid over the chart. */
 const percentX = (x: number) => `${(x / WIDTH) * 100}%`;
@@ -31,6 +38,8 @@ const percentY = (y: number) => `${(y / HEIGHT) * 100}%`;
 interface PriceChartProps {
   /** Daily closes, oldest first; the chart shows the slice for the chosen timeframe. */
   history: PricePoint[];
+  /** Prices every 5 minutes through the latest days, for 1D, 1W and 1M (see lib/market/intraday.ts). Empty with daily-only data. */
+  intraday: PricePoint[];
   /** Today's move against yesterday's close, shown next to the range's change. */
   today: { change: number; percent: number };
   /**
@@ -47,14 +56,15 @@ interface PriceChartProps {
  * still rendered to HTML on the server first; the browser then "hydrates" it,
  * attaching the event handlers.
  */
-export function PriceChart({ history, today, title }: PriceChartProps) {
+export function PriceChart({ history, intraday, today, title }: PriceChartProps) {
   // Shared with every small chart on the site (see trend-range.tsx).
   const { range: timeframe, setRange: setTimeframe } = useTrendRange();
   // The point under the pointer (or chosen with arrow keys), or null when idle.
   const [activeIndex, setActiveIndex] = useState<number | null>(null);
   const gradientId = useId();
 
-  const points = sliceTimeframe(history, timeframe);
+  const points = timeframePoints({ history, intraday }, timeframe);
+  const detailed = intraday.length > 0;
   const values = points.map((p) => p.price);
   const last = points.length - 1;
   // Each range is measured against its first point.
@@ -87,13 +97,15 @@ export function PriceChart({ history, today, title }: PriceChartProps) {
 
   function handleKeyDown(event: KeyboardEvent<HTMLDivElement>) {
     const current = activeIndex ?? last;
+    // With 5-minute prices a month is ~1,700 points, so Shift jumps about 1/40th of the range.
+    const step = event.shiftKey ? Math.max(1, Math.round(points.length / 40)) : 1;
     let next: number;
     switch (event.key) {
       case "ArrowLeft":
-        next = current - 1;
+        next = current - step;
         break;
       case "ArrowRight":
-        next = current + 1;
+        next = current + step;
         break;
       case "Home":
         next = 0;
@@ -124,7 +136,7 @@ export function PriceChart({ history, today, title }: PriceChartProps) {
         <p className="mt-1.5 flex flex-wrap items-center gap-x-2 text-sm">
           <ChangeBadge change={change} percent={change / reference} currency />
           <span className="text-muted">
-            {activeIndex === null ? RANGE_LABELS[timeframe] : formatPointTime(shown.time, timeframe)}
+            {activeIndex === null ? RANGE_LABELS[timeframe] : formatPointTime(shown.time, timeframe, detailed)}
           </span>
           {activeIndex === null && (
             <>
@@ -221,11 +233,11 @@ export function PriceChart({ history, today, title }: PriceChartProps) {
           <div
             role="slider"
             tabIndex={0}
-            aria-label={`Price history, ${RANGE_LABELS[timeframe].toLowerCase()}. Use arrow keys to inspect.`}
+            aria-label={`Price history, ${RANGE_LABELS[timeframe].toLowerCase()}. Use arrow keys to inspect, Shift to move faster.`}
             aria-valuemin={0}
             aria-valuemax={last}
             aria-valuenow={activeIndex ?? last}
-            aria-valuetext={`${formatPointTime(shown.time, timeframe)}: ${formatCurrency(shown.price)}`}
+            aria-valuetext={`${formatPointTime(shown.time, timeframe, detailed)}: ${formatCurrency(shown.price)}`}
             onPointerMove={handlePointer}
             onPointerDown={handlePointer}
             onPointerLeave={() => setActiveIndex(null)}
@@ -250,8 +262,8 @@ export function PriceChart({ history, today, title }: PriceChartProps) {
       </div>
 
       <div aria-hidden className="mt-2 flex justify-between pr-14 text-[11px] text-muted">
-        <span>{formatPointTime(points[0].time, timeframe)}</span>
-        <span>{formatPointTime(points[last].time, timeframe)}</span>
+        <span>{formatPointTime(points[0].time, timeframe, detailed)}</span>
+        <span>{formatPointTime(points[last].time, timeframe, detailed)}</span>
       </div>
     </div>
   );

@@ -155,9 +155,9 @@ describe("sliceTimeframe", () => {
   it("thins each range for small charts, keeping its first and last value", async () => {
     const { trendSeries } = await import("../chart");
     const rising = history.map((p, i) => ({ ...p, price: 100 + i }));
-    const series = trendSeries(rising);
+    const series = trendSeries({ history: rising });
     expect(series["1D"]).toEqual([1598, 1599]);
-    expect(series["5Y"].length).toBeLessThanOrEqual(48);
+    expect(series["5Y"].length).toBeLessThanOrEqual(64);
     expect(series["5Y"][0]).toBe(sliceTimeframe(rising, "5Y")[0].price);
     expect(series["5Y"].at(-1)).toBe(1599);
   });

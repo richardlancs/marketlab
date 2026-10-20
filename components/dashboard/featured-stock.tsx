@@ -16,6 +16,7 @@ export async function FeaturedStock() {
     <Card aria-labelledby="featured-stock" className="h-full">
       <PriceChart
         history={stock.history}
+        intraday={stock.intraday}
         today={{ change: stock.change, percent: stock.changePercent }}
         title={
           <div className="min-w-0">

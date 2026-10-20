@@ -80,6 +80,7 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
         <Card aria-labelledby="stock-title">
           <PriceChart
             history={stock.history}
+            intraday={stock.intraday}
             today={{ change: stock.change, percent: stock.changePercent }}
             title={
               <div className="min-w-0">

@@ -157,7 +157,8 @@ export function createTiingoProvider(apiKey: string, fetchImpl: typeof fetch = f
     async getSeries(symbol, now): Promise<Series> {
       // End-of-day data has no market cap or P/E.
       const { bars, actions } = await fetchBars(symbol, now);
-      return { bars, actions, marketCap: null, peRatio: null };
+      // End-of-day data only: no prices within the day, and none are made up for real stocks.
+      return { bars, actions, marketCap: null, peRatio: null, intraday: [] };
     },
     async getListing(symbol) {
       // Catalog stocks already have a name (and a sector), so they cost nothing.

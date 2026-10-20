@@ -105,25 +105,58 @@ export function sliceTimeframe<T extends { time: number }>(history: T[], timefra
   return history.slice(start);
 }
 
+/** The ranges drawn from prices within the day (when there are any); longer ones use daily closes. */
+export const INTRADAY_TIMEFRAMES: readonly Timeframe[] = ["1D", "1W", "1M"];
+
+const DAY = 24 * 60 * 60 * 1000;
+const dayOf = (time: number) => Math.floor(time / DAY);
+
+/**
+ * The points a chart of `timeframe` shows. For 1D, 1W and 1M, when the quote
+ * has intraday prices, each day is its 5-minute prices instead of one close,
+ * so hovering moves smoothly through the day. The range still starts from the
+ * same close as the daily version (yesterday's for 1D), so its change is the
+ * same; that close is dated at the moment of the 4 PM close.
+ *
+ * A day missing from the intraday prices falls back to its close.
+ */
+export function timeframePoints(quote: { history: PricePoint[]; intraday?: readonly PricePoint[] }, timeframe: Timeframe): PricePoint[] {
+  const daily = sliceTimeframe(quote.history, timeframe);
+  const intraday = quote.intraday ?? [];
+  if (!INTRADAY_TIMEFRAMES.includes(timeframe) || intraday.length === 0 || daily.length < 2) return daily;
+
+  const byDay = new Map<number, PricePoint[]>();
+  for (const point of intraday) {
+    const day = dayOf(point.time);
+    const list = byDay.get(day);
+    if (list) list.push(point);
+    else byDay.set(day, [point]);
+  }
+  const start = daily[0];
+  // The starting close, timed like the intraday prices' last point of that day (4 PM in New York).
+  const startClose = byDay.get(dayOf(start.time))?.at(-1)?.time ?? start.time;
+  return [{ time: startClose, price: start.price }, ...daily.slice(1).flatMap((close) => byDay.get(dayOf(close.time)) ?? [close])];
+}
+
 /** A small chart's values for every timeframe, so it can switch ranges in the browser without the whole history. */
 export type TrendSeries = Record<Timeframe, number[]>;
 
 /** Small charts are a few dozen pixels wide: more points than this add nothing but bytes. */
-const TREND_POINTS = 48;
+const TREND_POINTS = 64;
 
 /**
- * The values a small chart needs for each timeframe, thinned out to at most
- * TREND_POINTS (always keeping the first and last, so each range's change is
- * exact). Done on the server, so only a few hundred numbers per stock reach
- * the browser instead of five years of closes.
+ * The values a small chart needs for each timeframe (intraday ones for 1D, 1W
+ * and 1M where there are any), thinned out to at most TREND_POINTS (always
+ * keeping the first and last, so each range's change is exact). Done on the
+ * server, so only a few hundred numbers per stock reach the browser.
  */
-export function trendSeries(history: readonly PricePoint[]): TrendSeries {
+export function trendSeries(quote: { history: PricePoint[]; intraday?: readonly PricePoint[] }): TrendSeries {
   const thin = (values: number[]) => {
     if (values.length <= TREND_POINTS) return values;
     const step = (values.length - 1) / (TREND_POINTS - 1);
     return Array.from({ length: TREND_POINTS }, (_, i) => values[Math.round(i * step)]);
   };
-  return Object.fromEntries(TIMEFRAMES.map((tf) => [tf, thin(sliceTimeframe([...history], tf).map((p) => p.price))])) as TrendSeries;
+  return Object.fromEntries(TIMEFRAMES.map((tf) => [tf, thin(timeframePoints(quote, tf).map((p) => p.price))])) as TrendSeries;
 }
 
 /** How much a small chart's values moved over `range`: in its units (dollars or points) and as a fraction. */

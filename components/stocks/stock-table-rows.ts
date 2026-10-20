@@ -23,6 +23,6 @@ export function toStockTableRow(stock: Stock): StockTableRow {
     previousClose: stock.previousClose,
     marketCap: stock.marketCap,
     peRatio: stock.peRatio,
-    trend: trendSeries(stock.history),
+    trend: trendSeries(stock),
   };
 }

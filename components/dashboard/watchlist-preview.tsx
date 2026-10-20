@@ -16,7 +16,7 @@ import { WatchlistCard } from "./watchlist-card";
 export async function WatchlistPreview() {
   const stocks = await getStocks();
   const rows: Record<string, ReactNode> = Object.fromEntries(
-    stocks.map((stock) => [stock.symbol, <StockRow key={stock.symbol} stock={{ ...stock, trend: trendSeries(stock.history) }} sparkline />]),
+    stocks.map((stock) => [stock.symbol, <StockRow key={stock.symbol} stock={{ ...stock, trend: trendSeries(stock) }} sparkline />]),
   );
   return <WatchlistCard rows={rows} />;
 }

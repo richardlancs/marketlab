@@ -78,6 +78,12 @@ export interface Quote {
    * alerts compare with. Same days as `history`.
    */
   raw: PricePoint[];
+  /**
+   * Prices every 5 minutes through the most recent trading days (adjusted,
+   * like `history`), oldest first, for the 1D, 1W and 1M charts. Empty when
+   * the data source has only daily prices.
+   */
+  intraday: PricePoint[];
   /** Dividends and splits, oldest first. */
   actions: CorporateAction[];
 }

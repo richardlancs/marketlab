@@ -30,6 +30,16 @@ const newYorkParts = new Intl.DateTimeFormat("en-US", {
 });
 
 /**
+ * The exact moment of the 4 PM New York close on `day` (00:00 UTC): 20:00 UTC
+ * in summer (daylight saving time), 21:00 UTC in winter.
+ */
+export function newYorkClose(day: number): number {
+  const at = day + CLOSE_OFFSET;
+  const hour = Number(newYorkParts.formatToParts(at).find((p) => p.type === "hour")?.value);
+  return at + (16 - hour) * HOUR;
+}
+
+/**
  * The latest trading day whose close has happened by `now`: today once it's
  * 4 PM or later in New York on a weekday, otherwise the previous weekday.
  */
