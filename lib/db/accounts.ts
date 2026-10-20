@@ -1,8 +1,9 @@
 /**
- * Reading and changing signed-in users' simulated accounts in the database.
+ * Reading and changing simulated accounts in the database, signed-in users'
+ * and guests' alike (guests are users marked `isGuest`; see ./guests.ts).
  *
  * Every change runs as one write transaction (see ./transaction.ts) that reads the account, applies
- * the same rules guest mode uses (lib/trading.ts, lib/orders.ts, lib/processing.ts), and writes
+ * the shared rules (lib/trading.ts, lib/orders.ts, lib/processing.ts), and writes
  * what changed. So two orders sent at once (say, from two tabs) can't both spend the same cash:
  * the second waits for the first, then sees its result. And because the account is brought up to
  * date (dividends, fills…) inside the same transaction as each trade, nothing can be applied twice.
@@ -13,7 +14,7 @@
 import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { processAccount, type MarketData } from "../processing";
-import { startingAccount, type StartingPreset } from "../starting-account";
+import { isStartingAccount, startingAccount, type StartingPreset } from "../starting-account";
 import { MAX_ALERTS, MAX_EVENTS, MAX_TRADES, MAX_WATCHLIST, placeOrder, type Account, type Order, type TradeResult } from "../trading";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
@@ -124,6 +125,20 @@ async function persist(ex: Executor, userId: string, before: Account, after: Acc
   await sync(priceAlert, before.alerts, after.alerts, (a) => ({ triggeredAt: null, triggerPrice: null, ...a, seen: a.seen ?? false }));
 }
 
+/** The account tables, keyed by user: the rows `moveAccount` hands from one user to another. */
+const ACCOUNT_TABLES = [portfolio, holding, watchlistItem, trade, accountEvent, pendingOrder, priceAlert] as const;
+
+/**
+ * Hands every row of one user's account to another (a guest's portfolio
+ * becoming their new account's). The receiving user must have no account.
+ * For use inside a transaction that's doing more (lib/db/guests.ts).
+ */
+export async function moveAccount(ex: Executor, fromUserId: string, toUserId: string) {
+  for (const table of ACCOUNT_TABLES) await ex.update(table).set({ userId: toUserId }).where(eq(table.userId, fromUserId));
+}
+
+export { read as readAccount, remove as removeAccount };
+
 /** Loads the account, creating it from the starting account if this user has none yet. */
 async function ensure(ex: Executor, userId: string): Promise<Account> {
   const existing = await read(ex, userId);
@@ -156,6 +171,20 @@ export function createAccountRepository(db: Db) {
     /** The user's account, or null if they haven't got one yet. */
     load: (userId: string) => read(db, userId),
 
+    /**
+     * Users whose account hasn't been brought up to `latest` (the market's
+     * latest close), longest-waiting first: what the daily job catches up.
+     */
+    async listBehind(latest: number, limit: number): Promise<string[]> {
+      const rows = await db
+        .select({ userId: portfolio.userId })
+        .from(portfolio)
+        .where(sql`${portfolio.processedThrough} is null or ${portfolio.processedThrough} < ${latest}`)
+        .orderBy(sql`coalesce(${portfolio.processedThrough}, 0)`)
+        .limit(limit);
+      return rows.map((r) => r.userId);
+    },
+
     /** The user's account, created from the starting account if needed. */
     ensure: (userId: string) => transaction((tx) => ensure(tx, userId)),
 
@@ -168,6 +197,21 @@ export function createAccountRepository(db: Db) {
     create: (userId: string, account: Account) =>
       transaction(async (tx) => {
         if (await read(tx, userId)) return false;
+        await write(tx, userId, account);
+        return true;
+      }),
+
+    /**
+     * Replaces the account with `account` (one being imported from this
+     * browser's old local storage), but only if the user has no account yet
+     * or only the untouched starting one. Returns false, changing nothing,
+     * if they already have a portfolio of their own.
+     */
+    replaceIfUntouched: (userId: string, account: Account) =>
+      transaction(async (tx) => {
+        const existing = await read(tx, userId);
+        if (existing && !isStartingAccount(existing)) return false;
+        await remove(tx, userId);
         await write(tx, userId, account);
         return true;
       }),

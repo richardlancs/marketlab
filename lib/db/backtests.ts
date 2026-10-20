@@ -1,16 +1,29 @@
 /**
- * Saved backtests for signed-in users. Every query is filtered by the user's
+ * Saved backtests, for signed-in users and guests alike. Every query is filtered by the user's
  * ID, so one user can never read or delete another's runs.
  */
-import { and, count, desc, eq } from "drizzle-orm";
+import { and, count, desc, eq, inArray } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun } from "../backtest/config";
 import { isSymbolFormat } from "../market/symbols";
 import * as schema from "./schema";
-import { writeTransaction } from "./transaction";
+import { writeTransaction, type Executor } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
 const { backtestRun } = schema;
+
+/**
+ * Hands one user's saved runs to another (a guest signing in), newest first,
+ * up to the receiver's room under MAX_SAVED_RUNS. Runs that don't fit stay
+ * with the sender, to be deleted with it. For use inside a transaction.
+ */
+export async function moveRuns(ex: Executor, fromUserId: string, toUserId: string) {
+  const [{ total }] = await ex.select({ total: count() }).from(backtestRun).where(eq(backtestRun.userId, toUserId));
+  const room = Math.max(0, MAX_SAVED_RUNS - total);
+  if (room === 0) return;
+  const ids = (await ex.select({ id: backtestRun.id }).from(backtestRun).where(eq(backtestRun.userId, fromUserId)).orderBy(desc(backtestRun.createdAt)).limit(room)).map((r) => r.id);
+  if (ids.length) await ex.update(backtestRun).set({ userId: toUserId }).where(and(eq(backtestRun.userId, fromUserId), inArray(backtestRun.id, ids)));
+}
 
 export function createBacktestRepository(db: Db) {
   return {

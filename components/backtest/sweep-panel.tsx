@@ -146,11 +146,12 @@ export function SweepPanel({
         )}
         {running ? (
           <div className="space-y-2">
-            {/* aria-live: progress is announced as it changes. */}
+            {/* aria-live: announced when the sweep starts. */}
             <p aria-live="polite" className="text-sm text-muted">
-              Running {state.done} of {state.total || "…"}…
+              Running {state.total} backtests on the server…
             </p>
-            <progress max={state.total || 1} value={state.done} className="h-1.5 w-full accent-accent" aria-label="Sweep progress" />
+            {/* No value: an indeterminate bar, since the server reports only when it's done. */}
+            <progress className="h-1.5 w-full accent-accent" aria-label="Sweep progress" />
             <button
               type="button"
               onClick={onCancel}

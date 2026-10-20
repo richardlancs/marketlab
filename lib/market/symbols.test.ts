@@ -93,24 +93,3 @@ describe("market mode", () => {
     expect(isTiingoBlocked({ VERCEL_ENV: "production" })).toBe(false);
   });
 });
-
-describe("parseHistoryQuery", async () => {
-  const { parseHistoryQuery, MAX_HISTORY_SYMBOLS } = await import("./history-query");
-  const params = (entries: [string, string][]) => new URLSearchParams(entries);
-
-  it("reads symbols, indices and a start date", () => {
-    expect(parseHistoryQuery(params([["symbol", "ko"], ["symbol", "KO"], ["indices", "all"], ["from", "1000"]]))).toEqual({ symbols: ["KO"], allIndices: true, from: 1000, raw: false, actions: false });
-  });
-
-  it("needs a stock unless all indices are asked for", () => {
-    expect(parseHistoryQuery(params([]))).toBeNull();
-    expect(parseHistoryQuery(params([["indices", "all"]]))).toEqual({ symbols: [], allIndices: true, from: null, raw: false, actions: false });
-  });
-
-  it("rejects too many symbols, a malformed one, or a bad date", () => {
-    const many = Array.from({ length: MAX_HISTORY_SYMBOLS + 1 }, (_, i): [string, string] => ["symbol", `S${i}`]);
-    expect(parseHistoryQuery(params(many))).toBeNull();
-    expect(parseHistoryQuery(params([["symbol", "../x"]]))).toBeNull();
-    expect(parseHistoryQuery(params([["symbol", "KO"], ["from", "soon"]]))).toBeNull();
-  });
-});

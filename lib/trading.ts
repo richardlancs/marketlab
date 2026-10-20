@@ -3,9 +3,9 @@
  *
  * Every function here is pure: it takes an account and returns a new one,
  * without changing the input or touching storage. That's what lets the same
- * rules run in the browser (guest mode, saved in localStorage) and on the
- * server (signed-in users, saved in the database), so the two can never
- * disagree about whether a trade is allowed.
+ * rules run on the server (every account, in the database) and in the
+ * browser (to show a change at once, before the server confirms it), so the
+ * two can never disagree about whether a trade is allowed.
  */
 import type { Holding } from "./types";
 

@@ -34,7 +34,16 @@ export const user = sqliteTable("user", {
   image: text("image"),
   createdAt: createdAt(),
   updatedAt: updatedAt(),
-});
+  /**
+   * A guest: someone using MarketLab without an account, known only by a
+   * random ID in an httpOnly cookie (lib/owner.ts). Guests have no email
+   * (a placeholder fills the required column), no password and no session, so
+   * they're never "signed in"; but their portfolio, saved backtests and
+   * lesson progress live in the database like everyone's. Added by MarketLab,
+   * not Better Auth, which leaves it at its default.
+   */
+  isGuest: integer("is_guest", { mode: "boolean" }).default(false).notNull(),
+}, (table) => [index("user_is_guest_idx").on(table.isGuest, table.updatedAt)]);
 
 export const session = sqliteTable(
   "session",
@@ -254,13 +263,10 @@ export const leaderboardEntry = sqliteTable(
 // ---------------------------------------------------------------------------
 
 /**
- * Whoever is working through the lessons. A signed-in user has one, linked
- * by `userId`. A guest gets an anonymous one the first time they answer a
- * question, known only by a random ID in an httpOnly cookie
- * (lib/learn-progress.ts). It's separate from sign-in on purpose: being a
- * guest learner doesn't make anyone "signed in" to the rest of the app. When
- * a guest signs in, their progress moves into their account's learner and the
- * anonymous one is deleted.
+ * Whoever is working through the lessons: a user, signed in or a guest
+ * (see `user.isGuest`), linked by `userId`. A null `userId` is a learner from
+ * before guests were users (Phase 10's learner cookie); it's attached to a
+ * user the next time that browser visits (lib/owner.ts).
  */
 export const learner = sqliteTable("learner", {
   id: text("id").primaryKey(),

@@ -8,39 +8,42 @@ const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
 
 /**
  * Messages about the account itself, under the header:
- * - after a first sign-in, the offer to import this browser's guest data;
+ * - after signing in, when this browser's guest and the account both had a
+ *   portfolio of their own, the choice of which one to keep;
  * - problems reaching the server.
  */
 export function AccountNotices() {
-  const { importOffer, resolveImport, error, dismissError } = useAccount();
-  const [pending, setPending] = useState<"import" | "fresh" | null>(null);
+  const { account, pendingGuest, resolvePendingGuest, error, dismissError } = useAccount();
+  const [pending, setPending] = useState<"use-guest" | "keep-account" | null>(null);
   const [importError, setImportError] = useState<string | null>(null);
 
-  if (!importOffer && !error) return null;
+  if (!pendingGuest && !error) return null;
 
-  async function choose(choice: "import" | "fresh") {
+  async function choose(choice: "use-guest" | "keep-account") {
     setPending(choice);
     setImportError(null);
-    const outcome = await resolveImport(choice);
+    const outcome = await resolvePendingGuest(choice);
     setPending(null);
     if (!outcome.ok) setImportError(outcome.message);
   }
 
+  const describe = (a: NonNullable<typeof account>) =>
+    `${plural(a.holdings.length, "holding")}, ${formatCurrency(a.cash)} cash, ${plural(a.watchlist.length, "watched stock")} and ${plural(a.trades.length, "trade")}`;
+
   return (
     <div className="mx-auto w-full max-w-7xl px-4 pt-4 sm:px-6 lg:px-8">
-      {importOffer && (
+      {pendingGuest && (
         <section
           aria-labelledby="import-title"
           className="animate-fade-up rounded-2xl border border-accent/30 bg-accent/[0.06] p-5 sm:flex sm:items-center sm:gap-6"
         >
           <div className="flex-1">
             <h2 id="import-title" className="font-semibold">
-              Bring your guest portfolio into your account?
+              Which portfolio should your account keep?
             </h2>
             <p className="mt-1 text-sm text-muted">
-              This browser has {plural(importOffer.holdings.length, "holding")}, {formatCurrency(importOffer.cash)} cash,{" "}
-              {plural(importOffer.watchlist.length, "watched stock")} and {plural(importOffer.trades.length, "trade")}. Import them, or start
-              your account with the standard starting portfolio.
+              Before signing in you used a guest portfolio here ({describe(pendingGuest)}). Your account already has its own
+              {account ? ` (${describe(account)})` : ""}. Your lesson progress and saved backtests from both have been combined.
             </p>
             {importError && (
               <p role="alert" className="mt-2 text-sm text-loss">
@@ -52,18 +55,18 @@ export function AccountNotices() {
             <button
               type="button"
               disabled={pending !== null}
-              onClick={() => choose("import")}
+              onClick={() => choose("use-guest")}
               className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
             >
-              {pending === "import" ? "Importing…" : "Import"}
+              {pending === "use-guest" ? "Switching…" : "Use the guest one"}
             </button>
             <button
               type="button"
               disabled={pending !== null}
-              onClick={() => choose("fresh")}
+              onClick={() => choose("keep-account")}
               className="rounded-full px-4 py-2 text-sm font-medium text-muted transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
             >
-              {pending === "fresh" ? "Setting up…" : "Start fresh"}
+              {pending === "keep-account" ? "Keeping…" : "Keep my account’s"}
             </button>
           </div>
         </section>

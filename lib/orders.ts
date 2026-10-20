@@ -1,6 +1,6 @@
 /**
  * Limit and stop orders: orders that wait for a price. Pure functions, used
- * in the browser (guest mode) and on the server (signed in), like
+ * on the server and (for the instant view of a change) in the browser, like
  * lib/trading.ts.
  *
  * Prices here are daily closes, so an order is checked once a day, against

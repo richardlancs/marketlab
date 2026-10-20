@@ -8,12 +8,10 @@ import { TimeframePicker } from "@/components/charts/timeframe-picker";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
 import { Skeleton } from "@/components/ui/skeleton";
-import { computeMetrics } from "@/lib/backtest/engine";
-import { sliceTimeframe } from "@/lib/chart";
 import { formatCurrency, formatDate } from "@/lib/format";
-import { firstTradeTime, portfolioValueSeries, rebase } from "@/lib/portfolio-history";
-import type { PricePoint, Timeframe } from "@/lib/types";
-import { usePortfolioHistory, type IndexHistory } from "./use-portfolio-history";
+import { rebase } from "@/lib/portfolio-history";
+import type { Timeframe } from "@/lib/types";
+import { usePortfolioPerformance, type IndexChoice } from "./use-portfolio-performance";
 
 /** The measures that make sense for a portfolio over a range ("Final value" of a rebased line wouldn't). */
 const SHOWN = new Set(["Total return", "Annual return", "Max drawdown", "Volatility", "Sharpe ratio"]);
@@ -22,15 +20,17 @@ const METRIC_ROWS = ROWS.filter((row) => SHOWN.has(row.label));
 /**
  * How the simulated portfolio has done over time, against a market index.
  * Both lines start at $100 ("growth of $100"), so they share one axis even
- * though the portfolio and the index are very different sizes.
+ * though the portfolio and the index are very different sizes. The numbers
+ * are worked out on the server (app/api/portfolio/performance); this only
+ * draws them.
  */
 export function PerformanceCard() {
   const { account } = useAccount();
-  const data = usePortfolioHistory(account);
   const [timeframe, setTimeframe] = useState<Timeframe>("1Y");
   const [indexSymbol, setIndexSymbol] = useState<string | null>(null);
+  const data = usePortfolioPerformance(account, indexSymbol, timeframe);
 
-  const header = (indices: IndexHistory[] | null, selected: IndexHistory | null) => (
+  const header = (indices: IndexChoice[] | null, selected: IndexChoice | null) => (
     <div className="flex flex-wrap items-center justify-between gap-3">
       <h2 id="performance" className="text-lg font-semibold tracking-tight">
         Performance
@@ -74,39 +74,25 @@ export function PerformanceCard() {
       </Card>
     );
   }
-
-  const selected = data.indices.find((i) => i.symbol === indexSymbol) ?? data.indices[0];
-  // The index's trading days are the chart's days.
-  const benchmarkPoints = sliceTimeframe(selected.history, timeframe);
-  const times = benchmarkPoints.map((p) => p.time);
-  let portfolio: PricePoint[];
-  try {
-    portfolio = portfolioValueSeries(account, data.history, times);
-  } catch {
+  const selected = data.index;
+  if (data.status !== "ok") {
     return (
       <Card aria-labelledby="performance">
         {header(data.indices, selected)}
-        <p className="mt-4 text-sm text-muted">Some of your stocks have no price history, so the chart can&apos;t be drawn.</p>
-      </Card>
-    );
-  }
-  if (times.length < 2) {
-    return (
-      <Card aria-labelledby="performance">
-        {header(data.indices, selected)}
-        <p className="mt-4 text-sm text-muted">Not enough price history for this range yet.</p>
+        <p className="mt-4 text-sm text-muted">
+          {data.status === "missing-prices" ? "Some of your stocks have no price history, so the chart can’t be drawn." : "Not enough price history for this range yet."}
+        </p>
       </Card>
     );
   }
 
-  const first = firstTradeTime(account);
+  const { times, portfolio, firstTrade: first } = data;
   // A trade belongs to the latest close at or before it (see lib/portfolio-history.ts).
   const markerIndex = first === null ? -1 : times.findLastIndex((t) => t <= first);
-  const tradesInRange = account.trades.filter((t) => t.time >= times[0]).length;
-  const yours = computeMetrics(portfolio, tradesInRange, 1);
-  const theirs = computeMetrics(benchmarkPoints, 0, 1);
-  const values = rebase(portfolio.map((p) => p.price));
-  const benchmarkValues = rebase(benchmarkPoints.map((p) => p.price));
+  const yours = data.metrics.portfolio;
+  const theirs = data.metrics.index;
+  const values = rebase(portfolio);
+  const benchmarkValues = rebase(data.indexValues);
   const monthEnds = times
     .map((time, i) => ({ time, i }))
     .filter(({ i }) => i === times.length - 1 || new Date(times[i]).getUTCMonth() !== new Date(times[i + 1]).getUTCMonth());
@@ -194,7 +180,7 @@ export function PerformanceCard() {
               {monthEnds.map(({ time, i }) => (
                 <tr key={time}>
                   <td className="py-1.5">{formatDate(time)}</td>
-                  <td className="py-1.5 pl-4 text-right">{formatCurrency(portfolio[i].price)}</td>
+                  <td className="py-1.5 pl-4 text-right">{formatCurrency(portfolio[i])}</td>
                   <td className="py-1.5 pl-4 text-right">{formatCurrency(values[i])}</td>
                   <td className="py-1.5 pl-4 text-right">{formatCurrency(benchmarkValues[i])}</td>
                 </tr>

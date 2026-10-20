@@ -1,30 +1,32 @@
 "use server";
 
 /**
- * Server Actions that change a signed-in user's simulated account.
+ * Server Actions that change a simulated account: a signed-in user's, or
+ * this browser's guest's (lib/owner.ts; a guest is created on their first
+ * change).
  *
  * Each one is a public endpoint: anyone can POST to it without using the UI.
  * So every action:
- * - reads the user from the session cookie, never from an argument, so it can
- *   only ever touch the caller's own account;
+ * - reads whose account it is from the session or guest cookie, never from an
+ *   argument, so it can only ever touch the caller's own account;
  * - treats every argument as untrusted and validates it;
  * - takes prices from the server's own data, never from the request.
  */
-import { headers } from "next/headers";
-import { auth } from "./auth";
-import { accounts } from "./db";
+import { accounts, guests } from "./db";
 import { addAlert, markAlertsSeen, removeAlert } from "./alerts";
 import { getListing, getProcessingData, getStockDetail } from "./market";
 import { isSymbolFormat, normalizeSymbol } from "./market/symbols";
 import { cancelPendingOrder, placePendingOrder, type NewOrder } from "./orders";
 import { symbolsToProcess } from "./processing";
+import { clearGuestCookie, currentOwner } from "./owner";
 import { isStartingPreset } from "./starting-account";
 import { MAX_HOLDINGS, MAX_WATCHLIST, parseAccount, type Account } from "./trading";
+import { visitorAccount } from "./visitor-account";
 
 /** What the browser gets back: the account after the change, or a message to show. */
 export type ActionResult = { ok: true; account: Account } | { ok: false; message: string };
 
-const SIGNED_OUT: ActionResult = { ok: false, message: "Your session has ended. Sign in again to continue." };
+const NO_OWNER: ActionResult = { ok: false, message: "Couldn't save that. Reload the page and try again." };
 const UNKNOWN: ActionResult = { ok: false, message: "Unknown stock." };
 
 /** The canonical symbol, if `value` names a stock that exists in the current data source. */
@@ -34,21 +36,16 @@ async function realSymbol(value: unknown): Promise<string | null> {
   return (await getListing(symbol)) ? symbol : null;
 }
 
-/** The most different stocks a guest import may name, so it can't trigger unbounded lookups. */
+/** The most different stocks an import may name, so it can't trigger unbounded lookups. */
 const MAX_IMPORT_SYMBOLS = MAX_HOLDINGS + MAX_WATCHLIST;
 
-async function currentUserId(): Promise<string | null> {
-  const session = await auth.api.getSession({ headers: await headers() });
-  return session?.user.id ?? null;
-}
-
-/** Runs `change` for the signed-in user, then returns their account as it now is. */
+/** Runs `change` for this request's owner (creating a guest if needed), then returns their account as it now is. */
 async function forCurrentUser(change: (userId: string) => Promise<ActionResult | void>): Promise<ActionResult> {
-  const userId = await currentUserId();
-  if (!userId) return SIGNED_OUT;
-  const result = await change(userId);
+  const owner = await currentOwner({ create: true });
+  if (!owner) return NO_OWNER;
+  const result = await change(owner.id);
   if (result) return result;
-  return { ok: true, account: await accounts.ensure(userId) };
+  return { ok: true, account: await accounts.ensure(owner.id) };
 }
 
 export async function toggleWatchlistAction(input: unknown): Promise<ActionResult> {
@@ -72,6 +69,8 @@ async function processingDataFor(userId: string, extra: string[] = []) {
 
 /** Applies dividends, splits, order fills and alerts since the account was last brought up to date. */
 export async function processAccountAction(): Promise<ActionResult> {
+  // Nothing saved yet: nothing to catch up, and no reason to create a guest.
+  if (!(await currentOwner({ create: false }))) return { ok: true, account: await visitorAccount() };
   return forCurrentUser(async (userId) => {
     const result = await accounts.update(userId, await processingDataFor(userId), (account) => ({ ok: true, account }));
     return result.ok ? { ok: true, account: result.account } : result;
@@ -150,35 +149,48 @@ export async function markAlertsSeenAction(): Promise<ActionResult> {
   return forCurrentUser((userId) => change(userId, [], (account) => ({ ok: true, account: markAlertsSeen(account) })));
 }
 
-/** Sets the account up from the starting account (the user chose not to import, or had nothing to import). */
-export async function startFreshAction(): Promise<ActionResult> {
-  return forCurrentUser(async () => {}); // forCurrentUser's ensure() creates it
-}
-
 /**
- * Copies a guest account from this browser into the user's new account.
- * Only allowed while they have no account yet, so it can't overwrite one.
+ * Brings in an account this browser kept in localStorage before accounts
+ * moved to the database (guest mode used to live there). It's only taken if
+ * the owner has no portfolio of their own yet (none, or the untouched
+ * starting one), so it can never overwrite one.
  *
- * The guest data comes from the browser, so it's validated for shape, and
- * every stock it names must exist. Its numbers are taken as they are: guest mode never had a
- * server checking it, and since the simulator has no shared rankings, editing
- * them would only fool yourself.
+ * The data comes from the browser, so it's validated for shape, and every
+ * stock it names must exist. Its numbers are taken as they are: they were
+ * never checked by a server, and since the simulator has no shared rankings
+ * built on them, editing them would only fool yourself. (The leaderboard
+ * ranks the return since joining, from the server's own values.)
  */
-export async function importGuestAccountAction(guest: unknown): Promise<ActionResult> {
-  const account = parseAccount(guest, isSymbolFormat);
+export async function importBrowserAccountAction(browser: unknown): Promise<ActionResult> {
+  const account = parseAccount(browser, isSymbolFormat);
   const unreadable: ActionResult = { ok: false, message: "That browser data couldn't be read." };
   if (!account || account.holdings.length > MAX_HOLDINGS || account.watchlist.length > MAX_WATCHLIST) return unreadable;
   const symbols = [
     ...new Set([...account.holdings, ...account.watchlist, ...account.trades, ...(account.orders ?? []), ...(account.alerts ?? [])].map((x) => (typeof x === "string" ? x : x.symbol))),
   ];
   if (symbols.length > MAX_IMPORT_SYMBOLS) return unreadable;
+  const real = await Promise.all(symbols.map(realSymbol));
+  if (real.some((s) => s === null)) return { ok: false, message: "Your browser data names a stock that doesn't exist, so it couldn't be imported." };
   return forCurrentUser(async (userId) => {
-    // Checked after the session, so only signed-in users can trigger lookups.
-    const real = await Promise.all(symbols.map(realSymbol));
-    if (real.some((s) => s === null)) return { ok: false, message: "Your browser data names a stock that doesn't exist, so it couldn't be imported." };
     // Fresh trade, order and alert IDs: they're unique across all users, and these came from the browser.
     const fresh = <T extends { id: string }>(items: T[] | undefined) => items?.map((x) => ({ ...x, id: crypto.randomUUID() }));
-    const created = await accounts.create(userId, { ...account, trades: fresh(account.trades) ?? [], orders: fresh(account.orders), alerts: fresh(account.alerts) });
-    if (!created) return { ok: false, message: "Your account already has data, so nothing was imported." };
+    const imported = await accounts.replaceIfUntouched(userId, { ...account, trades: fresh(account.trades) ?? [], orders: fresh(account.orders), alerts: fresh(account.alerts) });
+    if (!imported) return { ok: false, message: "This account already has a portfolio, so nothing was imported." };
   });
+}
+
+/**
+ * After signing in, when both this browser's guest and the account had a
+ * portfolio of their own: keep the account's, or replace it with the
+ * guest's. The guest is then gone either way.
+ */
+export async function resolveGuestPortfolioAction(choice: unknown): Promise<ActionResult> {
+  if (choice !== "keep-account" && choice !== "use-guest") return { ok: false, message: "Choose one of the two portfolios." };
+  const owner = await currentOwner({ create: false });
+  if (owner?.kind !== "user") return { ok: false, message: "Your session has ended. Sign in again to continue." };
+  if (owner.pendingGuest) {
+    await guests.resolve(owner.pendingGuest, owner.id, choice);
+    await clearGuestCookie();
+  }
+  return { ok: true, account: await accounts.ensure(owner.id) };
 }

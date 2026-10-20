@@ -1,9 +1,8 @@
-import { auth } from "@/lib/auth";
 import { backtests } from "@/lib/db";
+import { currentOwner } from "@/lib/owner";
 
-/** GET /api/backtests: the signed-in user's saved backtests, newest first. */
-export async function GET(request: Request) {
-  const session = await auth.api.getSession({ headers: request.headers });
-  if (!session) return Response.json({ error: "Not signed in" }, { status: 401 });
-  return Response.json({ runs: await backtests.list(session.user.id) }, { headers: { "Cache-Control": "private, no-store" } });
+/** GET /api/backtests: this visitor's saved backtests (signed in or a guest), newest first. */
+export async function GET() {
+  const owner = await currentOwner({ create: false });
+  return Response.json({ runs: owner ? await backtests.list(owner.id) : [] }, { headers: { "Cache-Control": "private, no-store" } });
 }

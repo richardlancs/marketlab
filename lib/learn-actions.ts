@@ -2,7 +2,7 @@
 
 /**
  * Server Actions that save lesson progress, for signed-in users and guests
- * (lib/learn-progress.ts works out which).
+ * (lib/owner.ts works out which).
  *
  * Each one is a public endpoint, so arguments are untrusted: the lesson,
  * question and choice are checked, and the server marks answers right or
@@ -10,21 +10,21 @@
  * choice was picked, so a request can't claim a pass.
  */
 import { learning } from "./db";
-import { currentLearner, type ProgressStorage } from "./learn-progress";
+import { currentOwner } from "./owner";
 import { getLesson } from "./lessons";
 import { answerQuestion, current, isTermKey, retry, type LessonProgress } from "./lessons/progress";
 
-export type ProgressResult = { ok: true; progress: LessonProgress; storage: ProgressStorage } | { ok: false; message: string };
+export type ProgressResult = { ok: true; progress: LessonProgress; storage: "account" | "guest" } | { ok: false; message: string };
 
 const NO_LESSON: ProgressResult = { ok: false, message: "That lesson doesn't exist." };
 
 const lessonFor = (term: unknown) => (isTermKey(term) ? { term, lesson: getLesson(term) } : null);
 
 async function save(term: Parameters<typeof learning.change>[1], apply: Parameters<typeof learning.change>[2]): Promise<ProgressResult> {
-  const learner = await currentLearner({ create: true });
-  if (!learner) return { ok: false, message: "Couldn't save your progress. Reload the page and try again." };
-  const result = await learning.change(learner, term, apply, Date.now());
-  return result.ok ? { ...result, storage: "userId" in learner ? "account" : "guest" } : result;
+  const owner = await currentOwner({ create: true });
+  if (!owner) return { ok: false, message: "Couldn't save your progress. Reload the page and try again." };
+  const result = await learning.change(owner.id, term, apply, Date.now());
+  return result.ok ? { ...result, storage: owner.kind === "user" ? "account" : "guest" } : result;
 }
 
 /** Saves the answer `choice` to question `index` of a lesson's quiz. */

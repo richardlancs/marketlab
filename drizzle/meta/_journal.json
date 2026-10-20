@@ -36,6 +36,13 @@
       "when": 1792470235097,
       "tag": "0004_learn_progress",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1792471424557,
+      "tag": "0005_guests",
+      "breakpoints": true
     }
   ]
 }

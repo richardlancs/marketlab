@@ -1,25 +1,25 @@
 "use client";
 
-import { createContext, startTransition, use, useEffect, useMemo, useOptimistic, useState, useSyncExternalStore, type ReactNode } from "react";
+import { createContext, startTransition, use, useEffect, useMemo, useOptimistic, useState, type ReactNode } from "react";
 import {
   addAlertAction,
   cancelOrderAction,
-  importGuestAccountAction,
+  importBrowserAccountAction,
   markAlertsSeenAction,
   placeOrderAction,
   placePendingOrderAction,
   processAccountAction,
   removeAlertAction,
   resetAccountAction,
-  startFreshAction,
+  resolveGuestPortfolioAction,
   toggleWatchlistAction,
   type ActionResult,
 } from "@/lib/account-actions";
 import { addAlert as applyAddAlert, markAlertsSeen as applySeen, removeAlert as applyRemoveAlert } from "@/lib/alerts";
 import { cancelPendingOrder, placePendingOrder as applyPendingOrder, type NewOrder } from "@/lib/orders";
-import { needsProcessing, processAccount, symbolsToProcess, type MarketData } from "@/lib/processing";
+import { needsProcessing } from "@/lib/processing";
 import type { StockTableRow } from "@/components/stocks/stock-table-rows";
-import { createLocalAccountStore } from "@/lib/account-store";
+import { decodeAccount, STORAGE_KEY } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
 import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
@@ -31,19 +31,18 @@ export type Outcome = { ok: true } | { ok: false; message: string };
 
 interface AccountContextValue {
   /**
-   * The simulated account, or null while it isn't known yet: during server
-   * rendering (the server can't read this browser's storage), while the
-   * session or a signed-in user's account is loading, and while a new user
-   * chooses whether to import their guest data. Components show a skeleton.
+   * The simulated account, or null while it's loading (including during
+   * server rendering: whose account it is depends on this browser's cookies).
+   * Components show a skeleton.
    */
   account: Account | null;
-  /** Where the account is saved. */
+  /** Whose account it is: this browser's guest, or the signed-in user's. Both are saved in the database. */
   mode: "loading" | "guest" | "signed-in";
   /**
-   * Signed in with no account yet, and this browser has guest data that
-   * could be imported. The import prompt offers the choice.
+   * Just signed in, and this browser's guest had a portfolio of its own as
+   * well as the account: the guest's, while the user chooses which to keep.
    */
-  importOffer: Account | null;
+  pendingGuest: Account | null;
   /** A problem talking to the server, for the status banner. */
   error: string | null;
   dismissError(): void;
@@ -59,7 +58,7 @@ interface AccountContextValue {
   /** True when any real ticker can be opened (Tiingo), not just catalog ones. */
   openTickers: boolean;
   toggleWatchlist(symbol: string): Promise<Outcome>;
-  /** Trades at the quote's price in guest mode; signed in, the server uses its own price. */
+  /** Shown at the quote's price straight away; the server then trades at its own price. */
   placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number): Promise<Outcome>;
   /** A limit or stop order, filled later at a close (lib/orders.ts). */
   placePendingOrder(order: NewOrder): Promise<Outcome>;
@@ -70,8 +69,8 @@ interface AccountContextValue {
   markAlertsSeen(): Promise<Outcome>;
   /** Back to a starting account (holdings, cash and watchlist), with no history. */
   reset(preset?: StartingPreset): Promise<Outcome>;
-  /** For importOffer: copy the guest data into the account, or start fresh. */
-  resolveImport(choice: "import" | "fresh"): Promise<Outcome>;
+  /** For pendingGuest: keep the account's portfolio, or replace it with the guest's. */
+  resolvePendingGuest(choice: "keep-account" | "use-guest"): Promise<Outcome>;
 }
 
 const AccountContext = createContext<AccountContextValue | null>(null);
@@ -80,16 +79,21 @@ type Failure = Extract<Outcome, { ok: false }>;
 
 const OFFLINE: Failure = { ok: false, message: "Couldn't reach the server. Check your connection and try again." };
 
+/** Server data is tagged with whose it is, so one person's account is never shown after switching to another. */
+type Remote = { owner: string; account: Account; pending: Account | null };
+
 /**
  * Gives every component below it the account and the actions that change it.
  *
- * - Signed out (guest mode): the account lives in this browser's localStorage.
- * - Signed in: it lives in the database. It's fetched from /api/account, and
- *   changes go through Server Actions. useOptimistic shows each change at once,
- *   then the server's answer replaces it (or undoes it, if refused).
+ * Every account lives in the database: a signed-in user's, or, signed out,
+ * this browser's guest's (lib/owner.ts). It's fetched from /api/account
+ * (again whenever someone signs in or out), and changes go through Server
+ * Actions, which apply the shared rules (lib/trading.ts) with the server's
+ * own prices. useOptimistic shows each change at once, then the server's
+ * answer replaces it (or undoes it, if refused).
  *
- * Both paths apply the same rules (lib/trading.ts), so components don't need
- * to know which one they're using.
+ * Accounts that this browser kept in localStorage before (guest mode used to
+ * live there) are brought into the database once, then removed.
  */
 export function AccountProvider({
   quotes,
@@ -106,39 +110,38 @@ export function AccountProvider({
   children: ReactNode;
 }) {
   const coreQuotes = useMemo(() => Object.fromEntries(quotes.map((q) => [q.symbol, q])), [quotes]);
-  // useState's initializer runs once, so the store is created once per page load.
-  const [store] = useState(() => createLocalAccountStore());
-  // The third argument is what the server (and hydration) sees: null, "not loaded".
-  const guestAccount = useSyncExternalStore(store.subscribe, store.getSnapshot, () => null);
-
   const { data: session, isPending: sessionPending } = authClient.useSession();
   const userId = session?.user.id ?? null;
+  // Whose account to show: the user, or this browser's guest. Null until the session is known.
+  const ownerKey = sessionPending ? null : (userId ?? "guest");
 
-  // The signed-in user's account as the server last reported it. Tagged with
-  // the user's ID, so a different user's data is never shown after switching.
-  const [remote, setRemote] = useState<{ userId: string; account: Account | null } | null>(null);
+  const [remote, setRemote] = useState<Remote | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const serverAccount = remote && remote.userId === userId ? remote.account : undefined; // undefined: not loaded
-  const [optimisticAccount, applyOptimistic] = useOptimistic(serverAccount ?? null, (current: Account | null, change: (a: Account) => Account) =>
+  const serverAccount = remote && remote.owner === ownerKey ? remote.account : null;
+  const [optimisticAccount, applyOptimistic] = useOptimistic(serverAccount, (current: Account | null, change: (a: Account) => Account) =>
     current ? change(current) : current,
   );
 
-  // Load the signed-in user's account whenever the user changes.
+  // Load the account whenever whose it is changes (signing in hands a guest's data over on the server).
   useEffect(() => {
-    if (!userId) return;
+    if (!ownerKey) return;
     let cancelled = false;
-    fetch("/api/account", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : Promise.reject(new Error(String(response.status)))))
-      .then((data: { account: Account | null }) => {
-        if (!cancelled) setRemote({ userId, account: data.account });
-      })
-      .catch(() => {
+    async function load(key: string) {
+      try {
+        await importFromBrowser();
+        const response = await fetch("/api/account", { cache: "no-store" });
+        if (!response.ok) throw new Error(String(response.status));
+        const data: { account: Account; pending: Account | null } = await response.json();
+        if (!cancelled) setRemote({ owner: key, account: data.account, pending: data.pending });
+      } catch {
         if (!cancelled) setError("Couldn't load your account. Reload the page to try again.");
-      });
+      }
+    }
+    void load(ownerKey);
     return () => {
       cancelled = true;
     };
-  }, [userId]);
+  }, [ownerKey]);
 
   /**
    * Runs a Server Action in a transition: shows `optimistic` straight away,
@@ -146,16 +149,13 @@ export function AccountProvider({
    * can't be reached, the optimistic change is dropped, and unless the caller
    * shows the message itself (`quiet`), it goes to the status banner.
    */
-  function runRemote(
-    uid: string,
-    optimistic: ((a: Account) => Account) | null,
-    call: () => Promise<ActionResult>,
-    { quiet = false } = {},
-  ): Promise<Outcome> {
+  function runRemote(optimistic: ((a: Account) => Account) | null, call: () => Promise<ActionResult>, { quiet = false } = {}): Promise<Outcome> {
+    const key = ownerKey;
     const fail = (outcome: Failure) => {
       if (!quiet) setError(outcome.message);
       return outcome;
     };
+    if (!key) return Promise.resolve(fail({ ok: false, message: "Your account is still loading. Try again in a moment." }));
     return new Promise((resolve) => {
       startTransition(async () => {
         if (optimistic) applyOptimistic(optimistic);
@@ -170,7 +170,7 @@ export function AccountProvider({
           const account = result.account;
           // State set after an `await` needs its own transition, or React would
           // show it separately from the optimistic value it replaces.
-          startTransition(() => setRemote({ userId: uid, account }));
+          startTransition(() => setRemote((r) => ({ owner: key, account, pending: r?.owner === key ? r.pending : null })));
           setError(null);
           resolve({ ok: true });
         } else {
@@ -180,61 +180,17 @@ export function AccountProvider({
     });
   }
 
-  // A new user whose browser holds only the untouched starting account has
-  // nothing worth importing, so set them up straight away instead of asking.
-  const needsSetup = userId !== null && serverAccount === null;
-  const guestIsUntouched = guestAccount !== null && isStartingAccount(guestAccount);
+  // Dividends, splits, order fills and alerts since the last visit are applied on the server.
+  const stale = serverAccount !== null && needsProcessing(serverAccount, asOf);
   useEffect(() => {
-    if (needsSetup && guestIsUntouched && userId) void runRemote(userId, null, startFreshAction);
+    if (stale) void runRemote(null, processAccountAction, { quiet: true });
     // runRemote is recreated each render but only uses stable setters.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [needsSetup, guestIsUntouched, userId]);
+  }, [stale, ownerKey]);
 
-  const mode: AccountContextValue["mode"] = sessionPending ? "loading" : userId ? "signed-in" : "guest";
-  const account = mode === "guest" ? guestAccount : mode === "signed-in" ? optimisticAccount : null;
-  const importOffer = needsSetup && guestAccount && !guestIsUntouched ? guestAccount : null;
-
-  /**
-   * Guest mode: brings the browser's account up to date with the market
-   * (dividends, splits, order fills, alerts since the last visit), using
-   * traded closes from /api/history. Signed in, the server does the same in
-   * processAccountAction. Resolves once the account is current (or the data
-   * couldn't be loaded, in which case it's tried again next time).
-   */
-  async function processGuest(): Promise<void> {
-    const current = store.getSnapshot();
-    if (!needsProcessing(current, asOf)) return;
-    const symbols = symbolsToProcess(current);
-    let market: MarketData = { raw: {}, actions: {}, latest: asOf };
-    if (current.processedThrough !== undefined && symbols.length) {
-      const query = [...symbols.map((s) => `symbol=${encodeURIComponent(s)}`), `from=${current.processedThrough}`, "raw=1", "actions=1"].join("&");
-      try {
-        const response = await fetch(`/api/history?${query}`);
-        if (!response.ok) return;
-        const data: { history: MarketData["raw"]; actions: MarketData["actions"] } = await response.json();
-        market = { raw: data.history, actions: data.actions, latest: asOf };
-      } catch {
-        return;
-      }
-    }
-    // Re-read: another tab may have processed (or traded) meanwhile.
-    const latest = store.getSnapshot();
-    const processed = processAccount(latest, market);
-    if (processed !== latest) store.set(processed);
-  }
-
-  const guestStale = mode === "guest" && guestAccount !== null && needsProcessing(guestAccount, asOf);
-  useEffect(() => {
-    if (guestStale) void processGuest();
-    // processGuest reads the store directly; it only needs to run when the account falls behind.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [guestStale, asOf]);
-
-  const serverStale = mode === "signed-in" && serverAccount != null && needsProcessing(serverAccount, asOf);
-  useEffect(() => {
-    if (serverStale && userId) void runRemote(userId, null, processAccountAction, { quiet: true });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [serverStale, userId]);
+  const mode: AccountContextValue["mode"] = !ownerKey ? "loading" : userId ? "signed-in" : "guest";
+  const account = optimisticAccount;
+  const pendingGuest = remote && remote.owner === ownerKey ? remote.pending : null;
 
   // Prices for held or watched stocks outside the core, which the layout
   // doesn't send. Fetched again only when that set of symbols changes; a
@@ -265,10 +221,16 @@ export function AccountProvider({
   }, [extraKey]);
   const quoteMap = useMemo(() => ({ ...extraRows, ...coreQuotes }), [extraRows, coreQuotes]);
 
+  /** Applies `apply` optimistically if it succeeds on the current account; the server re-checks it. */
+  const tryOptimistic = (apply: (a: Account) => { ok: true; account: Account } | { ok: false }) => (a: Account) => {
+    const result = apply(a);
+    return result.ok ? result.account : a;
+  };
+
   const value: AccountContextValue = {
     account,
     mode,
-    importOffer,
+    pendingGuest,
     error,
     dismissError: () => setError(null),
     quotes: quoteMap,
@@ -281,104 +243,94 @@ export function AccountProvider({
         setError(WATCHLIST_FULL);
         return { ok: false, message: WATCHLIST_FULL };
       }
-      if (userId) return runRemote(userId, (a) => applyToggle(a, symbol), () => toggleWatchlistAction(symbol));
-      store.set(applyToggle(store.getSnapshot(), symbol));
-      return { ok: true };
+      return runRemote((a) => applyToggle(a, symbol), () => toggleWatchlistAction(symbol));
     },
 
     async placeOrder({ symbol, price }, side, shares) {
-      // The ID and time are made here, in an event handler, so the rules in
-      // lib/trading.ts stay pure. (Signed in, the server makes its own.)
-      const order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now() };
-      if (userId) {
-        const optimistic = (a: Account) => {
-          const result = applyOrder(a, order);
-          return result.ok ? result.account : a;
-        };
-        // quiet: the trade form shows its own errors.
-        return runRemote(userId, optimistic, () => placeOrderAction(symbol, side, shares), { quiet: true });
-      }
-      await processGuest(); // a dividend or a fill since the last visit may have changed the cash
-      const result = applyOrder(store.getSnapshot(), order);
-      if (!result.ok) return { ok: false, message: result.message };
-      store.set(result.account);
-      return { ok: true };
+      // Only for the optimistic view: the server makes its own ID and time, at its own price.
+      const order: Order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now() };
+      // quiet: the trade form shows its own errors.
+      return runRemote(
+        tryOptimistic((a) => applyOrder(a, order)),
+        () => placeOrderAction(symbol, side, shares),
+        { quiet: true },
+      );
     },
 
     async placePendingOrder(input) {
-      // The ID and time are made here, in an event handler, so the rules stay pure.
       const id = crypto.randomUUID();
       const now = Date.now();
-      if (userId) {
-        const optimistic = (a: Account) => {
-          const result = applyPendingOrder(a, input, id, now);
-          return result.ok ? result.account : a;
-        };
-        return runRemote(userId, optimistic, () => placePendingOrderAction(input), { quiet: true });
-      }
-      await processGuest();
-      const result = applyPendingOrder(store.getSnapshot(), input, id, now);
-      if (!result.ok) return { ok: false, message: result.message };
-      store.set(result.account);
-      return { ok: true };
+      return runRemote(
+        tryOptimistic((a) => applyPendingOrder(a, input, id, now)),
+        () => placePendingOrderAction(input),
+        { quiet: true },
+      );
     },
 
     async cancelOrder(id) {
       const now = Date.now();
-      if (userId) return runRemote(userId, (a) => cancelPendingOrder(a, id, now), () => cancelOrderAction(id));
-      await processGuest(); // it may have filled already
-      store.set(cancelPendingOrder(store.getSnapshot(), id, now));
-      return { ok: true };
+      return runRemote((a) => cancelPendingOrder(a, id, now), () => cancelOrderAction(id));
     },
 
     async addAlert(input) {
       const id = crypto.randomUUID();
       const now = Date.now();
-      if (userId) {
-        const optimistic = (a: Account) => {
-          const result = applyAddAlert(a, input, id, now);
-          return result.ok ? result.account : a;
-        };
-        return runRemote(userId, optimistic, () => addAlertAction(input), { quiet: true });
-      }
-      await processGuest();
-      const result = applyAddAlert(store.getSnapshot(), input, id, now);
-      if (!result.ok) return { ok: false, message: result.message };
-      store.set(result.account);
-      return { ok: true };
+      return runRemote(
+        tryOptimistic((a) => applyAddAlert(a, input, id, now)),
+        () => addAlertAction(input),
+        { quiet: true },
+      );
     },
 
     async removeAlert(id) {
-      if (userId) return runRemote(userId, (a) => applyRemoveAlert(a, id), () => removeAlertAction(id));
-      store.set(applyRemoveAlert(store.getSnapshot(), id));
-      return { ok: true };
+      return runRemote((a) => applyRemoveAlert(a, id), () => removeAlertAction(id));
     },
 
     async markAlertsSeen() {
-      if (userId) return runRemote(userId, applySeen, markAlertsSeenAction, { quiet: true });
-      store.set(applySeen(store.getSnapshot()));
-      return { ok: true };
+      return runRemote(applySeen, markAlertsSeenAction, { quiet: true });
     },
 
-    async reset(preset = "starter") {
-      if (userId) return runRemote(userId, () => startingAccount(preset), () => resetAccountAction(preset));
-      store.set(startingAccount(preset));
-      return { ok: true };
+    async reset(preset: StartingPreset = "starter") {
+      return runRemote(() => startingAccount(preset), () => resetAccountAction(preset));
     },
 
-    async resolveImport(choice) {
-      if (!userId || !guestAccount) return { ok: false, message: "Nothing to import." };
-      const outcome = await runRemote(userId, null, choice === "import" ? () => importGuestAccountAction(guestAccount) : startFreshAction, {
-        quiet: true, // the import prompt shows its own errors
-      });
-      // Imported data has moved to the account, so this browser's guest
-      // account starts over (and won't be offered again for another account).
-      if (outcome.ok && choice === "import") store.set(startingAccount());
+    async resolvePendingGuest(choice) {
+      if (!pendingGuest) return { ok: false, message: "There's nothing to choose." };
+      const outcome = await runRemote(null, () => resolveGuestPortfolioAction(choice), { quiet: true }); // the prompt shows its own errors
+      if (outcome.ok) setRemote((r) => (r ? { ...r, pending: null } : r));
       return outcome;
     },
   };
 
   return <AccountContext value={value}>{children}</AccountContext>;
+}
+
+/**
+ * Brings an account this browser kept in localStorage (before accounts moved
+ * to the database) into the current one, once. The server only takes it if
+ * the current account is untouched, so it never overwrites anything; if it's
+ * refused, it stays in the browser and is tried again on a later visit (say,
+ * signed out, where it can become the guest's).
+ */
+async function importFromBrowser() {
+  let saved: Account | null = null;
+  try {
+    saved = decodeAccount(localStorage.getItem(STORAGE_KEY));
+    if (saved && isStartingAccount(saved)) {
+      localStorage.removeItem(STORAGE_KEY); // nothing worth importing
+      return;
+    }
+    if (!saved || sessionStorage.getItem("marketlab:import-tried")) return;
+    sessionStorage.setItem("marketlab:import-tried", "1"); // once per visit, not on every page
+  } catch {
+    return; // storage blocked: nothing to import
+  }
+  const result = await importBrowserAccountAction(saved).catch(() => null);
+  if (result?.ok) {
+    try {
+      localStorage.removeItem(STORAGE_KEY);
+    } catch {}
+  }
 }
 
 /** The account and its actions. Must be used inside <AccountProvider>. */

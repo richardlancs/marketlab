@@ -5,7 +5,8 @@ import { useAccount } from "./account-provider";
 /** The small line above page titles saying where the account is saved. */
 export function StorageLabel({ prefix }: { prefix?: string }) {
   const { mode } = useAccount();
-  const where = mode === "signed-in" ? "Saved to your account" : mode === "guest" ? "Saved in this browser" : " "; // nbsp keeps the line's height while loading
+  // A guest's account is in the database too, but tied to this browser by its cookie.
+  const where = mode === "signed-in" ? "Saved to your account" : mode === "guest" ? "Saved for this browser" : " "; // nbsp keeps the line's height while loading
   return (
     <p className="text-sm font-medium text-accent">
       {prefix && mode !== "loading" ? `${prefix} · ${where.charAt(0).toLowerCase()}${where.slice(1)}` : where}

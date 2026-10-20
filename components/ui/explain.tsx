@@ -23,20 +23,26 @@ export function Explain({ term, className = "" }: { term: TermKey; className?: s
       >
         i
       </button>
-      <div
+      {/*
+       * Spans shown as blocks, not a div of paragraphs: the ⓘ often sits
+       * inside a sentence (a <p>), where block elements aren't valid HTML.
+       * The popover is drawn in the top layer, so its place in the page
+       * doesn't affect how it looks.
+       */}
+      <span
         id={id}
         popover="auto"
         role="dialog"
         aria-label={entry.title}
-        className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-2xl border border-border bg-surface p-4 text-left text-sm text-foreground shadow-2xl shadow-black/20 backdrop:bg-black/20"
+        className="m-auto w-[min(22rem,calc(100%-2rem))] rounded-2xl border border-border bg-surface p-4 text-left text-sm font-normal open:block text-foreground shadow-2xl shadow-black/20 backdrop:bg-black/20"
       >
-        <p className="font-semibold">{entry.title}</p>
-        <p className="mt-1">{entry.short}</p>
-        <p className="mt-2 text-muted">{entry.more}</p>
+        <span className="block font-semibold">{entry.title}</span>
+        <span className="mt-1 block">{entry.short}</span>
+        <span className="mt-2 block text-muted">{entry.more}</span>
         <Link href={lessonHref(term)} className="mt-3 inline-block text-xs font-medium text-accent hover:underline">
           Full lesson →
         </Link>
-      </div>
+      </span>
     </>
   );
 }

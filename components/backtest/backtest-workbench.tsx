@@ -1,12 +1,11 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
-import { runConfig, STRATEGY_NAMES, summarize, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
-import { formatDate } from "@/lib/format";
+import { compareRunsAction, runBacktestAction } from "@/lib/backtest-actions";
+import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
 import { isSymbolFormat } from "@/lib/market/symbols";
-import type { PricePoint } from "@/lib/types";
 import { BacktestForm, defaultForm, formFromConfig, toConfig, type FormState } from "./backtest-form";
 import { BacktestResults, holdingsLabel } from "./backtest-results";
 import { RunComparison } from "./run-comparison";
@@ -17,11 +16,6 @@ import { useSweep } from "./use-sweep";
 import { parseShareFragment, shareFragment } from "@/lib/backtest/share";
 import type { Axis } from "@/lib/backtest/sweep";
 
-interface History {
-  history: Record<string, PricePoint[]>;
-  market: PricePoint[];
-}
-
 type View =
   | { kind: "empty" }
   | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome }
@@ -30,10 +24,10 @@ type View =
 
 /**
  * The backtest page's interactive part: the settings form, saved runs, and
- * the results of the last run or comparison. Prices come from /api/history;
- * backtests themselves run right here in the browser (they take milliseconds).
- * The stocks to pick from are the catalog's, from the account provider; with
- * real data any other ticker can be typed too.
+ * the results of the last run or comparison. Backtests run on the server
+ * (lib/backtest/server.ts), next to the prices: this sends the settings and
+ * shows the results. The stocks to pick from are the catalog's, from the
+ * account provider; with real data any other ticker can be typed too.
  */
 export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; lastDate: number }) {
   const { listings, openTickers } = useAccount();
@@ -49,24 +43,6 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
   // The form as a config, for the sweep panel (null while the form has a mistake).
   const parsedForm = toConfig(form, isKnown);
   const sweepBase = "config" in parsedForm ? parsedForm.config : null;
-  // Prices already fetched, by symbol, so re-running with other settings is instant.
-  const cache = useRef<History>({ history: {}, market: [] });
-
-  async function load(needed: string[]): Promise<History> {
-    const missing = needed.filter((s) => !cache.current.history[s]);
-    if (missing.length > 0 || cache.current.market.length === 0) {
-      const query = (missing.length ? missing : needed).map((s) => `symbol=${encodeURIComponent(s)}`).join("&");
-      const response = await fetch(`/api/history?${query}`);
-      if (!response.ok) {
-        // The route explains unknown stocks and unavailable prices; anything else is likely the connection.
-        const body = (await response.json().catch(() => null)) as { error?: string } | null;
-        throw new Error(body?.error ?? "Couldn't load prices. Check your connection and try again.");
-      }
-      const data: History = await response.json();
-      cache.current = { history: { ...cache.current.history, ...data.history }, market: data.market };
-    }
-    return cache.current;
-  }
 
   /** Runs `work` with the loading state and error handling every action shares. */
   async function busy(work: () => Promise<void>) {
@@ -74,8 +50,9 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
     setError(null);
     try {
       await work();
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong running the backtest.");
+    } catch {
+      // A Server Action that couldn't be reached throws; the server's own refusals come back as messages.
+      setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setRunning(false);
     }
@@ -83,15 +60,10 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
 
   const runWith = (config: BacktestConfig) =>
     busy(async () => {
-      const { history, market } = await load(config.holdings.map((h) => h.symbol));
-      // A stock listed recently has a shorter history. The run then starts on
-      // the first day all the stocks have prices; say so instead of leaving it
-      // a mystery why the chart starts later.
-      const latestStart = config.holdings
-        .map((h) => ({ symbol: h.symbol, first: history[h.symbol]?.[0]?.time ?? 0 }))
-        .reduce((a, b) => (b.first > a.first ? b : a));
-      setNote(latestStart.first > config.start ? `${latestStart.symbol}'s prices start on ${formatDate(latestStart.first)}, so the run starts there.` : null);
-      setView({ kind: "result", config, outcome: runConfig(config, history, market) });
+      const result = await runBacktestAction(config);
+      if (!result.ok) return setError(result.message);
+      setNote(result.note);
+      setView({ kind: "result", config, outcome: result.outcome });
     });
 
   function run() {
@@ -128,21 +100,20 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
 
   function runSweep(axes: Axis[], measure: Measure) {
     if (!sweepBase) return;
-    const base = sweepBase;
     setNote(null);
-    void busy(async () => {
-      const { history, market } = await load(base.holdings.map((h) => h.symbol));
-      setView({ kind: "sweep", measure });
-      sweep.start({ base, axes, history, market });
-    });
+    setView({ kind: "sweep", measure });
+    sweep.start({ base: sweepBase, axes });
   }
 
   function compare() {
     setNote(null);
     const runs = (saved.runs ?? []).filter((r) => selected.includes(r.id));
     void busy(async () => {
-      const { history, market } = await load([...new Set(runs.flatMap((r) => r.config.holdings.map((h) => h.symbol)))]);
-      setView({ kind: "compare", runs, outcomes: runs.map((r) => runConfig(r.config, history, market)) });
+      const results = await compareRunsAction(runs.map((r) => r.config));
+      if (!Array.isArray(results)) return setError(results.message);
+      const failed = results.find((r) => !r.ok);
+      if (failed && !failed.ok) return setError(failed.message);
+      setView({ kind: "compare", runs, outcomes: results.flatMap((r) => (r.ok ? [r.outcome] : [])) });
     });
   }
 
@@ -194,7 +165,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
               ) : (
                 <p className="py-16 text-center text-sm text-muted">
                   {sweep.state.status === "running"
-                    ? `Running ${sweep.state.done} of ${sweep.state.total || "…"} backtests…`
+                    ? `Running ${sweep.state.total} backtests on the server…`
                     : sweep.state.status === "error"
                       ? sweep.state.message
                       : "The sweep was cancelled."}
@@ -235,7 +206,7 @@ function SaveRun({
       onSubmit={async (event) => {
         event.preventDefault();
         setPending(true);
-        const result = await save(name, view.config, summarize(view.outcome));
+        const result = await save(name, view.config);
         setPending(false);
         setStatus(result.ok ? { ok: true, text: "Saved." } : { ok: false, text: result.message });
       }}
