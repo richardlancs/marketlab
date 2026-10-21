@@ -50,7 +50,7 @@ jobs:
         working-directory: services/analytics
     steps:
       - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       # 3.12 is what Vercel runs the service on.
@@ -71,7 +71,7 @@ jobs:
       - run: npm ci
       # Production dependencies only; high and critical advisories fail the check.
       - run: npm audit --omit=dev --audit-level=high
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
       - name: pip-audit (Python, locked versions)
         working-directory: services/analytics
         run: |
@@ -90,7 +90,7 @@ jobs:
         with:
           node-version: 24
           cache: npm
-      - uses: astral-sh/setup-uv@v6
+      - uses: astral-sh/setup-uv@v7
         with:
           enable-cache: true
       - run: uv python install 3.12
