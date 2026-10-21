@@ -162,7 +162,7 @@ describe("leaderboard repository", async () => {
     expect(await board.join(userId, { displayName: "Ann 2", nameKey: `ann2-${userId}`, joinedAt: 2, startValue: 100 })).toBe("member");
     expect(await board.join(other, { displayName: "ANN", nameKey: `ann-${userId}`, joinedAt: 3, startValue: 100 })).toBe("taken");
     expect(await board.get(userId)).toEqual({ displayName: "Ann", joinedAt: 1, startValue: 100 });
-    expect((await board.members()).find((m) => m.displayName === "Ann")).toMatchObject({ startValue: 100, cash: 0, holdings: [] });
+    expect((await board.standings("mock", 1)).find((m) => m.displayName === "Ann")).toMatchObject({ value: 0, returnSinceJoining: -1 });
     await board.leave(userId);
     expect(await board.get(userId)).toBeNull();
   });

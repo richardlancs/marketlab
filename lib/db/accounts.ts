@@ -180,7 +180,8 @@ export function createAccountRepository(db: Db) {
         .select({ userId: portfolio.userId })
         .from(portfolio)
         .where(sql`${portfolio.processedThrough} is null or ${portfolio.processedThrough} < ${latest}`)
-        .orderBy(sql`coalesce(${portfolio.processedThrough}, 0)`)
+        // SQLite sorts NULL (never processed) first, then oldest: the index's own order, so no sort step and it stops at `limit`.
+        .orderBy(portfolio.processedThrough)
         .limit(limit);
       return rows.map((r) => r.userId);
     },

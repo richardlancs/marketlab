@@ -6,9 +6,10 @@
  */
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
+import { syncPrices } from "./analytics/server";
 import { leaderboard } from "./db";
-import { standings, type Standing } from "./leaderboard";
-import { getStockDetail } from "./market";
+import type { Standing } from "./leaderboard";
+import { priceSource } from "./market";
 
 export const LEADERBOARD_TAG = "leaderboard";
 
@@ -16,9 +17,9 @@ export async function getStandings(): Promise<Standing[]> {
   "use cache";
   cacheTag(LEADERBOARD_TAG);
   cacheLife("minutes");
-  const members = await leaderboard.members();
-  const symbols = [...new Set(members.flatMap((m) => m.holdings.map((h) => h.symbol)))];
-  const details = await Promise.all(symbols.map(getStockDetail));
-  const prices = new Map(symbols.flatMap((s, i) => (details[i]?.status === "ok" ? [[s, details[i].stock.price] as const] : [])));
-  return standings(members, (s) => prices.get(s), Date.now());
+  const source = priceSource();
+  // The daily job stores every catalog stock; a member may also hold another ticker (real data), so store it first.
+  const missing = await leaderboard.unpricedSymbols(source);
+  if (missing.length) await syncPrices(missing);
+  return leaderboard.standings(source, Date.now());
 }

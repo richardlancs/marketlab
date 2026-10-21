@@ -4,14 +4,15 @@
  * about a user (email, trades) is ever read for the public list beyond their
  * cash and holdings, which value their entry.
  */
-import { eq, inArray } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
-import type { Member } from "../leaderboard";
+import type { Standing } from "../leaderboard";
 import * as schema from "./schema";
 import { writeTransaction } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
-const { leaderboardEntry, portfolio, holding } = schema;
+const { leaderboardEntry, holding, priceSeries } = schema;
+const DAY = 24 * 60 * 60 * 1000;
 
 export function createLeaderboardRepository(db: Db) {
   return {
@@ -36,22 +37,55 @@ export function createLeaderboardRepository(db: Db) {
       await db.delete(leaderboardEntry).where(eq(leaderboardEntry.userId, userId));
     },
 
-    /** Every member with what values their entry: cash and holdings. */
-    async members(): Promise<Member[]> {
-      const entries = await db.select().from(leaderboardEntry);
-      if (entries.length === 0) return [];
-      const ids = entries.map((e) => e.userId);
-      const [cash, holdings] = await Promise.all([
-        db.select({ userId: portfolio.userId, cash: portfolio.cash }).from(portfolio).where(inArray(portfolio.userId, ids)),
-        db.select().from(holding).where(inArray(holding.userId, ids)),
-      ]);
-      const cashOf = new Map(cash.map((c) => [c.userId, c.cash]));
-      return entries.map((e) => ({
-        displayName: e.displayName,
-        joinedAt: e.joinedAt,
-        startValue: e.startValue,
-        cash: cashOf.get(e.userId) ?? 0,
-        holdings: holdings.filter((h) => h.userId === e.userId).map(({ symbol, shares, averageCost }) => ({ symbol, shares, averageCost })),
+    /** Symbols members hold that the price store has no series for (to store before ranking). */
+    async unpricedSymbols(source: string): Promise<string[]> {
+      const rows = await db
+        .selectDistinct({ symbol: holding.symbol })
+        .from(holding)
+        .innerJoin(leaderboardEntry, eq(leaderboardEntry.userId, holding.userId))
+        .leftJoin(priceSeries, sql`${priceSeries.source} = ${source} and ${priceSeries.symbol} = ${holding.symbol}`)
+        .where(sql`${priceSeries.symbol} is null`);
+      return rows.map((r) => r.symbol);
+    },
+
+    /**
+     * The standings, valued and ranked in one query: each holding at its
+     * stock's latest stored close (from the price store, `source`), or at
+     * what it cost if there's none, plus cash; best return since joining
+     * first, ties to whoever joined first.
+     */
+    async standings(source: string, now: number): Promise<Standing[]> {
+      const result = await db.run(sql`
+        with valued as (
+          select e.joined_at, e.display_name, e.start_value,
+                 coalesce(p.cash, 0) + coalesce((
+                   select sum(h.shares * coalesce((
+                     -- This stock's latest stored close: price_series knows its last day, so it's two primary-key lookups.
+                     select b.close
+                     from price_series s
+                     join daily_bar b on b.source = s.source and b.symbol = s.symbol and b.time = s.last_time
+                     where s.source = ${source} and s.symbol = h.symbol
+                   ), h.average_cost))
+                   from holding h
+                   where h.user_id = e.user_id
+                 ), 0) as value
+          from leaderboard_entry e
+          left join portfolio p on p.user_id = e.user_id
+        ),
+        ranked as (
+          select *, case when start_value > 0 then value / start_value - 1 else 0 end as return_since_joining from valued
+        )
+        select row_number() over (order by return_since_joining desc, joined_at) as rank,
+               display_name, value, return_since_joining,
+               max(0, (${now} - joined_at) / ${DAY}) as days_on_board
+        from ranked
+        order by rank`);
+      return result.rows.map((r) => ({
+        rank: Number(r.rank),
+        displayName: String(r.display_name),
+        value: Number(r.value),
+        returnSinceJoining: Number(r.return_since_joining),
+        daysOnBoard: Math.floor(Number(r.days_on_board)),
       }));
     },
   };

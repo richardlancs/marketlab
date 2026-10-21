@@ -120,15 +120,20 @@ const userId = () =>
  * One row per user once their simulated account exists. Its absence means the
  * user hasn't set one up yet (they're offered a guest import first).
  */
-export const portfolio = sqliteTable("portfolio", {
-  userId: text("user_id")
-    .primaryKey()
-    .references(() => user.id, { onDelete: "cascade" }),
-  cash: real("cash").notNull(),
-  createdAt: createdAt(),
-  /** The last close the account was brought up to date with (lib/processing.ts). Null until the first time. */
-  processedThrough: integer("processed_through"),
-});
+export const portfolio = sqliteTable(
+  "portfolio",
+  {
+    userId: text("user_id")
+      .primaryKey()
+      .references(() => user.id, { onDelete: "cascade" }),
+    cash: real("cash").notNull(),
+    createdAt: createdAt(),
+    /** The last close the account was brought up to date with (lib/processing.ts). Null until the first time. */
+    processedThrough: integer("processed_through"),
+  },
+  // The daily job's "who is behind, longest-waiting first" (accounts.listBehind) reads this in order.
+  (table) => [index("portfolio_processed_through_idx").on(table.processedThrough)],
+);
 
 export const holding = sqliteTable(
   "holding",
@@ -194,7 +199,11 @@ export const backtestRun = sqliteTable(
     simulated: integer("simulated", { mode: "boolean" }),
     datasetVersion: text("dataset_version"),
   },
-  (table) => [index("backtest_run_user_idx").on(table.userId, table.createdAt)],
+  (table) => [
+    index("backtest_run_user_idx").on(table.userId, table.createdAt),
+    // "Is any run still using this snapshot?", asked per snapshot by the daily cleanup.
+    index("backtest_run_snapshot_idx").on(table.snapshotChecksum),
+  ],
 );
 
 /**
