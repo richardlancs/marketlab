@@ -24,6 +24,8 @@ jobs:
         id: health
         run: |
           code=$(curl -s -o body.json -w '%{http_code}' --max-time 30 "$URL" || echo 000)
+          # One retry after a pause: the first request can land on a service that's still waking up.
+          if [ "$code" != "200" ]; then sleep 20; code=$(curl -s -o body.json -w '%{http_code}' --max-time 30 "$URL" || echo 000); fi
           echo "code=$code" >> "$GITHUB_OUTPUT"
           echo "HTTP $code"; cat body.json 2>/dev/null || true
       - name: Open or update the incident issue

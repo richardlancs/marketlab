@@ -28,6 +28,8 @@ Migration 0007 (Phase 12) adds:
 
 The first daily job after deploying fills the store: about 130,000 rows for the mock market, a few seconds of work.
 
+Migration 0013 adds `push_subscription` (each device that gets push notifications) and `price_alert.pushed_at`. Apply it before deploying code that sends pushes: the daily job reads both.
+
 Migration 0012 adds `backtest_run.kind` (`backtest` by default, or `historical-screen`), so saved historical screens share the saved-runs table and its limit. Apply it before deploying code that saves screens: the new code filters on the column.
 
 Migration 0011 adds `company_facts`, the stored SEC company numbers. The daily job fills it about 30 companies a run. Without `SEC_USER_AGENT` it stays empty and the Company numbers card is hidden.
@@ -50,6 +52,8 @@ Set them in Project → Settings → Environment Variables, separately for Produ
 | `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings and company numbers. |
 | `SMTP_USER`, `SMTP_PASS` | Optional: a Gmail address and a Google **app password** for it (Google Account → Security → 2-Step Verification → App passwords). Turns on email verification and alert emails. Without them, email is off. Gmail sends up to about 500 emails a day. |
 | `EMAIL_FROM` | Optional: the sender name and address, e.g. `MarketLab <you@gmail.com>`. Defaults to `SMTP_USER`. |
+| `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Optional: the key pair that signs push notifications, a different pair per environment. Make one with `npx web-push generate-vapid-keys`. Without them, push is off and the alerts panel offers notifications only while MarketLab is open. Changing the pair cuts off every subscribed device until it turns notifications on again. |
+| `VAPID_SUBJECT` | Optional: an `https:` or `mailto:` contact for push services. Defaults to `BETTER_AUTH_URL` (or the GitHub repository when that isn't https). |
 | `TIINGO_API_KEY` | **Never on a public deployment** (personal-use licence). |
 
 Better Auth refuses to start in production without a real secret, so a missing secret shows up as an error rather than as an insecure site.
@@ -60,12 +64,13 @@ Better Auth refuses to start in production without a real secret, so a missing s
 - **Guests:** as a guest, buy a stock and reload; it's still there.
 - **Sign-up:** sign up and check that the guest portfolio moved into the account.
 - **Backtests:** run one, save it, reopen it, and click "Reproduce from saved inputs". The result names the engine.
+- **Install and push:** `/manifest.webmanifest` lists the icons; on the watchlist page, turn on "Get alerts on this device" and click "Send a test".
 - **Cron:** `/api/cron/daily` answers 401 without the secret, and `vercel crons ls` lists the job.
 
 ## Monitoring
 
-- **`/api/health`** reports the database, the analytics service, market data, the last daily job and how current the stored analytics are. It answers 503 when something users would notice is down.
-- **The hourly uptime check** (`.github/workflows/uptime.yml`) reads it. While it fails, an issue labelled `uptime` stays open (GitHub emails you), and it's closed once the site is healthy again. Run it by hand from the Actions tab with "Run workflow".
+- **`/api/health`** reports the database, the analytics service, market data, the last daily job and how current the stored analytics are. It answers 503 when something users would notice is down. The analytics service sleeps when idle, so it gets 15 seconds to wake up; everything else gets 5.
+- **The hourly uptime check** (`.github/workflows/uptime.yml`) reads it, and tries once more 20 seconds later before counting a failure. While it fails, an issue labelled `uptime` stays open (GitHub emails you), and it's closed once the site is healthy again. Run it by hand from the Actions tab with "Run workflow".
 - **Vercel Web Analytics and Speed Insights** are in the layout. Enable them once in the Vercel project's Analytics and Speed Insights tabs (free on Hobby).
 - **CI** (`.github/workflows/ci.yml`) runs lint, every test, the build, the Python tests, a dependency audit and the Playwright end-to-end tests. Branch protection requires all of them on `main`.
 

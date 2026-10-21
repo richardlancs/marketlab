@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId } from "react";
+import { forgetDevice } from "@/components/alerts/push-device";
 import { authClient } from "@/lib/auth-client";
 
 /**
@@ -58,6 +59,8 @@ export function AccountMenu() {
         <button
           type="button"
           onClick={async () => {
+            // This browser stops getting the account's alerts first, while it's still signed in to say so.
+            await forgetDevice();
             await authClient.signOut();
             router.refresh();
           }}

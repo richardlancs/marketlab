@@ -8,7 +8,8 @@
  *    can never apply anything twice.
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
  *    own, and other leftovers (including saved price snapshots no run uses).
- * 3. Emails alert digests to users who asked for them (lib/alert-emails.ts).
+ * 3. Emails alert digests to users who asked for them (lib/alert-emails.ts),
+ *    and sends push notifications to devices signed up for them (lib/alert-pushes.ts).
  * 4. Refreshes a few companies' reported numbers from the SEC
  *    (lib/fundamentals.ts), each about once a week.
  * 5. Stores the latest prices and has the analytics service recalculate
@@ -41,6 +42,8 @@ export interface DailyDeps {
   deleteOrphanSnapshots(limit: number): Promise<number>;
   /** Emails digests of newly triggered alerts, until `deadline` (ms). Optional, so tests can leave it out. */
   sendAlertEmails?(deadline: number): Promise<unknown>;
+  /** Pushes newly triggered alerts to people's devices, until `deadline` (ms). Optional, so tests can leave it out. */
+  sendAlertPushes?(deadline: number): Promise<unknown>;
   /** Fetches company numbers that are due, until `deadline` (ms). Optional, so tests can leave it out. */
   refreshFundamentals?(deadline: number): Promise<unknown>;
   /** Stores the latest prices and recalculates stored analytics, until `deadline` (ms). Optional, so tests can leave it out. */
@@ -56,8 +59,9 @@ export interface DailySummary {
   guestsDeleted: number;
   learnersDeleted: number;
   snapshotsDeleted: number;
-  /** What the alert email, fundamentals and analytics steps did, or why they didn't run. */
+  /** What the alert email, push, fundamentals and analytics steps did, or why they didn't run. */
   alertEmails?: unknown;
+  alertPushes?: unknown;
   fundamentals?: unknown;
   analytics?: unknown;
   ms: number;
@@ -104,13 +108,22 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
   // After the guests: their saved runs (and so their snapshots' last references) went with them.
   const snapshotsDeleted = outOfTime() ? 0 : await deps.deleteOrphanSnapshots(500);
 
-  // Alert emails: right after catching up, which is when alerts trigger.
+  // Alert emails and pushes: right after catching up, which is when alerts trigger.
   let alertEmails: unknown;
   if (deps.sendAlertEmails) {
     try {
       alertEmails = outOfTime() ? "skipped: out of time" : await deps.sendAlertEmails(start + budgetMs);
     } catch (error) {
       alertEmails = `failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  let alertPushes: unknown;
+  if (deps.sendAlertPushes) {
+    try {
+      alertPushes = outOfTime() ? "skipped: out of time" : await deps.sendAlertPushes(start + budgetMs);
+    } catch (error) {
+      alertPushes = `failed: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
@@ -134,5 +147,5 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
     }
   }
 
-  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, fundamentals, analytics, ms: deps.now() - start };
+  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, alertPushes, fundamentals, analytics, ms: deps.now() - start };
 }

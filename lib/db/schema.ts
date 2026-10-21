@@ -283,6 +283,8 @@ export const priceAlert = sqliteTable(
     seen: integer("seen", { mode: "boolean" }).notNull().default(false),
     /** When it went out in an alert email (lib/alert-emails.ts); null if it hasn't (or won't). */
     emailedAt: integer("emailed_at"),
+    /** When it went out as a push notification (lib/push.ts); null if it hasn't (or won't). */
+    pushedAt: integer("pushed_at"),
   },
   (table) => [index("price_alert_user_idx").on(table.userId, table.createdAt)],
 );
@@ -438,6 +440,27 @@ export const emailPreference = sqliteTable("email_preference", {
   alertEmails: integer("alert_emails", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/**
+ * Devices that get push notifications (lib/push.ts): one row per browser
+ * subscription, made when someone turns on "Get alerts on this device".
+ * `endpoint` is the push service's URL for that browser; `p256dh` and `auth`
+ * are its keys, which encrypt what we send so only that browser can read it.
+ * A guest's devices move to their account when they sign in.
+ */
+export const pushSubscription = sqliteTable(
+  "push_subscription",
+  {
+    endpoint: text("endpoint").primaryKey(),
+    userId: userId(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    createdAt: integer("created_at").notNull(),
+    /** When a notification last reached the push service for it; null if none has yet. */
+    lastSentAt: integer("last_sent_at"),
+  },
+  (table) => [index("push_subscription_user_idx").on(table.userId)],
+);
 
 /**
  * Each catalog company's reported numbers from the SEC (lib/market/fundamentals.ts),

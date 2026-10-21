@@ -9,6 +9,8 @@ import { getMarket, priceSource } from "@/lib/market";
 function within<T>(promise: Promise<T>, ms = 5000): Promise<T> {
   return Promise.race([promise, new Promise<T>((_, reject) => setTimeout(() => reject(new Error(`no answer within ${ms / 1000} s`)), ms))]);
 }
+/** The analytics service sleeps when idle, and waking it can take several seconds; that's a slow answer, not an outage. */
+const ANALYTICS_WAIT = 15_000;
 const message = (error: unknown) => (error instanceof Error ? error.message : String(error));
 
 /**
@@ -29,7 +31,7 @@ export async function GET() {
   let analytics: HealthFacts["analytics"] = { configured: false };
   if (pythonConfigured()) {
     const base = process.env.ANALYTICS_URL as string;
-    analytics = await within(fetch(new URL("health", base.endsWith("/") ? base : `${base}/`), { cache: "no-store" }).then((r) => r.json()))
+    analytics = await within(fetch(new URL("health", base.endsWith("/") ? base : `${base}/`), { cache: "no-store" }).then((r) => r.json()), ANALYTICS_WAIT)
       .then((body) => (typeof body?.engine?.version === "string" ? { configured: true as const, ok: true as const, version: body.engine.version as string } : { configured: true as const, ok: false as const, error: "an unexpected answer" }))
       .catch((error) => ({ configured: true as const, ok: false as const, error: message(error) }));
   }

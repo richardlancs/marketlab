@@ -14,6 +14,7 @@ import { createAccountRepository } from "./accounts";
 import { createBacktestRepository } from "./backtests";
 import { createGuestRepository } from "./guests";
 import { createLearningRepository } from "./learning";
+import { createPushRepository } from "./push";
 import * as schema from "./schema";
 
 let dir: string;
@@ -93,6 +94,18 @@ describe("signing in: the handover", () => {
     expect((await learning.load(userId)).sharpe?.answers).toEqual([1, null, null, null]);
     expect(await userExists(guestId)).toBe(false);
     expect(await accounts.load(guestId)).toBeNull();
+  });
+
+  it("moves the guest's notification devices to the account", async () => {
+    const push = createPushRepository(db);
+    const device = { endpoint: `https://fcm.googleapis.com/fcm/send/${guestId}`, p256dh: "k", auth: "a" };
+    await push.add(guestId, device, 10);
+    await trade(guestId, 2);
+    await trade(userId, 5);
+    // Even while the portfolio choice is pending: the device is the browser they're signed in on now.
+    await guests.handover(guestId, userId, 10);
+    expect(await push.get(userId, device.endpoint)).toEqual(device);
+    expect(await push.get(guestId, device.endpoint)).toBeNull();
   });
 
   it("drops an untouched guest portfolio without asking, keeping the account's", async () => {

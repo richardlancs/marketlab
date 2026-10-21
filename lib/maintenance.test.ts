@@ -85,6 +85,20 @@ describe("the daily job", () => {
     expect((await runDaily(deps)).alertEmails).toBe("failed: smtp down");
   });
 
+  it("pushes alerts to devices after the emails, and survives a failure", async () => {
+    const { deps } = world(["a"]);
+    const order: string[] = [];
+    deps.catchUp = vi.fn(async () => void order.push("catch up"));
+    deps.sendAlertEmails = vi.fn(async () => (order.push("emails"), {}));
+    deps.sendAlertPushes = vi.fn(async () => (order.push("pushes"), { people: 1, sent: 2 }));
+    expect((await runDaily(deps)).alertPushes).toEqual({ people: 1, sent: 2 });
+    expect(order).toEqual(["catch up", "emails", "pushes"]);
+    deps.sendAlertPushes = vi.fn(async () => {
+      throw new Error("push service down");
+    });
+    expect((await runDaily(deps)).alertPushes).toBe("failed: push service down");
+  });
+
   it("gives company numbers a short slot before analytics, and survives their failure", async () => {
     const { deps } = world([]);
     const order: string[] = [];

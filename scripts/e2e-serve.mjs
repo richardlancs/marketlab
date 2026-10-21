@@ -6,7 +6,10 @@ import { spawn, spawnSync } from "node:child_process";
 import { rmSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import webpush from "web-push";
 
+// A throwaway key pair for push notifications, made fresh for each run.
+const vapid = webpush.generateVAPIDKeys();
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const env = {
   ...process.env,
@@ -18,6 +21,8 @@ const env = {
   BETTER_AUTH_SECRET: "e2e-only-not-a-real-secret-0123456789abcdef",
   BETTER_AUTH_URL: "http://localhost:3010",
   CRON_SECRET: "e2e-cron",
+  VAPID_PUBLIC_KEY: vapid.publicKey,
+  VAPID_PRIVATE_KEY: vapid.privateKey,
   // The ⌘K search and similar use no external services; keep the app's telemetry quiet.
   NEXT_TELEMETRY_DISABLED: "1",
 };

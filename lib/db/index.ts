@@ -14,6 +14,7 @@ import { createJobRepository } from "./jobs";
 import { createLearningRepository } from "./learning";
 import { createLeaderboardRepository } from "./leaderboard";
 import { createPriceRepository } from "./prices";
+import { createPushRepository } from "./push";
 import * as schema from "./schema";
 
 /**
@@ -39,3 +40,4 @@ export const prices = createPriceRepository(db);
 export const jobs = createJobRepository(db);
 export const alertEmails = createAlertEmailRepository(db);
 export const fundamentals = createFundamentalsRepository(db);
+export const push = createPushRepository(db);

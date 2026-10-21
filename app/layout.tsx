@@ -25,6 +25,8 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "MarketLab",
   description: "Stock analysis and portfolio simulator",
+  // The name under the icon when it's added to an iPhone's home screen (app/manifest.ts covers other browsers).
+  appleWebApp: { title: "MarketLab" },
 };
 
 // Runs synchronously in <head>, before the browser paints anything.

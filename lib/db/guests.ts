@@ -6,7 +6,7 @@
  *
  * When a guest signs in, `handover` moves what they did into their account,
  * in one transaction:
- * - lesson progress and saved backtests are merged in;
+ * - lesson progress, saved backtests and push notification devices are merged in;
  * - the portfolio moves over if the account has none, or if the guest's is
  *   just the untouched starting one (then it's simply dropped);
  * - otherwise both have a portfolio of their own, and the guest is kept
@@ -19,6 +19,7 @@ import type { Account } from "../trading";
 import { moveAccount, readAccount, removeAccount } from "./accounts";
 import { moveRuns } from "./backtests";
 import { adoptLearner, deleteLearnerOf, mergeLearners } from "./learning";
+import { deleteDevicesOf, moveDevices } from "./push";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
 
@@ -39,6 +40,7 @@ async function deleteGuest(ex: Executor, id: string) {
   await removeAccount(ex, id);
   await ex.delete(backtestRun).where(eq(backtestRun.userId, id));
   await deleteLearnerOf(ex, id);
+  await deleteDevicesOf(ex, id);
   await ex.delete(user).where(and(eq(user.id, id), eq(user.isGuest, true)));
 }
 
@@ -82,6 +84,7 @@ export function createGuestRepository(db: Db) {
         if (!(await isGuest(tx, guestId)) || (await isGuest(tx, userId))) return { conflict: null };
         await mergeLearners(tx, guestId, userId, now);
         await moveRuns(tx, guestId, userId);
+        await moveDevices(tx, guestId, userId);
         const guestAccount = await readAccount(tx, guestId);
         if (guestAccount && !isStartingAccount(guestAccount)) {
           if (await readAccount(tx, userId)) return { conflict: guestAccount };

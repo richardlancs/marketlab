@@ -1,5 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { sendAlertDigests } from "@/lib/alert-emails";
+import { sendAlertPushes } from "@/lib/alert-pushes";
 import { refreshAnalytics } from "@/lib/analytics/server";
 import { refreshFundamentals } from "@/lib/fundamentals";
 import { accounts, backtests, guests, jobs, learning } from "@/lib/db";
@@ -46,6 +47,7 @@ export async function GET(request: Request) {
       pruneRateLimits,
       deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
       sendAlertEmails: (deadline) => sendAlertDigests(deadline),
+      sendAlertPushes: (deadline) => sendAlertPushes(deadline),
       refreshFundamentals: (deadline) => refreshFundamentals(deadline),
       refreshAnalytics: (deadline) => refreshAnalytics(deadline),
     });

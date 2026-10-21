@@ -260,6 +260,7 @@ Rules that use a chandelier stop or volume need each day's high, low and volume.
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the New York close. It:
 - loads fresh market data;
 - catches up every account, in batches of about 50 seconds;
+- sends alert emails and push notifications (see [Email](#email) and [Installing and push notifications](#installing-and-push-notifications));
 - refreshes company numbers that are a week old, for up to 10 seconds;
 - with the time left, stores the latest prices and recalculates stored analytics (see [Research tools](#research-tools));
 - deletes guests unused for 180 days, old rate-limit counters, and snapshots no saved run uses.
@@ -288,3 +289,15 @@ curl -H 'authorization: Bearer test' localhost:3000/api/cron/daily
 - **The digest:** after catching up accounts, the daily job sends each of them one email listing the alerts that triggered. It skips alerts they've already seen in the app, and alerts more than a week old.
 - **Once only:** each alert is emailed once (`price_alert.emailed_at`).
 - **Unsubscribing:** every email has a signed unsubscribe link. Opening it asks for confirmation, so link scanners can't unsubscribe anyone, and mail apps' one-click unsubscribe works too (RFC 8058).
+
+## Installing and push notifications
+
+**Installing:** `app/manifest.ts` and the icons in `public/icons/` (drawn by `scripts/make-icons.mjs`) let browsers install MarketLab with its own icon and window: Chrome and Edge from the address bar, Safari with Add to Home Screen. Nothing works offline: a stale market page would mislead.
+
+**Push notifications** (`lib/push.ts`, `lib/alert-pushes.ts`, `public/sw.js`)
+- **Opt-in, per device:** "Get alerts on this device" under the alerts on the watchlist page. Permission is asked on that click, never unprompted. Guests can turn it on too; their devices move to their account when they sign in. Signing out turns it off for that browser, so the next person on a shared computer doesn't get the account's alerts.
+- **Sending:** after catching up accounts, the daily job pushes each newly triggered alert to every device its owner turned on, at most once (`price_alert.pushed_at`), skipping alerts already seen in the app or more than 2 days old. Up to three alerts get a notification each; more are summed up in one. A click opens the stock (or the alerts).
+- **How:** the browser's push service (Google's for Chrome and Edge, Mozilla's, Apple's) delivers them. Each message is signed with this site's VAPID key pair and encrypted for that one browser, so the push service can't read it. Devices it reports as gone are forgotten.
+- **Safety:** the server sends requests to each device's endpoint, so only the known push services' https addresses are accepted, and anyone can have at most 10 devices.
+- **iPhone and iPad:** Safari delivers push only to the home-screen app (iOS 16.4 or later), so the panel explains that step there.
+- **Without the key pair** (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`), push is off and the panel offers notifications only while MarketLab is open.
