@@ -49,10 +49,10 @@ export function createPushRepository(db: Db) {
       }
     },
 
-    /** The device, if it's `userId`'s. */
-    async get(userId: string, endpoint: string): Promise<DeviceSubscription | null> {
+    /** The device, if it's `userId`'s, with when it was set up. */
+    async get(userId: string, endpoint: string): Promise<(DeviceSubscription & { createdAt: number }) | null> {
       const [row] = await db
-        .select({ endpoint: pushSubscription.endpoint, p256dh: pushSubscription.p256dh, auth: pushSubscription.auth })
+        .select({ endpoint: pushSubscription.endpoint, p256dh: pushSubscription.p256dh, auth: pushSubscription.auth, createdAt: pushSubscription.createdAt })
         .from(pushSubscription)
         .where(and(eq(pushSubscription.userId, userId), eq(pushSubscription.endpoint, endpoint)));
       return row ?? null;

@@ -19,7 +19,7 @@ const { pushSettingsAction, sendTestPushAction, subscribePushAction, unsubscribe
 
 const endpoint = "https://fcm.googleapis.com/fcm/send/abc";
 const subscription = { endpoint, expirationTime: null, keys: { p256dh: "B".padEnd(87, "x"), auth: "a".repeat(22) } };
-const device = { endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth };
+const device = { endpoint, p256dh: subscription.keys.p256dh, auth: subscription.keys.auth, createdAt: 0 };
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -52,7 +52,7 @@ describe("turning push on and off", () => {
   it("stores a valid subscription for the visitor, making a guest if needed", async () => {
     db.push.add.mockImplementation(async () => db.push.get.mockResolvedValue(device));
     expect(await subscribePushAction(subscription)).toMatchObject({ status: "ready", on: true });
-    expect(db.push.add).toHaveBeenCalledWith("user-1", device, 10);
+    expect(db.push.add).toHaveBeenCalledWith("user-1", { endpoint, p256dh: device.p256dh, auth: device.auth }, 10);
     expect(owner.creates[0]).toBe(true);
     expect(limits.calls).toEqual(["push"]);
   });
@@ -81,6 +81,13 @@ describe("the test notification", () => {
     sender.sendPush.mockResolvedValue("sent");
     expect(await sendTestPushAction(endpoint)).toEqual({ ok: true });
     expect(sender.sendPush).toHaveBeenCalledWith(device, expect.objectContaining({ tag: "test" }));
+  });
+
+  it("keeps a device set up moments ago that the push service doesn't know yet", async () => {
+    db.push.get.mockResolvedValue({ ...device, createdAt: Date.now() - 5_000 });
+    sender.sendPush.mockResolvedValue("gone");
+    expect(await sendTestPushAction(endpoint)).toMatchObject({ ok: false, message: expect.stringContaining("Try again in a minute") });
+    expect(db.push.remove).not.toHaveBeenCalled();
   });
 
   it("forgets a device that's gone, and is rate limited", async () => {

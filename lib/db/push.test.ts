@@ -55,7 +55,7 @@ afterAll(() => {
 
 describe("push devices", () => {
   it("belong to one person; a browser that changes hands moves with it", async () => {
-    expect(await repo.get("ann", device("phone").endpoint)).toEqual(device("phone"));
+    expect(await repo.get("ann", device("phone").endpoint)).toEqual({ ...device("phone"), createdAt: T - 3 });
     expect(await repo.get("cat", device("phone").endpoint)).toBeNull();
     await repo.add("eve", device("shared"), 10, T);
     await repo.add("cat", { ...device("shared"), p256dh: "new-key" }, 10, T);

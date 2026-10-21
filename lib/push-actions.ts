@@ -15,6 +15,13 @@ import { allow } from "./rate-limit";
 export type PushSettings = { status: "off-here" } | { status: "ready"; publicKey: string; on: boolean };
 export type PushTestResult = { ok: true } | { ok: false; message: string };
 
+/**
+ * A brand-new subscription can take a few seconds to reach the push
+ * service, which until then answers as if it were gone. Within this long of
+ * setting up, that answer means "not yet", and the device is kept.
+ */
+const SETTLING = 2 * 60_000;
+
 const endpointOf = (input: unknown) => (typeof input === "string" && input.length <= 1000 ? input : null);
 
 /** Push's state for this browser; `endpoint` is the browser's current subscription, if it has one. */
@@ -50,6 +57,9 @@ export async function sendTestPushAction(endpoint: unknown): Promise<PushTestRes
   const device = owner && e ? await push.get(owner.id, e) : null;
   if (!device) return { ok: false, message: "Notifications aren't on for this device." };
   const result = await sendPush(device, TEST_MESSAGE);
-  if (result === "gone") await push.remove([device.endpoint]);
-  return result === "sent" ? { ok: true } : { ok: false, message: result === "gone" ? "This browser's subscription has expired. Turn notifications off and on again." : "The push service didn't accept it. Try again later." };
+  if (result === "sent") return { ok: true };
+  if (result === "failed") return { ok: false, message: "The push service didn't accept it. Try again later." };
+  if (Date.now() - device.createdAt < SETTLING) return { ok: false, message: "This device was only just set up, and the push service isn't ready for it yet. Try again in a minute." };
+  await push.remove([device.endpoint]);
+  return { ok: false, message: "This browser's subscription has expired. Turn notifications off and on again." };
 }

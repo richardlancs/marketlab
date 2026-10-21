@@ -104,7 +104,7 @@ describe("signing in: the handover", () => {
     await trade(userId, 5);
     // Even while the portfolio choice is pending: the device is the browser they're signed in on now.
     await guests.handover(guestId, userId, 10);
-    expect(await push.get(userId, device.endpoint)).toEqual(device);
+    expect(await push.get(userId, device.endpoint)).toMatchObject(device);
     expect(await push.get(guestId, device.endpoint)).toBeNull();
   });
 
