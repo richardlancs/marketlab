@@ -31,10 +31,15 @@ jobs:
       - run: npm ci
       - run: npm run lint
       - run: npm test
+      # Some pages (the leaderboard) read the database while prerendering: a fresh local.db from the migrations.
+      - run: npm run db:migrate
       - run: npm run build
         env:
           # Prerender with the mock market: no keys, deterministic data.
           MARKET_DATA_SOURCE: mock
+          # A throwaway value: Better Auth refuses to build with its default secret.
+          BETTER_AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcdef
+          BETTER_AUTH_URL: http://localhost:3000
 
   python:
     name: Test (Python analytics)
