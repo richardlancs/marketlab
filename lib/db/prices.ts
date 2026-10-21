@@ -5,7 +5,7 @@
  * results here.
  */
 import { createHash } from "node:crypto";
-import { and, eq, gt } from "drizzle-orm";
+import { and, eq, gt, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import type { DailyBar } from "../types";
 import * as schema from "./schema";
@@ -109,6 +109,15 @@ export function createPriceRepository(db: Db) {
         value = null;
       }
       return value === null ? null : { version: row.version, inputChecksum: row.inputChecksum, asOf: row.asOf, computedAt: row.computedAt, result: value };
+    },
+
+    /** The latest close any stored result of this kind includes, or null if there are none (for /api/health). */
+    async newestResult(kind: string, source: PriceSource): Promise<number | null> {
+      const [row] = await db
+        .select({ newest: sql<number | null>`max(${analyticsResult.asOf})` })
+        .from(analyticsResult)
+        .where(and(eq(analyticsResult.kind, kind), eq(analyticsResult.source, source)));
+      return row?.newest ?? null;
     },
 
     /** Every stored result of one kind, by subject. */

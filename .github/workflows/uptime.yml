@@ -1,0 +1,42 @@
+# Checks the live site every hour. While /api/health says something is down
+# (or doesn't answer), it keeps one issue labelled "uptime" open, which GitHub
+# emails you about; when it's healthy again, it closes that issue.
+name: Uptime
+
+on:
+  schedule:
+    - cron: "17 * * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    env:
+      URL: https://marketlab-theta.vercel.app/api/health
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check /api/health
+        id: health
+        run: |
+          code=$(curl -s -o body.json -w '%{http_code}' --max-time 30 "$URL" || echo 000)
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          echo "HTTP $code"; cat body.json 2>/dev/null || true
+      - name: Open or update the incident issue
+        if: steps.health.outputs.code != '200'
+        run: |
+          gh label create uptime --color B60205 --description "The live site's health check is failing" 2>/dev/null || true
+          body=$(printf 'The health check at %s answered **HTTP %s** at %s.\n\n```json\n%s\n```\n\nThis issue closes by itself once it is healthy again.' "$URL" "${{ steps.health.outputs.code }}" "$(date -u +%FT%TZ)" "$(cat body.json 2>/dev/null || echo '(no answer)')")
+          issue=$(gh issue list --label uptime --state open --json number --jq '.[0].number')
+          if [ -n "$issue" ]; then gh issue comment "$issue" --body "$body"; else gh issue create --title "The live site's health check is failing" --label uptime --body "$body"; fi
+          exit 1
+      - name: Close the incident issue once healthy
+        if: steps.health.outputs.code == '200'
+        run: |
+          for issue in $(gh issue list --label uptime --state open --json number --jq '.[].number'); do
+            gh issue close "$issue" --comment "Healthy again at $(date -u +%FT%TZ)."
+          done

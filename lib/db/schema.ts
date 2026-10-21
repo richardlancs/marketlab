@@ -404,3 +404,19 @@ export const analyticsResult = sqliteTable(
   },
   (table) => [primaryKey({ columns: [table.kind, table.subject, table.source] })],
 );
+
+/** Each run of a scheduled job (the daily job): when, whether it finished cleanly, and its summary. Read by /api/health. */
+export const jobRun = sqliteTable(
+  "job_run",
+  {
+    id: integer("id").primaryKey({ autoIncrement: true }),
+    name: text("name").notNull(),
+    startedAt: integer("started_at").notNull(),
+    finishedAt: integer("finished_at").notNull(),
+    /** False if it threw; true if it finished (even with some work left for next time). */
+    ok: integer("ok", { mode: "boolean" }).notNull(),
+    /** The job's summary, or the error, as JSON. */
+    summary: text("summary").notNull(),
+  },
+  (table) => [index("job_run_name_idx").on(table.name, table.startedAt)],
+);

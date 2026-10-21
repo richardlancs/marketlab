@@ -9,6 +9,8 @@ import { getMarket } from "@/lib/market";
 import { CATALOG } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
 import "./globals.css";
+import { Analytics } from "@vercel/analytics/next";
+import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -80,6 +82,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </footer>
         </AccountProvider>
         </TrendRangeProvider>
+        {/* Vercel Web Analytics and Speed Insights: cookieless, served from this site (allowed by the CSP). Only on Vercel, where those scripts exist. */}
+        {process.env.VERCEL && (
+          <>
+            <Analytics />
+            <SpeedInsights />
+          </>
+        )}
       </body>
     </html>
   );

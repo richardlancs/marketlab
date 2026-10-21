@@ -1,6 +1,6 @@
 import { revalidateTag } from "next/cache";
 import { refreshAnalytics } from "@/lib/analytics/server";
-import { accounts, backtests, guests, learning } from "@/lib/db";
+import { accounts, backtests, guests, jobs, learning } from "@/lib/db";
 import { getMarket, getProcessingData } from "@/lib/market";
 import { runDaily } from "@/lib/maintenance";
 import { symbolsToProcess } from "@/lib/processing";
@@ -21,27 +21,38 @@ export async function GET(request: Request) {
     return Response.json({ error: "Not allowed" }, { status: 401 });
   }
 
-  const summary = await runDaily({
-    now: Date.now,
-    async latestClose() {
-      // Fresh market data, so accounts are caught up with today's close, not an hour-old copy.
-      revalidateTag("market", { expire: 0 });
-      return (await getMarket()).asOf;
-    },
-    listBehind: (latest, limit) => accounts.listBehind(latest, limit),
-    async catchUp(userId) {
-      const account = await accounts.load(userId);
-      if (!account) return;
-      const market = await getProcessingData(symbolsToProcess(account));
-      const result = await accounts.update(userId, market, (a) => ({ ok: true, account: a }));
-      if (!result.ok) throw new Error(result.message);
-    },
-    deleteInactiveGuests: (cutoff, limit) => guests.deleteInactive(cutoff, limit),
-    deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
-    pruneRateLimits,
-    deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
-    refreshAnalytics: (deadline) => refreshAnalytics(deadline),
-  });
+  const startedAt = Date.now();
+  let summary;
+  try {
+    summary = await runDaily({
+      now: Date.now,
+      async latestClose() {
+        // Fresh market data, so accounts are caught up with today's close, not an hour-old copy.
+        revalidateTag("market", { expire: 0 });
+        return (await getMarket()).asOf;
+      },
+      listBehind: (latest, limit) => accounts.listBehind(latest, limit),
+      async catchUp(userId) {
+        const account = await accounts.load(userId);
+        if (!account) return;
+        const market = await getProcessingData(symbolsToProcess(account));
+        const result = await accounts.update(userId, market, (a) => ({ ok: true, account: a }));
+        if (!result.ok) throw new Error(result.message);
+      },
+      deleteInactiveGuests: (cutoff, limit) => guests.deleteInactive(cutoff, limit),
+      deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
+      pruneRateLimits,
+      deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
+      refreshAnalytics: (deadline) => refreshAnalytics(deadline),
+    });
+  } catch (error) {
+    // Recorded, so /api/health (and the uptime check that reads it) reports the failure.
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[cron] daily job failed:", message);
+    await jobs.record("daily", { startedAt, finishedAt: Date.now(), ok: false, summary: { error: message } }).catch(() => {});
+    return Response.json({ error: "The daily job failed." }, { status: 500, headers: { "Cache-Control": "no-store" } });
+  }
+  await jobs.record("daily", { startedAt, finishedAt: Date.now(), ok: true, summary }).catch((error) => console.error("[cron] couldn't record the run:", error));
   console.log("[cron] daily job:", JSON.stringify(summary));
   return Response.json(summary, { headers: { "Cache-Control": "no-store" } });
 }
