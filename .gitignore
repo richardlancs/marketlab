@@ -40,6 +40,11 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local SQLite database (development only)
+# local SQLite databases (development and end-to-end tests only)
 /local.db*
+/e2e.db*
+
+# Playwright output
+/test-results/
+/playwright-report/
 !.env.example

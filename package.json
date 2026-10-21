@@ -16,6 +16,7 @@
     "analytics:install": "cd services/analytics && uv sync --extra dev --locked",
     "analytics:dev": "cd services/analytics && uv run --extra dev --env-file ../../.env.local uvicorn main:app --host 127.0.0.1 --port 8000",
     "test:python": "cd services/analytics && uv run --extra dev pytest -q",
+    "test:e2e": "playwright test",
     "test:parity": "vitest run lib/backtest/parity.test.ts && npm run test:python -- tests/test_parity.py"
   },
   "dependencies": {
@@ -28,6 +29,7 @@
     "server-only": "0.0.1"
   },
   "devDependencies": {
+    "@playwright/test": "1.63.0",
     "@tailwindcss/turbopack": "^4",
     "@types/node": "^26.6.5",
     "@types/react": "^19",

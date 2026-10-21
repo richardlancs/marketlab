@@ -77,3 +77,40 @@ jobs:
         run: |
           uv export --locked --no-dev --no-hashes --format requirements-txt > /tmp/requirements.txt
           uvx --from pip-audit==2.9.0 pip-audit --strict -r /tmp/requirements.txt
+
+  e2e:
+    name: End-to-end (Playwright)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      - run: uv python install 3.12
+      - run: uv sync --extra dev --locked --python 3.12
+        working-directory: services/analytics
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+      - run: npm run db:migrate
+      - run: npm run build
+        env:
+          MARKET_DATA_SOURCE: mock
+          BETTER_AUTH_SECRET: ci-only-not-a-real-secret-0123456789abcdef
+          BETTER_AUTH_URL: http://localhost:3010
+      # Starts both services itself (scripts/e2e-serve.mjs), on a fresh e2e.db.
+      - run: npm run test:e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7

@@ -1,0 +1,52 @@
+import { expect, test } from "./fixtures";
+
+test.describe("pages", () => {
+  test("the dashboard shows markets, the featured stock and logos", async ({ page }) => {
+    await page.goto("/");
+    await expect(page.getByRole("heading", { name: "Dashboard" })).toBeVisible();
+    await expect(page.getByText("S&P 500").first()).toBeVisible();
+    // Visible ones only: phone-width tables hide their logos.
+    await expect(page.locator('img[src*="/logos/"]:visible').first()).toBeVisible();
+  });
+
+  test("every page sends the security headers", async ({ request }) => {
+    const response = await request.get("/");
+    const headers = response.headers();
+    expect(headers["content-security-policy"]).toContain("frame-ancestors 'none'");
+    expect(headers["x-content-type-options"]).toBe("nosniff");
+    expect(headers["strict-transport-security"]).toContain("max-age=");
+  });
+
+  test("an unknown stock is a 404", async ({ request }) => {
+    expect((await request.get("/stocks/ZZZZZ")).status()).toBe(404);
+  });
+
+  test("a stock page shows risk and technicals from the analytics service", async ({ page }) => {
+    await page.goto("/stocks/NVDA");
+    // Role queries skip React's hidden copy while a streamed section swaps in.
+    const risk = page.getByRole("region", { name: "Risk", exact: true });
+    await expect(risk).toBeVisible();
+    await expect(risk.getByText("Beta vs S&P 500")).toBeVisible();
+    await expect(page.getByRole("region", { name: "Technicals", exact: true }).getByText("RSI (14)")).toBeVisible();
+  });
+
+  test("the screener filters with a preset and links to a backtest", async ({ page }) => {
+    await page.goto("/screener");
+    const status = page.getByRole("status").filter({ hasText: /of \d+ stocks/ });
+    await expect(status).toContainText(/\d+ of \d+ stocks/);
+    const all = Number((await status.textContent())!.match(/of (\d+)/)![1]);
+    await page.getByRole("button", { name: "Dividend payers" }).click();
+    await expect(status).not.toContainText(`${all} of ${all}`);
+    await page.getByRole("link", { name: /Backtest the top/ }).click();
+    await expect(page).toHaveURL(/\/backtest#run=/);
+  });
+
+  test("a lesson's quiz marks an answer", async ({ page }) => {
+    await page.goto("/learn/value-at-risk");
+    await expect(page.getByRole("heading", { name: "Value at Risk", level: 1 })).toBeVisible();
+    const quiz = page.locator("section", { has: page.getByRole("heading", { name: "Test yourself" }) });
+    const firstChoice = quiz.locator("li button[aria-pressed]").first();
+    await firstChoice.click();
+    await expect(firstChoice).toHaveAttribute("aria-pressed", "true");
+  });
+});
