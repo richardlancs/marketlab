@@ -102,17 +102,37 @@ class BollingerIndicator(Model):
     days: Annotated[int, Field(ge=2, le=250)]
 
 
+class ChandelierIndicator(Model):
+    kind: Literal["chandelier"]
+    days: Annotated[int, Field(ge=2, le=100)]
+    multiple: Annotated[float, Field(ge=0.5, le=10, allow_inf_nan=False)]
+
+
+class VolumeIndicator(Model):
+    kind: Literal["volume"]
+
+
+class VolumeAverageIndicator(Model):
+    kind: Literal["volume-average"]
+    days: Annotated[int, Field(ge=2, le=250)]
+
+
 class ValueIndicator(Model):
     kind: Literal["value"]
     value: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
 
 
-Indicator = Annotated[Union[PriceIndicator, AverageIndicator, RsiIndicator, MacdIndicator, BollingerIndicator, ValueIndicator], Field(discriminator="kind")]
+Indicator = Annotated[
+    Union[PriceIndicator, AverageIndicator, RsiIndicator, MacdIndicator, BollingerIndicator, ChandelierIndicator, VolumeIndicator, VolumeAverageIndicator, ValueIndicator],
+    Field(discriminator="kind"),
+]
 
 
 def _unit(indicator) -> str:
     if indicator.kind in ("rsi", "value"):
         return "score"
+    if indicator.kind in ("volume", "volume-average"):
+        return "shares"
     return "macd" if indicator.kind in ("macd", "macd-signal") else "dollars"
 
 
@@ -191,12 +211,25 @@ class SeriesModel(Model):
     # Non-finite numbers are refused here; ordering, duplicates and positivity by engine.to_series.
     prices: Annotated[list[float], Field(min_length=1, max_length=engine.MAX_POINTS)]
 
+    # Only when a rule needs them (lib/backtest/snapshot.ts): adjusted highs and lows, and volumes.
+    high: list[float] | None = None
+    low: list[float] | None = None
+    volume: list[float | None] | None = None
+
     @field_validator("prices")
     @classmethod
     def finite(cls, prices: list[float]) -> list[float]:
         if not all(math.isfinite(p) for p in prices):
             raise ValueError("every price must be a finite number")
         return prices
+
+    @model_validator(mode="after")
+    def extras_line_up(self):
+        for name in ("high", "low", "volume"):
+            values = getattr(self, name)
+            if values is not None and len(values) != len(self.times):
+                raise ValueError(f"{name} must have one value per date")
+        return self
 
 
 class SnapshotMarket(Model):
@@ -420,7 +453,8 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
     try:
         prices = {symbol: engine.to_series(symbol, s.times, s.prices) for symbol, s in body.prices.items()}
         market = engine.to_series("Market", body.market.times, body.market.prices) if body.market else None
-        outcome = engine.run_config(to_engine_config(body.config, body.warmup), prices, market)
+        extras = saved.extras_of({symbol: s.model_dump() for symbol, s in body.prices.items()})
+        outcome = engine.run_config(to_engine_config(body.config, body.warmup), prices, market, extras)
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     return BacktestResponse(
@@ -441,6 +475,12 @@ def save_run(body: SaveRequest, db: Annotated[database.Database, Depends(get_dat
     result stored is this service's own calculation, not one sent to it.
     """
     snapshot = body.snapshot.model_dump(by_alias=True)
+    # Stored exactly as MarketLab made it: a series without highs, lows and volumes has no such keys at all
+    # (not nulls), so the stored snapshot reads back and checks out the same in TypeScript.
+    for series in [*snapshot["series"].values(), *([snapshot["market"]["data"]] if snapshot.get("market") else [])]:
+        for key in ("high", "low", "volume"):
+            if series.get(key) is None:
+                series.pop(key, None)
     try:
         outcome = saved.outcome_from_snapshot(to_engine_config(body.config), snapshot)
     except engine.InputError as error:
@@ -573,7 +613,10 @@ def walk_forward(body: WalkForwardRequest, db: Annotated[database.Database, Depe
     if body.config.strategy.kind != "moving-average":
         raise HTTPException(status_code=422, detail="Walk-forward testing is available for the moving-average crossover.")
     symbols = [h.symbol for h in body.config.holdings]
-    bars = store.load_bars(db, body.source, symbols)
+    # Only the chosen period, plus room for the longest average to warm up on earlier sessions
+    # (trading days are about 5/7 of calendar days; the margin covers holidays).
+    longest = max(body.slow.to, body.config.strategy.slow)
+    bars = store.load_bars(db, body.source, symbols, since=body.config.start - int((longest * 1.6 + 20) * 86_400_000))
     missing = [s for s in symbols if s not in bars]
     if missing:
         raise HTTPException(status_code=422, detail=f"No stored prices for {', '.join(missing)}.")

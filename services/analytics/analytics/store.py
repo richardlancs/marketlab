@@ -52,18 +52,20 @@ def input_checksum(infos: Mapping[str, SeriesInfo]) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
 
-def load_bars(db: Database, source: str, symbols: Sequence[str]) -> dict[str, pd.DataFrame]:
+def load_bars(db: Database, source: str, symbols: Sequence[str], since: int | None = None) -> dict[str, pd.DataFrame]:
     """
     Stored bars for these symbols, oldest first, indexed by close time (ms),
     with columns open, high, low, close, adj_close, volume (floats). A symbol
-    with nothing stored is left out.
+    with nothing stored is left out. With `since` (ms), only bars from then
+    on: less to send from the database when the rest isn't needed.
     """
     if not symbols:
         return {}
     marks = ",".join("?" for _ in symbols)
+    window = " AND time >= ?" if since is not None else ""
     rows = db.query(
-        f"SELECT symbol, time, open, high, low, close, adj_close, volume FROM daily_bar WHERE source = ? AND symbol IN ({marks}) ORDER BY symbol, time",
-        [source, *symbols],
+        f"SELECT symbol, time, open, high, low, close, adj_close, volume FROM daily_bar WHERE source = ? AND symbol IN ({marks}){window} ORDER BY symbol, time",
+        [source, *symbols, *([since] if since is not None else [])],
     )
     if not rows:
         return {}

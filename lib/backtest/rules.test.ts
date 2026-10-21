@@ -4,7 +4,7 @@ import { mulberry32 } from "../random";
 import type { PricePoint } from "../types";
 import { CONFIG_VERSION, parseConfig, parseSavedRun, runConfig, summarize, type BacktestConfig } from "./config";
 import { NO_COSTS, runBacktest } from "./engine";
-import { describeRuleSet, indicatorSeries, parseRuleSet, RULE_PRESETS, ruleStrategy, type RuleSet } from "./rules";
+import { describeRuleSet, indicatorSeries, indicatorSeriesFromBars, parseRuleSet, RULE_PRESETS, ruleStrategy, type RuleSet } from "./rules";
 import { movingAverageCrossover } from "./strategies";
 
 function series(prices: number[]): PricePoint[] {
@@ -127,5 +127,47 @@ describe("config versions", () => {
     const config = { ...v1Config, version: CONFIG_VERSION, strategy: { kind: "rules", entry: preset.entry, exit: preset.exit } };
     const parsed = parseConfig(JSON.parse(JSON.stringify(config)), isKnown);
     expect(parsed).toEqual(config);
+  });
+});
+
+describe("rules on daily highs, lows and volume", () => {
+  it("computes the chandelier stop: the highest high minus a multiple of Wilder's ATR", () => {
+    // Three days; ATR(2): TRs 2 (first day: high − low), then max(3, |13 − 10|, |10 − 10|) = 3 → (2 + 3) / 2 = 2.5,
+    // then max(2, |12 − 11|, |10 − 11|) = 2 → (2.5 × 1 + 2) / 2 = 2.25.
+    const bars = [
+      { close: 10, high: 11, low: 9, volume: 100 },
+      { close: 11, high: 13, low: 10, volume: 200 },
+      { close: 11, high: 12, low: 10, volume: 300 },
+    ];
+    const values = indicatorSeriesFromBars({ kind: "chandelier", days: 2, multiple: 2 }, bars);
+    expect(values[0]).toBeNaN();
+    expect(values[1]).toBeCloseTo(13 - 2 * 2.5);
+    expect(values[2]).toBeCloseTo(13 - 2 * 2.25);
+    expect(indicatorSeriesFromBars({ kind: "volume-average", days: 2 }, bars).slice(1)).toEqual([150, 250]);
+  });
+
+  it("keeps units apart: volume compares only with volume", () => {
+    const rule = (left: object, right: object) => parseRuleSet({ combine: "all", conditions: [{ left, op: "above", right }] });
+    expect(rule({ kind: "volume" }, { kind: "volume-average", days: 20 })).not.toBeNull();
+    expect(rule({ kind: "volume" }, { kind: "sma", days: 20 })).toBeNull();
+    expect(rule({ kind: "price" }, { kind: "chandelier", days: 22, multiple: 3 })).not.toBeNull();
+    expect(rule({ kind: "price" }, { kind: "chandelier", days: 22, multiple: 50 })).toBeNull();
+  });
+
+  it("refuses to run rules that need bars on closes alone", () => {
+    const points = Array.from({ length: 40 }, (_, i) => ({ time: (i + 1) * 86_400_000, price: 100 + i }));
+    const config: BacktestConfig = {
+      version: CONFIG_VERSION,
+      holdings: [{ symbol: "A", weight: 1 }],
+      strategy: { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "volume" }, op: "above", right: { kind: "volume-average", days: 5 } }] }, exit: { combine: "all", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "sma", days: 5 } }] } },
+      start: 0,
+      end: 100 * 86_400_000,
+      initialCash: 1000,
+      costs: NO_COSTS,
+      benchmark: "same-stocks",
+    };
+    expect(() => runConfig(config, { A: points }, points)).toThrow(/high, low and volume/);
+    const extra = { A: points.map((p, i) => ({ time: p.time, high: p.price + 1, low: p.price - 1, volume: i % 7 === 0 ? 900 : 100 })) };
+    expect(runConfig(config, { A: points }, points, extra).run.trades.length).toBeGreaterThan(0);
   });
 });

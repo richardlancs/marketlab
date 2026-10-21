@@ -11,7 +11,7 @@
  * This takes the database as a parameter so tests can use an in-memory one.
  * App code uses the instance from ./index.ts, which is server-only.
  */
-import { and, count, desc, eq, inArray, max, sql } from "drizzle-orm";
+import { and, count, desc, eq, getTableColumns, inArray, max, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { processAccount, type MarketData } from "../processing";
 import { isStartingAccount, startingAccount, type StartingPreset } from "../starting-account";
@@ -110,7 +110,8 @@ async function persist(ex: Executor, userId: string, before: Account, after: Acc
   const newEvents = (after.events ?? []).filter((e) => !oldEvents.has(e.id));
   if (newEvents.length) await ex.insert(accountEvent).values(newEvents.map((e) => ({ userId, ...e })));
 
-  // Orders and alerts: insert, update or delete each one by ID.
+  // Orders and alerts: every new or changed one in a single upsert, and the dropped ones in a single delete,
+  // rather than a statement (a round trip, on Turso) per row.
   const sync = async <T extends { id: string }>(
     table: typeof pendingOrder | typeof priceAlert,
     was: T[] = [],
@@ -118,10 +119,17 @@ async function persist(ex: Executor, userId: string, before: Account, after: Acc
     toRow: (item: T) => Record<string, unknown>,
   ) => {
     const previous = new Map(was.map((x) => [x.id, x]));
-    for (const item of now) {
-      const old = previous.get(item.id);
-      if (!old) await ex.insert(table).values({ userId, ...toRow(item) } as never);
-      else if (!same(old, item)) await ex.update(table).set(toRow(item) as never).where(and(eq(table.userId, userId), eq(table.id, item.id)));
+    const changed = now.filter((item) => !previous.has(item.id) || !same(previous.get(item.id), item));
+    if (changed.length) {
+      const rows = changed.map((item) => ({ userId, ...toRow(item) }));
+      // Overwrite the columns this code writes (not, say, the alert emails' emailed_at), and only the user's own rows.
+      const columns = getTableColumns(table) as Record<string, { name: string }>;
+      const written = Object.keys(rows[0]).filter((key) => key !== "id" && key !== "userId" && key in columns);
+      const set = Object.fromEntries(written.map((key) => [key, sql.raw(`excluded.${columns[key].name}`)]));
+      await ex
+        .insert(table)
+        .values(rows as never)
+        .onConflictDoUpdate({ target: table.id, set: set as never, setWhere: sql`${table.userId} = excluded.user_id` });
     }
     const kept = new Set(now.map((x) => x.id));
     const dropped = was.filter((x) => !kept.has(x.id)).map((x) => x.id);

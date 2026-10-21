@@ -19,11 +19,11 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { formatDate } from "../format";
-import { getMarket, getStockDetail } from "../market";
+import { getBarsForStore, getMarket, getStockDetail } from "../market";
 import { marketMode } from "../market/mode";
 import type { PricePoint } from "../types";
-import type { BacktestConfig } from "./config";
-import type { BacktestRun } from "./engine";
+import { configNeedsBars, type BacktestConfig } from "./config";
+import type { BacktestRun, ExtraPoint } from "./engine";
 import { ASSUMPTIONS, compute, engineFor, TYPESCRIPT_ENGINE, type EngineName } from "./engines";
 import { PythonEngineError, pythonEngineVersion } from "./python-client";
 import { describeSnapshot, makeSnapshot, type PriceSnapshot } from "./snapshot";
@@ -34,6 +34,8 @@ export type Prices = { history: Record<string, PricePoint[]>; market: PricePoint
 
 interface LoadedPrices {
   history: Record<string, PricePoint[]>;
+  /** Each stock's adjusted highs and lows and its volumes, when asked for (rules that need them). */
+  extra?: Record<string, ExtraPoint[]>;
   market: { symbol: string; name: string; history: PricePoint[] };
   source: PriceSnapshot["source"];
   asOf: number;
@@ -43,7 +45,7 @@ const REAL_UNAVAILABLE =
   "Real prices are unavailable right now (the data provider couldn't be reached), and backtests never use simulated prices in their place. Try again in a few minutes.";
 
 /** Every stock's adjusted daily closes and the market index, all from one source, or the reason they can't be had. */
-async function loadPrices(symbols: string[]): Promise<LoadedPrices | { error: string }> {
+async function loadPrices(symbols: string[], withBars = false): Promise<LoadedPrices | { error: string }> {
   const market = await getMarket();
   // With real data selected, a market that fell back to the mock (provider down) can't be used:
   // its stocks and index would be simulated, next to real prices for any other stock.
@@ -56,7 +58,17 @@ async function loadPrices(symbols: string[]): Promise<LoadedPrices | { error: st
     history[symbols[i]] = detail.stock.history;
   }
   const index = market.indices[0];
-  return { history, market: { symbol: index.symbol, name: index.name, history: index.history }, source: market.source, asOf: market.asOf };
+  let extra: Record<string, ExtraPoint[]> | undefined;
+  if (withBars) {
+    extra = {};
+    for (const symbol of symbols) {
+      const stored = await getBarsForStore(symbol);
+      if (!stored) return { error: `Daily highs, lows and volumes for ${symbol} are unavailable right now. Try again in a minute.` };
+      // On the adjusted scale, like the closes: each day's high and low times its adjusted close ÷ traded close.
+      extra[symbol] = stored.bars.map((b) => ({ time: b.time, high: b.high * (b.adjClose / b.close), low: b.low * (b.adjClose / b.close), volume: b.volume }));
+    }
+  }
+  return { history, ...(extra && { extra }), market: { symbol: index.symbol, name: index.name, history: index.history }, source: market.source, asOf: market.asOf };
 }
 
 const cents = (n: number) => Math.round(n * 100) / 100;
@@ -134,9 +146,9 @@ function startNotes(config: BacktestConfig, history: Record<string, PricePoint[]
 
 /** One backtest on today's prices, with the engine configured for its strategy, and the snapshot it used. */
 export async function runFull(config: BacktestConfig): Promise<FullRun | Extract<RunResult, { ok: false }>> {
-  const prices = await loadPrices(config.holdings.map((h) => h.symbol));
+  const prices = await loadPrices(config.holdings.map((h) => h.symbol), configNeedsBars(config));
   if ("error" in prices) return { ok: false, message: prices.error };
-  const snapshot = makeSnapshot(config, prices.history, prices.market, prices.source, prices.asOf);
+  const snapshot = makeSnapshot(config, prices.history, prices.market, prices.source, prices.asOf, prices.extra);
   const result = await runFromSnapshot(config, snapshot, engineFor(config), { notes: startNotes(config, prices.history) });
   return result.ok ? { ...result, snapshot } : result;
 }
@@ -157,8 +169,8 @@ export async function sweepOnServer(base: BacktestConfig, axes: Axis[]): Promise
   "use cache";
   cacheTag("market");
   cacheLife("hours");
-  const prices = await loadPrices(base.holdings.map((h) => h.symbol));
+  const prices = await loadPrices(base.holdings.map((h) => h.symbol), configNeedsBars(base));
   if ("error" in prices) return { ok: false, message: prices.error };
-  const result = runSweep(base, axes, prices.history, prices.market.history);
+  const result = runSweep(base, axes, prices.history, prices.market.history, undefined, undefined, prices.extra);
   return "error" in result ? { ok: false, message: result.error } : { ok: true, result };
 }

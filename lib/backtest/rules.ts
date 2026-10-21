@@ -7,7 +7,7 @@
  * only things it can do are the kinds listed here. Everything is validated
  * like the rest of a config, because saved runs come back from storage.
  */
-import type { Strategy } from "./engine";
+import type { DailyExtras, Strategy } from "./engine";
 import type { Weights } from "./strategies";
 
 export type Indicator =
@@ -21,6 +21,15 @@ export type Indicator =
   /** Bollinger Bands: the `days`-day average plus or minus 2 standard deviations. */
   | { kind: "bollinger-upper"; days: number }
   | { kind: "bollinger-lower"; days: number }
+  /**
+   * The Chandelier Exit, a trailing stop: the highest high of the last `days`
+   * days minus `multiple` × the average true range (ATR) over them. "Price is
+   * below the chandelier" means it fell that far from its recent top.
+   */
+  | { kind: "chandelier"; days: number; multiple: number }
+  /** The day's trading volume, and its `days`-day average (shares). */
+  | { kind: "volume" }
+  | { kind: "volume-average"; days: number }
   /** A constant, only for comparing with RSI (0 to 100). */
   | { kind: "value"; value: number };
 
@@ -38,7 +47,7 @@ export interface RuleSet {
   conditions: Condition[];
 }
 
-export const RULE_LIMITS = { maxConditions: 4, minDays: 2, maxAverageDays: 250, maxRsiDays: 100 };
+export const RULE_LIMITS = { maxConditions: 4, minDays: 2, maxAverageDays: 250, maxRsiDays: 100, minMultiple: 0.5, maxMultiple: 10 };
 
 export const OPERATOR_NAMES: Record<Operator, string> = {
   above: "is above",
@@ -47,11 +56,21 @@ export const OPERATOR_NAMES: Record<Operator, string> = {
   "crosses-below": "crosses below",
 };
 
-export type Unit = "dollars" | "score" | "macd";
+export type Unit = "dollars" | "score" | "macd" | "shares";
 
-/** Prices, averages and bands are in dollars; RSI is a 0–100 score; MACD is its own scale. Only like can be compared with like. */
+/** Prices, averages, bands and stops are in dollars; RSI is a 0–100 score; MACD is its own scale; volume is shares. Only like can be compared with like. */
 export const unitOf = (indicator: Pick<Indicator, "kind">): Unit =>
-  indicator.kind === "rsi" || indicator.kind === "value" ? "score" : indicator.kind === "macd" || indicator.kind === "macd-signal" ? "macd" : "dollars";
+  indicator.kind === "rsi" || indicator.kind === "value"
+    ? "score"
+    : indicator.kind === "macd" || indicator.kind === "macd-signal"
+      ? "macd"
+      : indicator.kind === "volume" || indicator.kind === "volume-average"
+        ? "shares"
+        : "dollars";
+
+/** Whether the indicator needs each day's high, low or volume (not just the close). */
+export const needsBars = (indicator: Pick<Indicator, "kind">) => indicator.kind === "chandelier" || indicator.kind === "volume" || indicator.kind === "volume-average";
+export const ruleSetNeedsBars = (rules: RuleSet) => rules.conditions.some((c) => needsBars(c.left) || needsBars(c.right));
 
 export function indicatorName(indicator: Indicator): string {
   switch (indicator.kind) {
@@ -71,6 +90,12 @@ export function indicatorName(indicator: Indicator): string {
       return `upper Bollinger band (${indicator.days})`;
     case "bollinger-lower":
       return `lower Bollinger band (${indicator.days})`;
+    case "chandelier":
+      return `chandelier stop (${indicator.days} days, ${indicator.multiple}× ATR)`;
+    case "volume":
+      return "volume";
+    case "volume-average":
+      return `${indicator.days}-day average volume`;
     case "value":
       return String(indicator.value);
   }
@@ -102,7 +127,14 @@ export function parseIndicator(value: unknown): Indicator | null {
       return { kind: value.kind };
     case "bollinger-upper":
     case "bollinger-lower":
+    case "volume-average":
       return isDays(value.days, RULE_LIMITS.maxAverageDays) ? { kind: value.kind, days: value.days } : null;
+    case "chandelier":
+      return isDays(value.days, RULE_LIMITS.maxRsiDays) && typeof value.multiple === "number" && value.multiple >= RULE_LIMITS.minMultiple && value.multiple <= RULE_LIMITS.maxMultiple
+        ? { kind: "chandelier", days: value.days, multiple: value.multiple }
+        : null;
+    case "volume":
+      return { kind: "volume" };
     case "value":
       return typeof value.value === "number" && value.value >= 0 && value.value <= 100 ? { kind: "value", value: value.value } : null;
     default:
@@ -143,9 +175,20 @@ export function parseRuleSet(value: unknown): RuleSet | null {
  * totals keep a whole backtest at one step per day, instead of re-adding up
  * to 250 closes every day.
  */
-type Stream = (close: number) => number;
+export interface Bar {
+  close: number;
+  high: number;
+  low: number;
+  volume: number;
+}
+type Stream = (bar: Bar) => number;
+/** A stream on closes alone, as most indicators are. */
+const onClose =
+  (step: (close: number) => number): Stream =>
+  (bar) =>
+    step(bar.close);
 
-function smaStream(days: number): Stream {
+function smaStream(days: number): (value: number) => number {
   const window: number[] = [];
   let sum = 0;
   return (close) => {
@@ -157,7 +200,7 @@ function smaStream(days: number): Stream {
 }
 
 /** Exponential moving average, started from the simple average of the first `days` closes. */
-function emaStream(days: number): Stream {
+function emaStream(days: number): (value: number) => number {
   const alpha = 2 / (days + 1);
   const start = smaStream(days);
   let ema = Number.NaN;
@@ -175,7 +218,7 @@ function emaStream(days: number): Stream {
  * Relative Strength Index with Wilder's smoothing: 100 − 100 / (1 + average
  * gain / average loss) over `days` daily changes. Only gains: 100. Flat: 50.
  */
-function rsiStream(days: number): Stream {
+function rsiStream(days: number): (close: number) => number {
   let previous = Number.NaN;
   let count = 0;
   let gain = 0;
@@ -202,7 +245,7 @@ function rsiStream(days: number): Stream {
 }
 
 /** The MACD line: the 12-day EMA minus the 26-day EMA (both fed every close). */
-function macdStream(): Stream {
+function macdStream(): (close: number) => number {
   const fast = emaStream(12);
   const slow = emaStream(26);
   return (close) => {
@@ -213,7 +256,7 @@ function macdStream(): Stream {
 }
 
 /** The MACD signal line: the 9-day EMA of the MACD line, fed once the line exists. */
-function macdSignalStream(): Stream {
+function macdSignalStream(): (close: number) => number {
   const line = macdStream();
   const signal = emaStream(9);
   return (close) => {
@@ -223,7 +266,7 @@ function macdSignalStream(): Stream {
 }
 
 /** A Bollinger band: the `days`-day average plus (`side` 1) or minus (−1) 2 population standard deviations, summed left to right. */
-function bollingerStream(days: number, side: 1 | -1): Stream {
+function bollingerStream(days: number, side: 1 | -1): (close: number) => number {
   const window: number[] = [];
   return (close) => {
     window.push(close);
@@ -238,33 +281,73 @@ function bollingerStream(days: number, side: 1 | -1): Stream {
   };
 }
 
+/**
+ * The Chandelier Exit: the highest high of the last `days` bars minus
+ * `multiple` × ATR(`days`). ATR is Wilder's average true range: the average
+ * of the first `days` true ranges, then (ATR × (days − 1) + TR) / days. A
+ * day's true range is the largest of high − low, |high − previous close| and
+ * |low − previous close| (just high − low on the first day).
+ */
+function chandelierStream(days: number, multiple: number): Stream {
+  const highs: number[] = [];
+  let previousClose = Number.NaN;
+  let count = 0;
+  let atr = 0;
+  return ({ high, low, close }) => {
+    const range = Number.isNaN(previousClose) ? high - low : Math.max(high - low, Math.abs(high - previousClose), Math.abs(low - previousClose));
+    previousClose = close;
+    count++;
+    atr = count <= days ? atr + range / days : (atr * (days - 1) + range) / days;
+    highs.push(high);
+    if (highs.length > days) highs.shift();
+    if (count < days) return Number.NaN;
+    let top = highs[0];
+    for (const h of highs) if (h > top) top = h;
+    return top - multiple * atr;
+  };
+}
+
 function streamFor(indicator: Indicator): Stream {
   switch (indicator.kind) {
     case "price":
-      return (close) => close;
+      return ({ close }) => close;
     case "sma":
-      return smaStream(indicator.days);
+      return onClose(smaStream(indicator.days));
     case "ema":
-      return emaStream(indicator.days);
+      return onClose(emaStream(indicator.days));
     case "rsi":
-      return rsiStream(indicator.days);
+      return onClose(rsiStream(indicator.days));
     case "macd":
-      return macdStream();
+      return onClose(macdStream());
     case "macd-signal":
-      return macdSignalStream();
+      return onClose(macdSignalStream());
     case "bollinger-upper":
-      return bollingerStream(indicator.days, 1);
+      return onClose(bollingerStream(indicator.days, 1));
     case "bollinger-lower":
-      return bollingerStream(indicator.days, -1);
+      return onClose(bollingerStream(indicator.days, -1));
+    case "chandelier":
+      return chandelierStream(indicator.days, indicator.multiple);
+    case "volume":
+      return ({ volume }) => volume;
+    case "volume-average": {
+      const average = smaStream(indicator.days);
+      return ({ volume }) => average(volume);
+    }
     case "value":
       return () => indicator.value;
   }
 }
 
-/** The indicator's value after each close, for tests and charts. */
-export const indicatorSeries = (indicator: Indicator, closes: readonly number[]): number[] => {
+/** Bars from closes alone: high and low at the close, no volume. Enough for every indicator but the chandelier and volume. */
+const closeBars = (closes: readonly number[]): Bar[] => closes.map((close) => ({ close, high: close, low: close, volume: Number.NaN }));
+
+/** The indicator's value after each close, for tests, charts and alerts. */
+export const indicatorSeries = (indicator: Indicator, closes: readonly number[]): number[] => indicatorSeriesFromBars(indicator, closeBars(closes));
+
+/** The indicator's value after each bar. */
+export const indicatorSeriesFromBars = (indicator: Indicator, bars: readonly Bar[]): number[] => {
   const stream = streamFor(indicator);
-  return closes.map(stream);
+  return bars.map(stream);
 };
 
 const keyOf = (indicator: Indicator) => JSON.stringify(indicator);
@@ -282,14 +365,17 @@ export function ruleStrategy(weights: Weights, entry: RuleSet, exit: RuleSet): S
   // Per stock and indicator: the running state, and its value after each close seen so far.
   const state = new Map<string, Map<string, { stream: Stream; values: number[] }>>();
 
-  const valuesFor = (symbol: string, closes: number[]) => {
+  const valuesFor = (symbol: string, closes: number[], extras: DailyExtras | undefined) => {
     let perSymbol = state.get(symbol);
     if (!perSymbol) {
       perSymbol = new Map([...indicators].map(([key, indicator]) => [key, { stream: streamFor(indicator), values: [] as number[] }]));
       state.set(symbol, perSymbol);
     }
     for (const entry of perSymbol.values()) {
-      for (let i = entry.values.length; i < closes.length; i++) entry.values.push(entry.stream(closes[i]));
+      for (let i = entry.values.length; i < closes.length; i++) {
+        const bar = extras ? { close: closes[i], high: extras.high[i], low: extras.low[i], volume: extras.volume[i] } : { close: closes[i], high: closes[i], low: closes[i], volume: Number.NaN };
+        entry.values.push(entry.stream(bar));
+      }
     }
     return perSymbol;
   };
@@ -313,12 +399,12 @@ export function ruleStrategy(weights: Weights, entry: RuleSet, exit: RuleSet): S
     return rules.combine === "all" ? rules.conditions.every(check) : rules.conditions.some(check);
   };
 
-  return ({ closes, shares }) => {
+  return ({ closes, shares, bars }) => {
     const target: Weights = {};
     let changed = false;
     for (const [symbol, weight] of Object.entries(weights)) {
       const series = closes[symbol];
-      const values = valuesFor(symbol, series);
+      const values = valuesFor(symbol, series, bars?.[symbol]);
       const t = series.length - 1; // yesterday
       const inMarket = shares[symbol] > 0;
       const next = inMarket ? !holds(exit, values, t) : holds(entry, values, t);

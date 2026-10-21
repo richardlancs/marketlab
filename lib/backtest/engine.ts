@@ -37,6 +37,12 @@ export interface StrategyContext {
   times: number[];
   /** Closes for each symbol up to and including *yesterday* (empty on day 0). */
   closes: Record<string, number[]>;
+  /**
+   * Each symbol's daily high, low and volume up to and including yesterday,
+   * when the series came with them (rules on ranges or volume need them).
+   * Highs and lows are on the same adjusted scale as the closes.
+   */
+  bars?: Record<string, DailyExtras>;
   /** Shares held of each symbol, and cash, before today's orders. */
   shares: Record<string, number>;
   cash: number;
@@ -80,9 +86,26 @@ export interface BacktestRun {
   metrics: Metrics;
 }
 
+/** A day's high, low and volume, besides its (adjusted) close. */
+export interface ExtraPoint {
+  time: number;
+  high: number;
+  low: number;
+  volume: number | null;
+}
+
+/** Highs, lows and volumes, one per day, aligned with the closes. NaN where a day has none. */
+export interface DailyExtras {
+  high: number[];
+  low: number[];
+  volume: number[];
+}
+
 export interface Series {
   symbol: string;
   points: PricePoint[];
+  /** Optional: each day's adjusted high and low, and volume. */
+  extra?: ExtraPoint[];
 }
 
 /** Skip trades too small to matter, so rounding never generates a stream of commission-only orders. */
@@ -94,18 +117,32 @@ const YEAR = 365.25 * 24 * 60 * 60 * 1000;
  * Lines up several daily series on the days they all have, between `start`
  * and `end` (inclusive). Returns the shared times and each symbol's closes.
  */
-export function alignSeries(series: Series[], start: number, end: number): { times: number[]; closes: Record<string, number[]> } {
+export function alignSeries(series: Series[], start: number, end: number): { times: number[]; closes: Record<string, number[]>; bars?: Record<string, DailyExtras> } {
   const maps = series.map((s) => new Map(s.points.map((p) => [p.time, p.price])));
   const times = series[0].points
     .map((p) => p.time)
     .filter((t) => t >= start && t <= end && maps.every((m) => m.has(t)));
   const closes = Object.fromEntries(series.map((s, i) => [s.symbol, times.map((t) => maps[i].get(t) as number)]));
-  return { times, closes };
+  if (!series.some((s) => s.extra)) return { times, closes };
+  const bars = Object.fromEntries(
+    series.map((s) => {
+      const byTime = new Map((s.extra ?? []).map((e) => [e.time, e]));
+      return [
+        s.symbol,
+        {
+          high: times.map((t) => byTime.get(t)?.high ?? Number.NaN),
+          low: times.map((t) => byTime.get(t)?.low ?? Number.NaN),
+          volume: times.map((t) => byTime.get(t)?.volume ?? Number.NaN),
+        },
+      ];
+    }),
+  );
+  return { times, closes, bars };
 }
 
 export function runBacktest(series: Series[], strategy: Strategy, options: { start: number; end: number; initialCash: number; costs: Costs }): BacktestRun {
   const { initialCash, costs } = options;
-  const { times, closes } = alignSeries(series, options.start, options.end);
+  const { times, closes, bars } = alignSeries(series, options.start, options.end);
   if (times.length < 2) throw new Error("Not enough price history in that date range.");
   const symbols = series.map((s) => s.symbol);
   const slip = costs.slippageBps / 10_000;
@@ -145,6 +182,9 @@ export function runBacktest(series: Series[], strategy: Strategy, options: { sta
       times: times.slice(0, day + 1),
       // Only up to yesterday: today's close is what the orders fill at.
       closes: Object.fromEntries(symbols.map((s) => [s, closes[s].slice(0, day)])),
+      ...(bars && {
+        bars: Object.fromEntries(symbols.map((s) => [s, { high: bars[s].high.slice(0, day), low: bars[s].low.slice(0, day), volume: bars[s].volume.slice(0, day) }])),
+      }),
       shares: { ...shares },
       cash,
     });

@@ -10,7 +10,7 @@
  */
 import type { PricePoint } from "../types";
 import { parseConfig, runBenchmark, runStrategy, type BacktestConfig } from "./config";
-import type { Metrics } from "./engine";
+import type { ExtraPoint, Metrics } from "./engine";
 import { indicatorName, type Indicator, type RuleSet } from "./rules";
 
 export const SWEEP_LIMITS = { maxValuesPerAxis: 15, maxRuns: 200 };
@@ -150,21 +150,22 @@ export function prepareSweep(
   axes: Axis[],
   history: Record<string, PricePoint[]>,
   market: PricePoint[],
+  extra?: Record<string, ExtraPoint[]>,
 ): { axes: SweepResult["axes"]; points: SweepPoint[]; benchmark: Metrics } | { error: string } {
   const grid = buildGrid(base, axes);
   if ("error" in grid) return grid;
   try {
-    return { ...grid, benchmark: runBenchmark(base, runStrategy(base, history), history, market).metrics };
+    return { ...grid, benchmark: runBenchmark(base, runStrategy(base, history, extra), history, market).metrics };
   } catch (error) {
     return { error: error instanceof Error ? error.message : "That backtest couldn't be run." };
   }
 }
 
 /** Runs one point, keeping only its metrics (not its daily values), so results stay small enough to send from a worker. */
-export function runPoint(point: SweepPoint, history: Record<string, PricePoint[]>): void {
+export function runPoint(point: SweepPoint, history: Record<string, PricePoint[]>, extra?: Record<string, ExtraPoint[]>): void {
   if (!point.config) return;
   try {
-    point.metrics = runStrategy(point.config, history).metrics;
+    point.metrics = runStrategy(point.config, history, extra).metrics;
   } catch {
     point.metrics = null; // e.g. averages longer than the date range
   }
@@ -178,11 +179,12 @@ export function runSweep(
   market: PricePoint[],
   onProgress?: (done: number, total: number) => void,
   every = 10,
+  extra?: Record<string, ExtraPoint[]>,
 ): SweepResult | { error: string } {
-  const sweep = prepareSweep(base, axes, history, market);
+  const sweep = prepareSweep(base, axes, history, market, extra);
   if ("error" in sweep) return sweep;
   sweep.points.forEach((point, i) => {
-    runPoint(point, history);
+    runPoint(point, history, extra);
     if (onProgress && ((i + 1) % every === 0 || i === sweep.points.length - 1)) onProgress(i + 1, sweep.points.length);
   });
   return sweep;

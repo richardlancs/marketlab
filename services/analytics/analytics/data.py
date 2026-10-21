@@ -66,12 +66,14 @@ class Sessions:
     times: tuple[int, ...]
     closes: Mapping[str, tuple[float, ...]]
     first_measured: int = 0
+    #: Optional, per symbol: "high", "low" and "volume", one per session (NaN where a day has none).
+    extras: Mapping[str, Mapping[str, tuple[float, ...]]] | None = None
 
     def __len__(self) -> int:
         return len(self.times)
 
 
-def align(series: Mapping[str, pd.Series], start: int, end: int, *, history_before: int = 0) -> Sessions:
+def align(series: Mapping[str, pd.Series], start: int, end: int, *, history_before: int = 0, extras: Mapping[str, pd.DataFrame] | None = None) -> Sessions:
     """
     The sessions every series has, from `start` to `end` (inclusive), in the
     first series' order. A session missing from any series is left out for
@@ -91,4 +93,13 @@ def align(series: Mapping[str, pd.Series], start: int, end: int, *, history_befo
     kept = earlier.append(measured)
     # .tolist() gives Python floats, so the simulation is ordinary float arithmetic.
     closes = {s: tuple(series[s].loc[kept].tolist()) for s in symbols}
-    return Sessions(times=tuple(int(t) for t in kept), closes=closes, first_measured=len(earlier))
+    aligned_extras = None
+    if extras:
+        aligned_extras = {}
+        for s in symbols:
+            frame = extras.get(s)
+            if frame is None:
+                continue
+            frame = frame.reindex(kept)
+            aligned_extras[s] = {col: tuple(float(v) for v in frame[col].tolist()) for col in ("high", "low", "volume")}
+    return Sessions(times=tuple(int(t) for t in kept), closes=closes, first_measured=len(earlier), extras=aligned_extras)

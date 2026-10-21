@@ -341,6 +341,47 @@ def _bollinger_stream(days: int, side: int):
     return step
 
 
+def _chandelier_stream(days: int, multiple: float):
+    highs: list[float] = []
+    previous_close = NAN
+    count = 0
+    atr = 0.0
+
+    def step(bar) -> float:
+        nonlocal previous_close, count, atr
+        high, low, close = bar["high"], bar["low"], bar["close"]
+        rng = high - low if math.isnan(previous_close) else max(high - low, abs(high - previous_close), abs(low - previous_close))
+        previous_close = close
+        count += 1
+        atr = atr + rng / days if count <= days else (atr * (days - 1) + rng) / days
+        highs.append(high)
+        if len(highs) > days:
+            highs.pop(0)
+        if count < days:
+            return NAN
+        top = highs[0]
+        for h in highs:
+            if h > top:
+                top = h
+        return top - multiple * atr
+
+    return step
+
+
+def indicator_series_from_bars(indicator: Mapping[str, Any], bars: Sequence[Mapping[str, float]]) -> list[float]:
+    """The indicator's value after each bar (close, high, low, volume), exactly as rules.ts computes it."""
+    kind = indicator["kind"]
+    if kind == "chandelier":
+        step = _chandelier_stream(int(indicator["days"]), float(indicator["multiple"]))
+        return [step(b) for b in bars]
+    if kind == "volume":
+        return [float(b["volume"]) for b in bars]
+    if kind == "volume-average":
+        average = _sma_stream(int(indicator["days"]))
+        return [average(float(b["volume"])) for b in bars]
+    return indicator_series(indicator, [b["close"] for b in bars])
+
+
 def indicator_series(indicator: Mapping[str, Any], closes: Sequence[float]) -> list[float]:
     """The indicator's value after each close (NaN while it's warming up), exactly as rules.ts computes it."""
     kind = indicator["kind"]
@@ -391,8 +432,13 @@ class Rules:
         series: dict[tuple[str, str], Sequence[float | None]] = {}
         for symbol in self.weights:
             closes = sessions.closes[symbol]
+            extra = (sessions.extras or {}).get(symbol)
+            bars = [
+                {"close": c, "high": extra["high"][i], "low": extra["low"][i], "volume": extra["volume"][i]} if extra else {"close": c, "high": c, "low": c, "volume": NAN}
+                for i, c in enumerate(closes)
+            ]
             for key, indicator in self._indicators().items():
-                values = indicator_series(indicator, closes)
+                values = indicator_series_from_bars(indicator, bars)
                 series[(f"now:{key}", symbol)] = [NAN] + values[:-1]
                 series[(f"before:{key}", symbol)] = [NAN, NAN] + values[:-2]
         return series

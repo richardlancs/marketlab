@@ -159,6 +159,14 @@ def put_series(db, symbol: str, closes, source="mock"):
     db.execute_many(statements)
 
 
+class TestStore:
+    def test_load_bars_since_a_date(self, db):
+        put_series(db, "AAA", [float(i) for i in range(1, 11)])
+        everything = store.load_bars(db, "mock", ["AAA"])["AAA"]
+        recent = store.load_bars(db, "mock", ["AAA"], since=T0 + 7 * DAY)["AAA"]
+        assert len(everything) == 10 and list(recent["close"]) == [8.0, 9.0, 10.0]
+
+
 class TestJob:
     def test_computes_once_then_skips_until_prices_change(self, db):
         put_series(db, "SPX", walk(300, 1) * 4000)

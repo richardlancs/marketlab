@@ -8,12 +8,12 @@ import { OPERATOR_NAMES, RULE_LIMITS, unitOf, type Condition, type Indicator, ty
  * kept as typed (strings), so a half-typed "2" on its way to "20" isn't
  * rejected mid-keystroke. Turned into a real RuleSet when the backtest runs.
  */
-export type IndicatorDraft = { kind: Indicator["kind"]; n: string };
+export type IndicatorDraft = { kind: Indicator["kind"]; n: string; /** The chandelier stop's ATR multiple. */ m?: string };
 export type ConditionDraft = { left: IndicatorDraft; op: Operator; right: IndicatorDraft };
 export type RuleSetDraft = { combine: RuleSet["combine"]; conditions: ConditionDraft[] };
 
 const numberOf = (i: Indicator) => (i.kind === "value" ? String(i.value) : "days" in i ? String(i.days) : "");
-const toIndicatorDraft = (i: Indicator): IndicatorDraft => ({ kind: i.kind, n: numberOf(i) });
+const toIndicatorDraft = (i: Indicator): IndicatorDraft => ({ kind: i.kind, n: numberOf(i), ...(i.kind === "chandelier" && { m: String(i.multiple) }) });
 
 export const toDraft = (rules: RuleSet): RuleSetDraft => ({
   combine: rules.combine,
@@ -22,8 +22,9 @@ export const toDraft = (rules: RuleSet): RuleSetDraft => ({
 
 /** Not validated here: the config's parser checks the result (see lib/backtest/rules.ts). */
 function fromIndicatorDraft(d: IndicatorDraft): Indicator {
-  if (d.kind === "price" || d.kind === "macd" || d.kind === "macd-signal") return { kind: d.kind };
+  if (d.kind === "price" || d.kind === "macd" || d.kind === "macd-signal" || d.kind === "volume") return { kind: d.kind };
   if (d.kind === "value") return { kind: "value", value: Number(d.n) };
+  if (d.kind === "chandelier") return { kind: "chandelier", days: Number(d.n), multiple: Number(d.m ?? "3") };
   return { kind: d.kind, days: Number(d.n) };
 }
 export const fromDraft = (draft: RuleSetDraft): RuleSet => ({
@@ -37,15 +38,31 @@ const KIND_NAMES: Record<Indicator["kind"], string> = {
   ema: "Exponential average",
   "bollinger-upper": "Upper Bollinger band",
   "bollinger-lower": "Lower Bollinger band",
+  chandelier: "Chandelier stop (ATR)",
   rsi: "RSI",
   macd: "MACD",
   "macd-signal": "MACD signal line",
+  volume: "Volume",
+  "volume-average": "Average volume",
   value: "Number",
 };
 const unit = (kind: Indicator["kind"]) => unitOf({ kind });
-const DEFAULT_N: Record<Indicator["kind"], string> = { price: "", sma: "200", ema: "50", "bollinger-upper": "20", "bollinger-lower": "20", rsi: "14", macd: "", "macd-signal": "", value: "30" };
+const DEFAULT_N: Record<Indicator["kind"], string> = {
+  price: "",
+  sma: "200",
+  ema: "50",
+  "bollinger-upper": "20",
+  "bollinger-lower": "20",
+  chandelier: "22",
+  rsi: "14",
+  macd: "",
+  "macd-signal": "",
+  volume: "",
+  "volume-average": "20",
+  value: "30",
+};
 /** A sensible partner for the left side, when switching it to another unit. */
-const PARTNER: Record<Unit, IndicatorDraft> = { dollars: { kind: "sma", n: "200" }, score: { kind: "value", n: "30" }, macd: { kind: "macd-signal", n: "" } };
+const PARTNER: Record<Unit, IndicatorDraft> = { dollars: { kind: "sma", n: "200" }, score: { kind: "value", n: "30" }, macd: { kind: "macd-signal", n: "" }, shares: { kind: "volume-average", n: "20" } };
 const HAS_NUMBER = (kind: Indicator["kind"]) => DEFAULT_N[kind] !== "";
 
 const input =
@@ -145,7 +162,7 @@ function IndicatorPicker({
         value={value.kind}
         onChange={(e) => {
           const kind = e.target.value as Indicator["kind"];
-          onChange({ kind, n: DEFAULT_N[kind] });
+          onChange({ kind, n: DEFAULT_N[kind], ...(kind === "chandelier" && { m: "3" }) });
         }}
         className={input}
       >
@@ -166,6 +183,20 @@ function IndicatorPicker({
         />
       )}
       {hasNumber && value.kind !== "value" && <span className="text-xs text-muted">days</span>}
+      {value.kind === "chandelier" && (
+        <>
+          <input
+            aria-label={`${label}: ATR multiple`}
+            type="number"
+            inputMode="decimal"
+            step="0.5"
+            value={value.m ?? "3"}
+            onChange={(e) => onChange({ ...value, m: e.target.value })}
+            className={`${input} w-16`}
+          />
+          <span className="text-xs text-muted">× ATR</span>
+        </>
+      )}
     </span>
   );
 }

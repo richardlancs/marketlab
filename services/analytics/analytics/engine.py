@@ -74,7 +74,7 @@ __all__ = [
 ]
 
 ENGINE_NAME = "python"
-ENGINE_VERSION = "1.2.0"
+ENGINE_VERSION = "1.3.0"
 
 #: The rules every run follows, in words (recorded with results; matches lib/backtest/engines.ts ASSUMPTIONS).
 ASSUMPTIONS = {
@@ -221,9 +221,19 @@ class Outcome:
 
 MARKET = "MARKET"
 
+_BAR_KINDS = {"chandelier", "volume", "volume-average"}
 
-def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Series | None = None) -> Outcome:
-    """Runs the configured strategy and its benchmark over the same measured sessions."""
+
+def _needs_bars(config: Config) -> bool:
+    return any(side["kind"] in _BAR_KINDS for rules in (config.entry or {}, config.exit or {}) for c in rules.get("conditions", []) for side in (c["left"], c["right"]))
+
+
+def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Series | None = None, extras: Mapping[str, pd.DataFrame] | None = None) -> Outcome:
+    """
+    Runs the configured strategy and its benchmark over the same measured
+    sessions. `extras` are each holding's daily high, low and volume (columns),
+    for rules that need them.
+    """
     weights = {symbol: weight for symbol, weight in config.holdings}
     missing = [s for s in weights if s not in prices]
     if missing:
@@ -262,7 +272,9 @@ def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Serie
         strategy = MovingAverageCrossover(weights, config.fast, config.slow)
         history_before = config.slow if config.warmup == "pre-start" else 0
 
-    sessions = align(series, config.start, config.end, history_before=history_before)
+    if config.strategy == "rules" and _needs_bars(config) and any(s not in (extras or {}) for s in weights):
+        raise InputError("These rules need each day's high, low and volume, which these prices don't include.")
+    sessions = align(series, config.start, config.end, history_before=history_before, extras=extras)
     run = simulate(sessions, strategy, initial_cash=config.initial_cash, costs=config.costs)
     if config.strategy == "moving-average":
         slow = config.slow

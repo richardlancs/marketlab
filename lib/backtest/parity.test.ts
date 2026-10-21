@@ -18,6 +18,7 @@ import { describe, expect, it } from "vitest";
 import { mulberry32 } from "../random";
 import type { PricePoint } from "../types";
 import { CONFIG_VERSION, runConfig, type BacktestConfig } from "./config";
+import type { ExtraPoint } from "./engine";
 
 const FILE = join(__dirname, "../../services/analytics/tests/fixtures/parity.json");
 const DAY = 24 * 60 * 60 * 1000;
@@ -48,6 +49,19 @@ interface Case {
   config: BacktestConfig;
   prices: Record<string, PricePoint[]>;
   market: PricePoint[];
+  /** Highs, lows and volumes, for rules that need them. */
+  extra?: Record<string, ExtraPoint[]>;
+}
+
+/** Made-up daily highs, lows and volumes around closes, from a seed: highs above, lows below, volume swinging. */
+function barsAround(seed: number, points: PricePoint[], baseVolume: number): ExtraPoint[] {
+  const rng = mulberry32(seed);
+  return points.map((p) => ({
+    time: p.time,
+    high: Math.round(p.price * (1 + rng() * 0.02) * 10_000) / 10_000,
+    low: Math.round(p.price * (1 - rng() * 0.02) * 10_000) / 10_000,
+    volume: Math.round(baseVolume * (0.5 + rng() * (rng() < 0.1 ? 3 : 1))),
+  }));
 }
 
 const base = (holdings: [string, number][], strategy: BacktestConfig["strategy"], times: number[], extra: Partial<BacktestConfig> = {}): BacktestConfig => ({
@@ -182,6 +196,22 @@ function makeCases(): Case[] {
       market,
     },
     {
+      name: "rules-chandelier-stop",
+      description: "Custom rules: buy when the price crosses above its 50-day average; sell when it falls below a 22-day chandelier stop (3× ATR), with costs.",
+      config: base([["AAPL", 1]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "price" }, op: "crosses-above", right: { kind: "sma", days: 50 } }] }, exit: { combine: "any", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "chandelier", days: 22, multiple: 3 } }] } }, times, { costs: { commission: 1, slippageBps: 5 } }),
+      prices: { AAPL: aapl },
+      market,
+      extra: { AAPL: barsAround(11, aapl, 50_000_000) },
+    },
+    {
+      name: "rules-volume-breakout-two-stocks",
+      description: "Custom rules on two stocks: buy when volume is above its 20-day average and the price above its 20-day EMA; sell when the price falls below its 20-day average.",
+      config: base([["AAPL", 0.5], ["KO", 0.5]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "volume" }, op: "above", right: { kind: "volume-average", days: 20 } }, { left: { kind: "price" }, op: "above", right: { kind: "ema", days: 20 } }] }, exit: { combine: "all", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "sma", days: 20 } }] } }, times),
+      prices: { AAPL: aapl, KO: ko },
+      market,
+      extra: { AAPL: barsAround(12, aapl, 50_000_000), KO: barsAround(13, ko, 12_000_000) },
+    },
+    {
       name: "dca-two-stocks-costs",
       description: "Dollar-cost averaging into AAPL 70% and KO 30% over 12 monthly installments, with costs.",
       config: base([["AAPL", 0.7], ["KO", 0.3]], { kind: "dollar-cost-averaging", installments: 12 }, times, { costs: { commission: 1, slippageBps: 5 } }),
@@ -230,13 +260,17 @@ function makeCases(): Case[] {
 const toSeries = (points: PricePoint[]) => ({ times: points.map((p) => p.time), prices: points.map((p) => p.price) });
 
 function fixtureFor(c: Case) {
-  const { run, benchmark } = runConfig(c.config, c.prices, c.market);
+  const { run, benchmark } = runConfig(c.config, c.prices, c.market, c.extra);
+  const withExtras = (symbol: string, points: PricePoint[]) => {
+    const extra = c.extra?.[symbol];
+    return extra ? { ...toSeries(points), high: extra.map((e) => e.high), low: extra.map((e) => e.low), volume: extra.map((e) => e.volume) } : toSeries(points);
+  };
   return {
     name: c.name,
     description: c.description,
     request: {
       config: c.config,
-      prices: Object.fromEntries(Object.entries(c.prices).map(([s, p]) => [s, toSeries(p)])),
+      prices: Object.fromEntries(Object.entries(c.prices).map(([s, p]) => [s, withExtras(s, p)])),
       market: toSeries(c.market),
     },
     expected: { run, benchmark },

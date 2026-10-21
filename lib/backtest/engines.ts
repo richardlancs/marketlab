@@ -12,7 +12,7 @@
 import "server-only";
 import { runConfig, type BacktestConfig, type BacktestOutcome } from "./config";
 import { PythonEngineError, runOnPython } from "./python-client";
-import { toPoints, type PriceSnapshot } from "./snapshot";
+import { extrasOf, toPoints, type PriceSnapshot } from "./snapshot";
 
 export type EngineName = "typescript" | "python";
 export interface EngineInfo {
@@ -21,7 +21,7 @@ export interface EngineInfo {
 }
 
 /** The TypeScript engine's version: bump it when its results would change for the same inputs. */
-export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.1.0" };
+export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.2.0" };
 
 /** The strategies the Python service runs. */
 const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new Set(["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity"]);
@@ -79,6 +79,7 @@ export async function compute(config: BacktestConfig, snapshot: PriceSnapshot, e
     return { outcome: result.outcome, engine: { name: "python", version: result.engine.version }, warnings: result.warnings };
   }
   const history = Object.fromEntries(Object.entries(snapshot.series).map(([symbol, data]) => [symbol, toPoints(data)]));
-  const outcome = runConfig(config, history, snapshot.market ? toPoints(snapshot.market.data) : []);
+  const extra = Object.fromEntries(Object.entries(snapshot.series).flatMap(([symbol, data]) => (extrasOf(data) ? [[symbol, extrasOf(data)!]] : [])));
+  const outcome = runConfig(config, history, snapshot.market ? toPoints(snapshot.market.data) : [], Object.keys(extra).length ? extra : undefined);
   return { outcome, engine: TYPESCRIPT_ENGINE, warnings: warningsFor(config, outcome) };
 }

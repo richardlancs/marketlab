@@ -16,12 +16,21 @@
 import { createHash } from "node:crypto";
 import type { PricePoint } from "../types";
 import type { BacktestConfig } from "./config";
+import type { ExtraPoint } from "./engine";
 import type { DatasetInfo } from "./stored";
 
 /** Daily closes as parallel lists, oldest first: compact, and what the Python service takes. */
 export interface SeriesData {
   times: number[];
   prices: number[];
+  /**
+   * Only when a rule needs them (lib/backtest/rules.ts needsBars): each day's
+   * high and low on the same adjusted scale as `prices`, and its volume. Left
+   * out otherwise, so every other snapshot (and its checksum) is unchanged.
+   */
+  high?: number[];
+  low?: number[];
+  volume?: (number | null)[];
 }
 
 export interface PriceSnapshot {
@@ -43,10 +52,24 @@ export interface PriceSnapshot {
 /** What identifies a snapshot, shown and stored with results (see DatasetInfo). */
 export type SnapshotInfo = DatasetInfo;
 
-const inWindow = (points: PricePoint[], start: number, end: number): SeriesData => {
+const inWindow = (points: PricePoint[], start: number, end: number, extra?: ExtraPoint[]): SeriesData => {
   const kept = points.filter((p) => p.time >= start && p.time <= end);
-  return { times: kept.map((p) => p.time), prices: kept.map((p) => p.price) };
+  const data: SeriesData = { times: kept.map((p) => p.time), prices: kept.map((p) => p.price) };
+  if (!extra) return data;
+  const byTime = new Map(extra.map((e) => [e.time, e]));
+  return {
+    ...data,
+    high: kept.map((p) => byTime.get(p.time)?.high ?? p.price),
+    low: kept.map((p) => byTime.get(p.time)?.low ?? p.price),
+    volume: kept.map((p) => byTime.get(p.time)?.volume ?? null),
+  };
 };
+
+/** A snapshot series' highs, lows and volumes as the engine takes them, if it has them. */
+export function extrasOf(data: SeriesData): ExtraPoint[] | undefined {
+  if (!data.high || !data.low || !data.volume) return undefined;
+  return data.times.map((time, i) => ({ time, high: data.high![i], low: data.low![i], volume: data.volume![i] }));
+}
 
 export function makeSnapshot(
   config: BacktestConfig,
@@ -54,8 +77,9 @@ export function makeSnapshot(
   market: { symbol: string; name: string; history: PricePoint[] },
   source: PriceSnapshot["source"],
   asOf: number,
+  extra?: Record<string, ExtraPoint[]>,
 ): PriceSnapshot {
-  const series = Object.fromEntries(config.holdings.map((h) => [h.symbol, inWindow(history[h.symbol] ?? [], config.start, config.end)]));
+  const series = Object.fromEntries(config.holdings.map((h) => [h.symbol, inWindow(history[h.symbol] ?? [], config.start, config.end, extra?.[h.symbol])]));
   return {
     version: 1,
     source,
@@ -110,7 +134,11 @@ export function parseSnapshot(value: unknown): PriceSnapshot | null {
   const v = value as Partial<PriceSnapshot>;
   const isSeries = (s: unknown): s is SeriesData => {
     const d = s as SeriesData | null;
-    return !!d && Array.isArray(d.times) && Array.isArray(d.prices) && d.times.length === d.prices.length && d.prices.every((p) => typeof p === "number" && Number.isFinite(p));
+    if (!d || !Array.isArray(d.times) || !Array.isArray(d.prices) || d.times.length !== d.prices.length || !d.prices.every((p) => typeof p === "number" && Number.isFinite(p))) return false;
+    // Absent (or null, as any older copy may have it) means the series has no such data.
+    const optional = (values: unknown, ok: (v: unknown) => boolean) => values === undefined || values === null || (Array.isArray(values) && values.length === d.times.length && values.every(ok));
+    const finite = (v: unknown) => typeof v === "number" && Number.isFinite(v);
+    return optional(d.high, finite) && optional(d.low, finite) && optional(d.volume, (v) => v === null || finite(v));
   };
   if (v.version !== 1 || (v.source !== "mock" && v.source !== "tiingo") || typeof v.asOf !== "number" || !v.series || typeof v.series !== "object") return null;
   if (!Object.values(v.series).every(isSeries)) return null;

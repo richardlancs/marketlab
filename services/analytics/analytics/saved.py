@@ -13,6 +13,8 @@ import math
 import time
 from typing import Any, Mapping
 
+import pandas as pd
+
 from . import db as database
 from . import engine
 
@@ -46,12 +48,25 @@ def run_json(run: engine.Run) -> dict[str, Any]:
     }
 
 
+def extras_of(series: Mapping[str, Mapping[str, Any]]) -> dict[str, pd.DataFrame] | None:
+    """The highs, lows and volumes of series that have them, as the engine takes them (or None)."""
+    extras = {}
+    for symbol, s in series.items():
+        if s.get("high") is not None and s.get("low") is not None and s.get("volume") is not None:
+            extras[symbol] = pd.DataFrame(
+                {"high": s["high"], "low": s["low"], "volume": [float("nan") if v is None else v for v in s["volume"]]},
+                index=pd.Index(s["times"], dtype="int64"),
+                dtype="float64",
+            )
+    return extras or None
+
+
 def outcome_from_snapshot(config: engine.Config, snapshot: Mapping[str, Any]) -> engine.Outcome:
     """Runs a config on a stored snapshot's prices."""
     prices = {symbol: engine.to_series(symbol, s["times"], s["prices"]) for symbol, s in snapshot["series"].items()}
     market = snapshot.get("market")
     market_series = engine.to_series("Market", market["data"]["times"], market["data"]["prices"]) if market else None
-    return engine.run_config(config, prices, market_series)
+    return engine.run_config(config, prices, market_series, extras_of(snapshot["series"]))
 
 
 def summary_of(outcome: engine.Outcome) -> dict[str, float]:

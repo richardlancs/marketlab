@@ -55,3 +55,16 @@ test("a two-setting sweep warns about luck, and a walk-forward test runs", async
   await page.getByRole("button", { name: "Run walk-forward test" }).click();
   await expect(page.getByText("Sharpe on unseen data")).toBeVisible({ timeout: 90_000 });
 });
+
+test("a rule on daily highs and volume (chandelier stop) runs on the Python engine", async ({ page }) => {
+  const rules = {
+    kind: "rules",
+    entry: { combine: "all", conditions: [{ left: { kind: "volume" }, op: "above", right: { kind: "volume-average", days: 20 } }] },
+    exit: { combine: "any", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "chandelier", days: 22, multiple: 3 } }] },
+  };
+  await page.goto(backtestLink(config(rules)));
+  await waitForResults(page);
+  const results = page.locator('section[aria-labelledby="results"]');
+  await expect(results).toContainText("Calculated by the Python engine");
+  await expect(results).toContainText("chandelier stop (22 days, 3× ATR)");
+});

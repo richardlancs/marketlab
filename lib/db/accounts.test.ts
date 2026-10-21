@@ -3,9 +3,11 @@ import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createClient, type Client } from "@libsql/client";
+import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { addAlert, markAlertsSeen } from "../alerts";
 import { startingAccount } from "../starting-account";
 import type { Account, Order } from "../trading";
 import { createAccountRepository, type AccountRepository } from "./accounts";
@@ -183,5 +185,43 @@ describe("account repository", () => {
     await repo.ensure(userId);
     await repo.reset(userId, "cash25k");
     expect(await repo.load(userId)).toEqual(startingAccount("cash25k"));
+  });
+});
+
+describe("saving many orders and alerts at once", () => {
+  it("writes every new and changed alert in one go, keeping the email bookkeeping", async () => {
+    await repo.ensure(userId);
+    await repo.update(userId, null, (a) => {
+      let account = a;
+      for (let i = 0; i < 6; i++) {
+        const added = addAlert(account, { symbol: "KO", direction: "above", price: 60 + i }, `${userId}-al${i}`, 1000 + i);
+        if (!added.ok) return added;
+        account = added.account;
+      }
+      return { ok: true, account };
+    });
+    // Three trigger, and one of them has already gone out by email.
+    await db.update(schema.priceAlert).set({ triggeredAt: 5000, triggerPrice: 70 }).where(eq(schema.priceAlert.userId, userId));
+    await db.update(schema.priceAlert).set({ emailedAt: 6000 }).where(eq(schema.priceAlert.id, `${userId}-al0`));
+
+    await repo.update(userId, null, (a) => ({ ok: true, account: markAlertsSeen(a) }));
+    const saved = await repo.load(userId);
+    expect(saved?.alerts).toHaveLength(6);
+    expect(saved?.alerts?.every((x) => x.seen)).toBe(true);
+    const [row] = await db.select().from(schema.priceAlert).where(eq(schema.priceAlert.id, `${userId}-al0`));
+    expect(row).toMatchObject({ seen: true, emailedAt: 6000 });
+  });
+
+  it("never touches another user's row with the same ID", async () => {
+    const other = `${userId}-other`;
+    await db.insert(schema.user).values({ id: other, name: "Other", email: `${other}@example.com` });
+    await db.insert(schema.priceAlert).values({ id: "shared-id", userId: other, symbol: "KO", direction: "above", price: 50, createdAt: 1 });
+    await repo.ensure(userId);
+    await repo.update(userId, null, (a) => {
+      const added = addAlert(a, { symbol: "NVDA", direction: "below", price: 100 }, "shared-id", 2);
+      return added.ok ? { ok: true, account: added.account } : added;
+    });
+    const [theirs] = await db.select().from(schema.priceAlert).where(eq(schema.priceAlert.id, "shared-id"));
+    expect(theirs).toMatchObject({ userId: other, symbol: "KO", price: 50 });
   });
 });

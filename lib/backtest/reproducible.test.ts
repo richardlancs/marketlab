@@ -88,7 +88,7 @@ describe("choosing an engine", () => {
   it("labels TypeScript results, and explains a crossover that never warmed up", async () => {
     const snap = makeSnapshot(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), history, market, "mock", T0);
     const result = await compute(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), snap, "typescript");
-    expect(result.engine).toEqual({ name: "typescript", version: "1.1.0" });
+    expect(result.engine).toEqual({ name: "typescript", version: "1.2.0" });
     expect(result.warnings[0]).toMatch(/never traded/);
   });
 });
@@ -191,5 +191,18 @@ describe("comparing a reproduced result with the stored one", () => {
     const result = compareResults(outcome, changed);
     expect(result.matches).toBe(false);
     expect(result.differences.join(" ")).toMatch(/value on day 6/);
+  });
+});
+
+describe("snapshots with daily bars", () => {
+  it("leave every other snapshot exactly as before, so their checksums don't change", async () => {
+    const { makeSnapshot, checksumOf } = await import("./snapshot");
+    const points = [1, 2, 3].map((d) => ({ time: d * 86_400_000, price: 100 + d }));
+    const cfg = { version: 2, holdings: [{ symbol: "A", weight: 1 }], strategy: { kind: "buy-and-hold" as const }, start: 0, end: 10 * 86_400_000, initialCash: 1000, costs: { commission: 0, slippageBps: 0 }, benchmark: "same-stocks" as const };
+    const plain = makeSnapshot(cfg, { A: points }, { symbol: "SPX", name: "S&P 500", history: points }, "mock", 1);
+    expect(Object.keys(plain.series.A)).toEqual(["times", "prices"]);
+    const withBars = makeSnapshot(cfg, { A: points }, { symbol: "SPX", name: "S&P 500", history: points }, "mock", 1, { A: points.map((p) => ({ time: p.time, high: p.price + 1, low: p.price - 1, volume: 5 })) });
+    expect(withBars.series.A.high).toEqual([102, 103, 104]);
+    expect(checksumOf(plain)).not.toBe(checksumOf(withBars));
   });
 });

@@ -155,7 +155,7 @@ These are calculated by the Python analytics service ([its README](../services/a
 
 **Strategies:**
 - buy and hold, moving-average crossover, dollar-cost averaging, rebalancing;
-- custom rules (price, averages, RSI, MACD, Bollinger Bands);
+- custom rules (price, averages, RSI, MACD, Bollinger Bands, a chandelier trailing stop on ATR, and volume against its average);
 - momentum rotation (hold the top N of your stocks by trailing return, optionally only if positive);
 - risk parity (weights by inverse volatility).
 
@@ -211,6 +211,8 @@ A missing day is skipped for every stock, never filled in. The Python README has
 **Never mixed:** real and simulated prices are never combined in one run.
 
 **Settings versions:** settings carry a `version`. Older settings are upgraded when read; newer ones are refused rather than misread.
+
+Rules that use a chandelier stop or volume need each day's high, low and volume. Only those runs load them, and their snapshots keep them, so every other snapshot is unchanged.
 
 **Python engine 1.2.0** adds the strategies above (all bit-identical with TypeScript on the parity fixtures). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
 
