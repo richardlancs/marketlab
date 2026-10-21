@@ -19,9 +19,12 @@ export function Explain({ term, className = "" }: { term: TermKey; className?: s
         type="button"
         popoverTarget={id}
         aria-label={`What is ${entry.title}?`}
-        className={`inline-grid size-4 shrink-0 place-items-center rounded-full align-middle text-[10px] font-semibold text-muted ring-1 ring-current transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent ${className}`}
+        // A 24px button (the smallest comfortable tap target) drawing a 16px ⓘ; the negative margin keeps the text around it where it was.
+        className={`-m-1 inline-grid size-6 shrink-0 place-items-center rounded-full align-middle text-muted transition-colors hover:text-accent focus-visible:outline-2 focus-visible:outline-accent ${className}`}
       >
-        i
+        <span aria-hidden className="grid size-4 place-items-center rounded-full text-[10px] font-semibold ring-1 ring-current">
+          i
+        </span>
       </button>
       {/*
        * Spans shown as blocks, not a div of paragraphs: the ⓘ often sits

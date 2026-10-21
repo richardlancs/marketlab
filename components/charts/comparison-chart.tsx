@@ -117,7 +117,7 @@ export function ComparisonChart({
               />
               <span
                 aria-hidden
-                className="pointer-events-none absolute top-0 ml-1 rounded bg-surface/85 px-1 text-[11px] text-muted"
+                className="pointer-events-none absolute top-0 ml-1 rounded bg-surface/85 px-1 text-xs text-muted"
                 style={{ left: percentX(lines[0][marker.index][0]) }}
               >
                 {marker.label}
@@ -131,7 +131,7 @@ export function ComparisonChart({
                 key={l.index}
                 aria-hidden
                 // A card-colored backing keeps the text readable where it crosses a line.
-                className="pointer-events-none absolute right-0 -translate-y-full rounded bg-surface/85 px-1 text-[11px] font-medium text-foreground"
+                className="pointer-events-none absolute right-0 -translate-y-full rounded bg-surface/85 px-1 text-xs font-medium text-foreground"
                 style={{ top: percentY(l.y) }}
               >
                 {l.label}
@@ -191,7 +191,7 @@ export function ComparisonChart({
           <span
             key={tick}
             aria-hidden
-            className="pointer-events-none absolute right-0 -translate-y-1/2 text-[11px] text-muted tabular-nums"
+            className="pointer-events-none absolute right-0 -translate-y-1/2 text-xs text-muted tabular-nums"
             style={{ top: percentY(scaleY(tick, HEIGHT, domain)) }}
           >
             {formatCompactCurrency(tick)}
@@ -199,7 +199,7 @@ export function ComparisonChart({
         ))}
       </div>
 
-      <div aria-hidden className="mt-2 flex justify-between pr-16 text-[11px] text-muted">
+      <div aria-hidden className="mt-2 flex justify-between pr-16 text-xs text-muted">
         <span>{formatDate(times[0])}</span>
         <span>{formatDate(times[last])}</span>
       </div>

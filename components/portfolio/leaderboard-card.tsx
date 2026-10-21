@@ -98,7 +98,7 @@ export function LeaderboardCard() {
           <button
             type="submit"
             disabled={pending || name.trim().length < NAME_LIMITS.min}
-            className="h-9 rounded-full bg-accent px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+            className="h-9 rounded-full bg-accent-fill px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
           >
             {pending ? "Joining…" : "Join"}
           </button>

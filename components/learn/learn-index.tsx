@@ -60,7 +60,7 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
           <p className="mt-1 text-sm text-foreground/80">{next.short}</p>
           <Link
             href={next.href}
-            className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="mt-4 inline-flex items-center gap-1.5 rounded-full bg-accent-fill px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             {resuming ? "Continue the lesson" : passed === 0 ? "Start the first lesson" : "Next lesson"} <span aria-hidden>→</span>
           </Link>
@@ -109,7 +109,7 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
               type="button"
               aria-pressed={filter === g}
               onClick={() => setFilter(g)}
-              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-sm transition-colors hover:border-accent/40 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:border-accent aria-pressed:bg-accent aria-pressed:text-white"
+              className="shrink-0 rounded-full border border-border px-3 py-1.5 text-sm transition-colors hover:border-accent/40 focus-visible:outline-2 focus-visible:outline-accent aria-pressed:border-accent aria-pressed:bg-accent-fill aria-pressed:text-white"
             >
               {g}
             </button>
@@ -130,7 +130,8 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
               <h2 id={`group-${group}`} className="text-lg font-semibold tracking-tight">
                 {group}
               </h2>
-              <ol className="mt-3 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              {/* Phones: one card per group with a row per lesson. From sm: a grid of cards. */}
+              <ol className="mt-3 divide-y divide-border overflow-hidden rounded-2xl border border-border bg-surface sm:grid sm:grid-cols-2 sm:gap-3 sm:divide-y-0 sm:overflow-visible sm:rounded-none sm:border-0 sm:bg-transparent lg:grid-cols-3">
                 {groupCards.map((card) => {
                   const isDone = done.includes(card.term);
                   const best = progress[card.term]?.bestScore;
@@ -139,7 +140,7 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
                     <li key={card.term} id={card.term} className="scroll-mt-24">
                       <Link
                         href={card.href}
-                        className="group flex h-full flex-col rounded-2xl border border-border bg-linear-to-b from-surface-raised to-surface p-4 shadow-sm shadow-black/[0.03] transition-colors hover:border-accent/40 focus-visible:outline-2 focus-visible:outline-accent"
+                        className="group flex h-full flex-col px-4 py-3 transition-colors hover:bg-foreground/[0.03] focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-accent sm:rounded-2xl sm:border sm:border-border sm:bg-linear-to-b sm:from-surface-raised sm:to-surface sm:p-4 sm:shadow-sm sm:shadow-black/[0.03] sm:hover:border-accent/40 sm:hover:bg-transparent"
                       >
                         <span className="flex items-start justify-between gap-2">
                           <span className="font-semibold group-hover:text-accent">{card.title}</span>
@@ -154,8 +155,8 @@ export function LearnIndex({ cards }: { cards: LessonCard[] }) {
                             </span>
                           )}
                         </span>
-                        <span className="mt-1 flex-1 text-sm text-muted">{card.short}</span>
-                        <span className="mt-3 flex items-center gap-2 text-xs text-muted">
+                        <span className="mt-1 line-clamp-2 flex-1 text-sm text-muted sm:line-clamp-none">{card.short}</span>
+                        <span className="mt-2 flex items-center gap-2 text-xs text-muted sm:mt-3">
                           <span>{card.minutes} min</span>
                           {card.interactive && <span className="rounded-full bg-accent/10 px-2 py-0.5 font-medium text-accent">Interactive</span>}
                           <span aria-hidden className="ml-auto transition-transform group-hover:translate-x-0.5">

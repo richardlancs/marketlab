@@ -24,13 +24,22 @@ export async function MarketOverview() {
         </div>
       </div>
 
-      <ul aria-labelledby="market-overview" className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-3 lg:gap-6">
+      {/*
+       * Phones: a row to swipe through, each card snapping into place, with
+       * the next one peeking in so it's clear there's more. tabIndex lets
+       * keyboard users scroll it too. From sm: three columns.
+       */}
+      <ul
+        aria-labelledby="market-overview"
+        tabIndex={0}
+        className="-mx-4 mt-3 flex snap-x snap-mandatory scroll-px-4 gap-3 overflow-x-auto px-4 pb-1 [scrollbar-width:none] focus-visible:outline-2 focus-visible:outline-accent sm:mx-0 sm:grid sm:grid-cols-3 sm:gap-4 sm:overflow-visible sm:px-0 sm:pb-0 lg:gap-6"
+      >
         {indices.map((index, i) => (
           <li
             key={index.symbol}
             // Staggered entrance, continuing on from the page heading.
             style={{ animationDelay: `${(i + 1) * 60}ms` }}
-            className="animate-fade-up"
+            className="w-[80%] shrink-0 animate-fade-up snap-start sm:w-auto"
           >
             <IndexCard index={index} isFund={source === "tiingo"} />
           </li>

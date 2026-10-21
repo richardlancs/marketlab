@@ -65,7 +65,7 @@ export function AccountNotices({ emailVerification }: { emailVerification: boole
               type="button"
               disabled={pending !== null}
               onClick={() => choose("use-guest")}
-              className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+              className="rounded-full bg-accent-fill px-4 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
             >
               {pending === "use-guest" ? "Switching…" : "Use the guest one"}
             </button>

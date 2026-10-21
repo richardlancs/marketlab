@@ -44,7 +44,7 @@ export function AlertsBadge() {
         <path d="M10.3 21a1.94 1.94 0 0 0 3.4 0" />
       </svg>
       {count > 0 && (
-        <span aria-hidden className="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-loss px-1 text-[10px] leading-4 font-semibold text-white">
+        <span aria-hidden className="absolute top-1 right-1 grid min-w-4 place-items-center rounded-full bg-loss-fill px-1 text-xs leading-4 font-semibold text-white">
           {count}
         </span>
       )}

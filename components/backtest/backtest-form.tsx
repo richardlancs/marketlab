@@ -286,7 +286,7 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
             <button
               type="button"
               onClick={() => set({ holdings: [...form.holdings, { symbol: unused.symbol, percent: "0" }] })}
-              className="font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+              className="tap font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
             >
               + Add a stock
             </button>
@@ -300,7 +300,7 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
                 const first = Math.round((100 - each * (form.holdings.length - 1)) * 10) / 10;
                 set({ holdings: form.holdings.map((h, i) => ({ ...h, percent: String(i === 0 ? first : each) })) });
               }}
-              className="font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+              className="tap font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
             >
               Split evenly
             </button>
@@ -516,7 +516,7 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
       <button
         type="submit"
         disabled={running}
-        className="h-11 w-full rounded-full bg-accent text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+        className="h-11 w-full rounded-full bg-accent-fill text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
       >
         {running ? "Running…" : "Run backtest"}
       </button>

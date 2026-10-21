@@ -253,7 +253,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
           type="submit"
           disabled={!preview?.ok || pending}
           className={`h-10 w-full rounded-full text-sm font-medium text-white transition-opacity focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40 ${
-            side === "buy" ? "bg-accent" : "bg-loss"
+            side === "buy" ? "bg-accent-fill" : "bg-loss-fill"
           } enabled:hover:opacity-90`}
         >
           {!preview?.ok

@@ -119,13 +119,13 @@ export function SweepPanel({
             <button
               type="button"
               onClick={() => setAxes([...shown, defaultAxis(base, params.find((p) => p.id !== shown[0].param)!.id)])}
-              className="font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
+              className="tap font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent"
             >
               + Vary a second setting
             </button>
           )}
           {shown.length === 2 && (
-            <button type="button" onClick={() => setAxes(shown.slice(0, 1))} className="font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent">
+            <button type="button" onClick={() => setAxes(shown.slice(0, 1))} className="tap font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent">
               Vary just one
             </button>
           )}
@@ -164,7 +164,7 @@ export function SweepPanel({
         ) : (
           <button
             type="submit"
-            className="h-10 w-full rounded-full bg-accent text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+            className="h-10 w-full rounded-full bg-accent-fill text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
           >
             Run sweep
           </button>

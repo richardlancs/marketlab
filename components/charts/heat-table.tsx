@@ -39,7 +39,8 @@ export function HeatTable({
   const colorOf = (v: number) => (colorScale === "loss" ? divergingColor(-Math.abs(v), maxAbs) : divergingColor(v, maxAbs));
 
   return (
-    <div className="overflow-x-auto">
+    // relative: the visually hidden notes in the cells are positioned absolutely; this keeps them inside the scrolling box instead of widening the page.
+    <div className="relative overflow-x-auto">
       <table className="w-full border-separate border-spacing-0.5 text-xs tabular-nums">
         <caption className="sr-only">{caption}</caption>
         <thead>

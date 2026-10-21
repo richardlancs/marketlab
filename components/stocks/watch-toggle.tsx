@@ -27,7 +27,7 @@ export function WatchToggle({ symbol, variant = "pill" }: { symbol: string; vari
       title={label}
       className={
         variant === "pill"
-          ? `inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 ${
+          ? `tap inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50 ${
               watched ? "bg-accent/10 text-accent hover:bg-accent/15" : "bg-foreground/5 text-muted hover:text-foreground"
             }`
           : // relative z-10: lifts the button above the row's full-size link overlay, so it gets the click.

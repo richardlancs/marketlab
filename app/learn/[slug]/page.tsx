@@ -58,13 +58,13 @@ async function LessonDetails({ params }: { params: PageProps<"/learn/[slug]">["p
 
       <article className="min-w-0 max-w-3xl">
         <nav aria-label="Breadcrumb" className="animate-fade-up text-sm text-muted">
-          <Link href="/learn" className="text-accent hover:underline">
+          <Link href="/learn" className="tap text-accent hover:underline">
             Learn
           </Link>
           <span aria-hidden className="mx-1.5">
             ›
           </span>
-          <Link href={`/learn?group=${encodeURIComponent(group)}`} className="hover:text-foreground hover:underline">
+          <Link href={`/learn?group=${encodeURIComponent(group)}`} className="tap hover:text-foreground hover:underline">
             {group}
           </Link>
         </nav>

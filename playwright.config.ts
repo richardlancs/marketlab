@@ -21,7 +21,15 @@ export default defineConfig({
     trace: "retain-on-failure",
     ...(process.env.CI ? {} : { channel: "chrome" }),
   },
-  projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"], ...(process.env.CI ? {} : { channel: "chrome" }) } }],
+  projects: [
+    { name: "chromium", testIgnore: /mobile\.spec/, use: { ...devices["Desktop Chrome"], ...(process.env.CI ? {} : { channel: "chrome" }) } },
+    // An iPhone-sized screen, in Chromium (e2e/mobile.spec.ts).
+    {
+      name: "phone",
+      testMatch: /mobile\.spec/,
+      use: { ...devices["Desktop Chrome"], viewport: { width: 390, height: 844 }, deviceScaleFactor: 3, isMobile: true, hasTouch: true, ...(process.env.CI ? {} : { channel: "chrome" }) },
+    },
+  ],
   webServer: {
     command: "node scripts/e2e-serve.mjs",
     url: "http://localhost:3010",

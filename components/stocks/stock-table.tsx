@@ -129,7 +129,7 @@ function SortableHeader({ column, sort, onSort }: { column: Column; sort: Sort; 
       <button
         type="button"
         onClick={() => onSort(column.key)}
-        className={`-mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent ${
+        className={`tap -mx-1.5 inline-flex items-center gap-1 rounded-md px-1.5 py-1 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent ${
           active ? "text-foreground" : ""
         } ${column.numeric ? "flex-row-reverse" : ""}`}
       >

@@ -26,7 +26,7 @@ export function VerificationResult() {
         </p>
         <h1 className="mt-4 text-2xl font-semibold tracking-tight">Email confirmed</h1>
         <p className="mt-2 text-muted">Thanks: your address is confirmed{session ? `, ${session.user.name}` : ""}.</p>
-        <Link href="/" className="mt-6 inline-block rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+        <Link href="/" className="mt-6 inline-block rounded-full bg-accent-fill px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
           Go to the dashboard
         </Link>
       </div>
@@ -46,12 +46,12 @@ export function VerificationResult() {
           type="button"
           onClick={resend}
           disabled={resent === "sending" || resent === "sent"}
-          className="mt-6 rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
+          className="mt-6 rounded-full bg-accent-fill px-5 py-2.5 text-sm font-medium text-white hover:opacity-90 disabled:opacity-60"
         >
           {resent === "sending" ? "Sending…" : resent === "sent" ? `Sent to ${session.user.email}` : "Send a new link"}
         </button>
       ) : (
-        <Link href="/sign-in" className="mt-6 inline-block rounded-full bg-accent px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
+        <Link href="/sign-in" className="mt-6 inline-block rounded-full bg-accent-fill px-5 py-2.5 text-sm font-medium text-white hover:opacity-90">
           Sign in
         </Link>
       )}

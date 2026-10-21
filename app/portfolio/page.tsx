@@ -8,6 +8,7 @@ import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
 import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
 import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
+import { SectionNav } from "@/components/ui/section-nav";
 
 export const metadata: Metadata = { title: "Portfolio — MarketLab" };
 
@@ -21,7 +22,19 @@ export default function PortfolioPage() {
         <p className="mt-2 text-muted">Your holdings at today&apos;s prices, and every trade you&apos;ve made.</p>
       </div>
 
-      <div className="mt-8 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+      <SectionNav
+          className="mt-6"
+          label="Sections"
+          sections={[
+            { id: "portfolio", label: "Holdings" },
+            { id: "stats", label: "Summary" },
+            { id: "orders", label: "Orders" },
+            { id: "performance", label: "Performance" },
+            { id: "risk-analysis", label: "Risk" },
+            { id: "history", label: "Activity" },
+          ]}
+        />
+      <div className="mt-2 grid grid-cols-1 gap-4 md:mt-8 lg:grid-cols-12 lg:gap-6">
         <div style={{ animationDelay: "60ms" }} className="animate-fade-up lg:col-span-8">
           <PortfolioSummary showDetailsLink={false} />
         </div>

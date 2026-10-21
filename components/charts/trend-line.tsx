@@ -25,7 +25,7 @@ export function TrendLine({ series, className = "", label = false }: { series: T
     <span className={`flex flex-col items-stretch ${className}`}>
       <Sparkline values={values} baseline={first} className={`min-h-0 flex-1 ${tone}`} />
       {label && (
-        <span className={`mt-0.5 text-right text-[10px] leading-none font-medium tabular-nums ${tone}`}>
+        <span className={`mt-0.5 text-right text-xs leading-none font-medium tabular-nums ${tone}`}>
           {range} {formatPercent(change)}
         </span>
       )}
@@ -53,7 +53,7 @@ export function TrendChange({
   return (
     <span className={`inline-flex items-center gap-1.5 ${className}`}>
       <ChangeBadge change={change} percent={percent} variant={variant} currency={currency} />
-      <span className="text-[10px] font-semibold text-muted">{range}</span>
+      <span className="text-xs font-semibold text-muted">{range}</span>
     </span>
   );
 }

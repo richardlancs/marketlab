@@ -85,7 +85,7 @@ export function PortfolioStats() {
                   await reset(preset);
                   setConfirming(false);
                 }}
-                className="rounded-full bg-loss px-4 py-1.5 font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                className="rounded-full bg-loss-fill px-4 py-1.5 font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
               >
                 Reset
               </button>
@@ -102,7 +102,7 @@ export function PortfolioStats() {
           <button
             type="button"
             onClick={() => setConfirming(true)}
-            className="text-sm text-muted transition-colors hover:text-loss focus-visible:outline-2 focus-visible:outline-accent"
+            className="tap text-sm text-muted transition-colors hover:text-loss focus-visible:outline-2 focus-visible:outline-accent"
           >
             Start over…
           </button>

@@ -253,7 +253,7 @@ export function PriceChart({ history, intraday, today, title }: PriceChartProps)
           <span
             key={tick}
             aria-hidden
-            className="pointer-events-none absolute right-0 -translate-y-1/2 text-[11px] text-muted tabular-nums"
+            className="pointer-events-none absolute right-0 -translate-y-1/2 text-xs text-muted tabular-nums"
             style={{ top: percentY(scaleY(tick, HEIGHT, domain)) }}
           >
             {formatAxisValue(tick)}
@@ -261,7 +261,7 @@ export function PriceChart({ history, intraday, today, title }: PriceChartProps)
         ))}
       </div>
 
-      <div aria-hidden className="mt-2 flex justify-between pr-14 text-[11px] text-muted">
+      <div aria-hidden className="mt-2 flex justify-between pr-14 text-xs text-muted">
         <span>{formatPointTime(points[0].time, timeframe, detailed)}</span>
         <span>{formatPointTime(points[last].time, timeframe, detailed)}</span>
       </div>

@@ -70,7 +70,7 @@ export function SavedRuns({ runs, signedIn, selected, onToggle, onCompare, onOpe
                       {formatPercent(run.summary.totalReturn)}
                       <span className="font-normal text-muted"> vs {formatPercent(run.summary.benchmarkTotalReturn)}</span>
                     </p>
-                    <p className="truncate text-[11px] text-muted">
+                    <p className="truncate text-xs text-muted">
                       {run.stored
                         ? `Saved result · ${run.stored.engine.name === "python" ? "Python" : "TypeScript"} ${run.stored.engine.version} · ${run.stored.simulated ? "simulated" : "real"} prices`
                         : "Older run: settings only, no saved result"}

@@ -14,6 +14,7 @@ import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
 import { WatchToggle } from "@/components/stocks/watch-toggle";
 import { Card } from "@/components/ui/card";
+import { SectionNav } from "@/components/ui/section-nav";
 import { sliceTimeframe } from "@/lib/chart";
 import { getListing, getStockDetail, STOCK_SYMBOLS } from "@/lib/market";
 import type { Listing } from "@/lib/market";
@@ -50,7 +51,7 @@ export async function generateMetadata(props: PageProps<"/stocks/[symbol]">): Pr
 export default function StockPage(props: PageProps<"/stocks/[symbol]">) {
   return (
     <main id="main" className="mx-auto w-full max-w-7xl flex-1 px-4 py-8 sm:px-6 lg:px-8 lg:py-12">
-      <Link href="/stocks" className="animate-fade-up text-sm text-accent hover:underline">
+      <Link href="/stocks" className="tap inline-block animate-fade-up text-sm text-accent hover:underline">
         ← All stocks
       </Link>
       <Suspense fallback={<StockDetailsSkeleton />}>
@@ -78,6 +79,24 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
   const yearHigh = Math.max(...yearPrices, stock.high);
 
   return (
+    <>
+    <SectionNav
+      label="Sections"
+      sections={[
+        { id: "stock-title", label: "Price" },
+        { id: "trade", label: "Trade" },
+        { id: "risk", label: "Risk" },
+        { id: "technicals", label: "Technicals" },
+        { id: "fundamentals", label: "Company" },
+        { id: "filings", label: "Filings" },
+        { id: "news", label: "News" },
+      ]}
+    />
+    {/*
+     * Phones get one column in reading order: the price, then trading (the
+     * side column), then the analysis. From lg, the side column sits on the
+     * right next to both (row-span-2), as two columns.
+     */}
     <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
       <div style={{ animationDelay: "60ms" }} className="animate-fade-up lg:col-span-8">
         <Card aria-labelledby="stock-title">
@@ -102,27 +121,9 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
           />
           <StockStats stock={stock} className="mt-6" />
         </Card>
-        {/* Calculated by the analytics service from stored prices; the page doesn't wait for it. */}
-        <div className="mt-4 lg:mt-6">
-          <Suspense fallback={<AnalysisSkeleton />}>
-            <StockAnalysis symbol={stock.symbol} />
-          </Suspense>
-        </div>
-        {/* Reported numbers from SEC filings, stored by the daily job; the page doesn't wait for them. */}
-        <div className="mt-4 lg:mt-6">
-          <Suspense fallback={null}>
-            <StockFundamentals symbol={stock.symbol} price={stock.price} marketCap={stock.marketCap} />
-          </Suspense>
-        </div>
-        {/* Filings and news come from other sources; the page doesn't wait for them. */}
-        <div className="mt-4 lg:mt-6">
-          <Suspense fallback={null}>
-            <StockNews symbol={stock.symbol} />
-          </Suspense>
-        </div>
       </div>
 
-      <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
+      <div className="flex flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1 lg:gap-6">
         <div style={{ animationDelay: "120ms" }} className="animate-fade-up">
           <Card aria-labelledby="range">
             <h2 id="range" className="text-lg font-semibold tracking-tight">
@@ -144,7 +145,29 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
           <AlertCard symbol={stock.symbol} price={stock.price} />
         </div>
       </div>
+
+      <div className="flex flex-col gap-4 lg:col-span-8 lg:col-start-1 lg:gap-6">
+        {/* Calculated by the analytics service from stored prices; the page doesn't wait for it. */}
+        <div>
+          <Suspense fallback={<AnalysisSkeleton />}>
+            <StockAnalysis symbol={stock.symbol} />
+          </Suspense>
+        </div>
+        {/* Reported numbers from SEC filings, stored by the daily job; the page doesn't wait for them. */}
+        <div>
+          <Suspense fallback={null}>
+            <StockFundamentals symbol={stock.symbol} price={stock.price} marketCap={stock.marketCap} />
+          </Suspense>
+        </div>
+        {/* Filings and news come from other sources; the page doesn't wait for them. */}
+        <div>
+          <Suspense fallback={null}>
+            <StockNews symbol={stock.symbol} />
+          </Suspense>
+        </div>
+      </div>
     </div>
+    </>
   );
 }
 
@@ -178,7 +201,7 @@ function StockDetailsSkeleton() {
         <div className={`mt-6 h-56 sm:h-72 ${block}`} />
         <div className={`mt-6 h-10 ${block}`} />
       </Card>
-      <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
+      <div className="flex flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1 lg:gap-6">
         <Card>
           <div className={`h-6 w-32 ${block}`} />
           <div className={`mt-4 h-14 ${block}`} />

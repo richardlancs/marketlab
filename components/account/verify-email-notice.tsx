@@ -46,7 +46,7 @@ export function VerifyEmailNotice({ enabled }: { enabled: boolean }) {
           type="button"
           onClick={resend}
           disabled={status.kind === "sending"}
-          className="rounded-full bg-accent px-4 py-2 font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+          className="rounded-full bg-accent-fill px-4 py-2 font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
         >
           {status.kind === "sending" ? "Sending…" : "Send the link again"}
         </button>

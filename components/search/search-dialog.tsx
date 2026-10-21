@@ -122,7 +122,7 @@ export function SearchDialog() {
         <SearchIcon />
         <span className="hidden flex-1 truncate text-left text-sm whitespace-nowrap lg:block">Search</span>
         {shortcut && (
-          <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] leading-none lg:block">{shortcut}</kbd>
+          <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-xs leading-none lg:block">{shortcut}</kbd>
         )}
       </button>
 
@@ -162,7 +162,7 @@ export function SearchDialog() {
             // 16px text (text-base): smaller makes iPhones zoom in on focus.
             className="h-13 min-w-0 flex-1 bg-transparent text-base text-foreground outline-none placeholder:text-muted"
           />
-          <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] leading-none sm:block">esc</kbd>
+          <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-xs leading-none sm:block">esc</kbd>
         </div>
 
         {results.length > 0 ? (

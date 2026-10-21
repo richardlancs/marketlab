@@ -10,6 +10,8 @@ The details behind each feature. For setup, see the [README](../README.md).
 - [Backtests](#backtests)
 - [The daily job](#the-daily-job)
 - [Email](#email)
+- [Installing and push notifications](#installing-and-push-notifications)
+- [Phones and accessibility](#phones-and-accessibility)
 
 ## Market data
 
@@ -301,3 +303,21 @@ curl -H 'authorization: Bearer test' localhost:3000/api/cron/daily
 - **Safety:** the server sends requests to each device's endpoint, so only the known push services' https addresses are accepted, and anyone can have at most 10 devices.
 - **iPhone and iPad:** Safari delivers push only to the home-screen app (iOS 16.4 or later), so the panel explains that step there.
 - **Without the key pair** (`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY`), push is off and the panel offers notifications only while MarketLab is open.
+
+## Phones and accessibility
+
+**Layout on phones** (below 768px)
+- **Navigation:** a tab bar along the bottom (`components/layout/tab-bar.tsx`) with Dashboard, Stocks, Portfolio, Learn and More. More opens a sheet with the other pages. The header is one row. Both pad themselves by the safe area (the notch and home bar), which matters in the installed app (`viewportFit: "cover"`).
+- **Long pages:** the stock and portfolio pages have a sticky row of section chips (`components/ui/section-nav.tsx`). The stock page's order is the price, then trading, then the analysis.
+- **Screener:** the filters open in a sheet, and the results are rows showing one number, chosen with "Sort by".
+- **Backtests and screens over time:** a finished run scrolls its results into view and moves focus to them (`components/ui/reveal.ts`).
+- **Dashboard:** the index cards swipe sideways.
+
+**Accessibility rules**
+- **Contrast:** every text colour is at least 4.5:1 against the page, cards, grey fills and its own tint, in all seven themes. `lib/theme-contrast.test.ts` reads the tokens in `app/globals.css` and checks them. Filled buttons use `--accent-fill` and `--loss-fill`, which are deeper than the text colours in dark mode, so white text on them passes too.
+- **Tap targets:** at least 24×24px (WCAG 2.2). Small controls in tight rows use the `tap` utility, which adds an invisible 44px-tall tap area.
+- **Text:** nothing under 12px. On phones, form fields use 16px text, so iPhone Safari doesn't zoom in when one is tapped.
+- **Zooming** is never blocked.
+
+**Checks:** the "phone" Playwright project (`e2e/mobile.spec.ts`) opens every main page at iPhone size in light and dark. On each, it runs axe (WCAG 2.2 AA; serious or critical problems fail) and checks for sideways scrolling, small tap targets and small text. It also tests the tab bar, the screener sheet, the backtest reveal and the section chips.
+

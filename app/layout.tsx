@@ -1,9 +1,11 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
+import { Suspense } from "react";
 import { AccountNotices } from "@/components/account/account-notices";
 import { AccountProvider } from "@/components/account/account-provider";
 import { TrendRangeProvider } from "@/components/charts/trend-range";
 import { Header } from "@/components/layout/header";
+import { TabBar, TabBarWithPath } from "@/components/layout/tab-bar";
 import { emailEnabled } from "@/lib/email";
 import { getMarket } from "@/lib/market";
 import { CATALOG } from "@/lib/market/catalog";
@@ -21,6 +23,21 @@ const geistMono = Geist_Mono({
   variable: "--font-geist-mono",
   subsets: ["latin"],
 });
+
+/**
+ * viewportFit "cover" lets pages use the whole screen on phones with a notch
+ * (the header and tab bar pad themselves by the safe area). Zooming stays
+ * allowed: blocking it fails people who need to enlarge text.
+ */
+export const viewport: Viewport = {
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#f5f5f7" },
+    { media: "(prefers-color-scheme: dark)", color: "#000000" },
+  ],
+};
 
 export const metadata: Metadata = {
   title: "MarketLab",
@@ -59,14 +76,15 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeScript }} />
       </head>
-      <body className="flex min-h-full flex-col">
+      {/* On phones, room at the bottom for the tab bar (3.5rem) and the home bar. */}
+      <body className="flex min-h-full flex-col pb-[calc(3.5rem+env(safe-area-inset-bottom))] md:pb-0">
         {/*
          * The first thing Tab reaches. Hidden until focused, it lets keyboard
          * users jump past the header to the page's <main id="main">.
          */}
         <a
           href="#main"
-          className="sr-only rounded-full bg-accent px-4 py-2 text-sm font-medium text-white focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60]"
+          className="sr-only rounded-full bg-accent-fill px-4 py-2 text-sm font-medium text-white focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[60]"
         >
           Skip to content
         </a>
@@ -84,6 +102,10 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
           </footer>
         </AccountProvider>
         </TrendRangeProvider>
+        {/* usePathname needs Suspense (see header.tsx); the fallback is the same bar with no tab highlighted. */}
+        <Suspense fallback={<TabBar pathname={null} />}>
+          <TabBarWithPath />
+        </Suspense>
         {/* Vercel Web Analytics and Speed Insights: cookieless, served from this site (allowed by the CSP). Only on Vercel, where those scripts exist. */}
         {process.env.VERCEL && (
           <>

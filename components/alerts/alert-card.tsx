@@ -80,7 +80,7 @@ export function AlertCard({ symbol, price }: { symbol: string; price: number }) 
               setKind(k.kind);
               setStatus(null);
             }}
-            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${kind === k.kind ? "bg-accent text-white" : "bg-foreground/[0.06] text-muted hover:text-foreground"}`}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${kind === k.kind ? "bg-accent-fill text-white" : "bg-foreground/[0.06] text-muted hover:text-foreground"}`}
           >
             {k.label}
           </button>
@@ -129,7 +129,7 @@ export function AlertCard({ symbol, price }: { symbol: string; price: number }) 
         )}
         <button
           type="submit"
-          className="h-10 rounded-full bg-accent px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="h-10 rounded-full bg-accent-fill px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           Set alert
         </button>

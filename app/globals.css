@@ -19,11 +19,15 @@
   --surface: #ffffff;
   --surface-raised: #fbfbfd;
   --foreground: #1d1d1f;
-  --muted: #6e6e73;
+  --muted: #66666b;
   --border: rgb(0 0 0 / 0.08);
-  --accent: #0071e3;
-  --gain: #1f9d55;
-  --loss: #e0352b;
+  --accent: #0063c8;
+  /* Filled buttons, under white text. The same as the accent, except in dark mode, where the accent is too bright for white text. */
+  --accent-fill: var(--accent);
+  /* Filled red buttons and badges, under white text; deeper than the loss colour in dark mode for the same reason. */
+  --loss-fill: var(--loss);
+  --gain: #17743f;
+  --loss: #bc2d24;
   --glow: rgb(0 113 227 / 0.08);
   /*
    * Categorical colors for charts that compare things (e.g. portfolio
@@ -47,17 +51,19 @@
   --surface: #161617;
   --surface-raised: #1d1d1f;
   --foreground: #f5f5f7;
-  --muted: #8e8e93;
+  --muted: #909095;
   --border: rgb(255 255 255 / 0.08);
   --accent: #2997ff;
   --gain: #30d158;
-  --loss: #ff453a;
+  --loss: #ff4c42;
   --glow: rgb(41 151 255 / 0.12);
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
+  --accent-fill: #0071e3;
+  --loss-fill: #d70015;
 }
 
 /*
@@ -66,8 +72,9 @@
  * tints everything: page, cards, text, accent, gains and losses (still
  * clearly green and red), chart colors and the logo. Sand is the default.
  *
- * Every pairing is checked against WCAG AA: text 4.5:1 on cards (white on
- * the accent too), chart colors 3:1. Each undertone's chart colors lead with
+ * Every pairing is checked against WCAG AA: text 4.5:1 on cards, the page,
+ * grey fills and its own tint (lib/theme-contrast.test.ts checks every theme),
+ * chart colors 3:1. Each undertone's chart colors lead with
  * its own hue and were chosen to stay apart for red-green colorblind eyes
  * too, within soft, dusty tones.
  */
@@ -86,9 +93,9 @@
   --foreground: #3a332c;
   --muted: #6b6258;
   --border: rgb(58 51 44 / 0.1);
-  --accent: #8a6748;
-  --gain: #4b7a4c;
-  --loss: #ad5040;
+  --accent: #7c5d41;
+  --gain: #436d44;
+  --loss: #9d493a;
   --glow: rgb(138 103 72 / 0.1);
   --series-1: #9b6b42;
   --series-2: #4c877c;
@@ -102,11 +109,11 @@
   --surface: #f8faf6;
   --surface-raised: #fbfcfa;
   --foreground: #2e3530;
-  --muted: #5e6860;
+  --muted: #5c665e;
   --border: rgb(46 53 48 / 0.1);
-  --accent: #357550;
-  --gain: #3d7a57;
-  --loss: #ab5249;
+  --accent: #326f4c;
+  --gain: #376e4e;
+  --loss: #9c4b42;
   --glow: rgb(53 117 80 / 0.1);
   --series-1: #557a5f;
   --series-2: #a07b9c;
@@ -123,8 +130,8 @@
   --muted: #5c6570;
   --border: rgb(44 51 59 / 0.1);
   --accent: #3f6596;
-  --gain: #367866;
-  --loss: #ad4f55;
+  --gain: #326e5e;
+  --loss: #9d484d;
   --glow: rgb(63 101 150 / 0.1);
   --series-1: #56739a;
   --series-2: #b37964;
@@ -140,9 +147,9 @@
   --foreground: #3a2f31;
   --muted: #6c5f62;
   --border: rgb(58 47 49 / 0.1);
-  --accent: #94596a;
-  --gain: #447a5c;
-  --loss: #b04a43;
+  --accent: #8a5363;
+  --gain: #3d6d52;
+  --loss: #a4453e;
   --glow: rgb(148 89 106 / 0.1);
   --series-1: #a55f72;
   --series-2: #4394b8;
@@ -159,8 +166,8 @@
   --muted: #625c70;
   --border: rgb(49 46 59 / 0.1);
   --accent: #5f4fa0;
-  --gain: #3b7a62;
-  --loss: #ad4d5c;
+  --gain: #356d57;
+  --loss: #9d4654;
   --glow: rgb(95 79 160 / 0.1);
   --series-1: #6f63a0;
   --series-2: #4394b8;
@@ -182,6 +189,8 @@
   --color-muted: var(--muted);
   --color-border: var(--border);
   --color-accent: var(--accent);
+  --color-accent-fill: var(--accent-fill);
+  --color-loss-fill: var(--loss-fill);
   --color-gain: var(--gain);
   --color-loss: var(--loss);
   --color-brand-start: var(--brand-start);
@@ -194,6 +203,7 @@
   --animate-fade-up: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-reveal: reveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop-in: pop-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-up: slide-up 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
 
   @keyframes fade-up {
     from {
@@ -215,6 +225,16 @@
     to {
       opacity: 1;
       transform: scale(1);
+    }
+  }
+
+  /* For bottom sheets: rise from the bottom edge. Replays on every open, like pop-in. */
+  @keyframes slide-up {
+    from {
+      transform: translateY(100%);
+    }
+    to {
+      transform: translateY(0);
     }
   }
 
@@ -254,5 +274,50 @@ html:has(dialog[open]) {
     /* Without this, staggered cards would still sit invisible for their delay. */
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+  }
+}
+
+/*
+ * Phones: form text at 16px, the size below which iPhone Safari zooms into a
+ * field when it's tapped. Unlayered, so it wins over text-sm on any input.
+ */
+@media (max-width: 767px) {
+  input:not([type="checkbox"], [type="radio"], [type="range"]),
+  select,
+  textarea {
+    font-size: 16px;
+  }
+}
+
+/* Disclosure toggles ("Value at each month end", "Filters"): tall enough to tap. In the base layer, so a padding class still overrides it. */
+@layer base {
+  summary {
+    padding-block: 0.5rem;
+  }
+}
+
+/* Checkboxes and radios big enough to see and tap (the browser default is 13px). */
+input[type="checkbox"],
+input[type="radio"] {
+  width: 1.125rem;
+  height: 1.125rem;
+}
+
+/*
+ * A bigger tap area than the element itself: an invisible box at least 44px
+ * tall (and as wide as `--tap-w`, by default the element's own width),
+ * centred on it. For small controls in tight rows, like the range pills,
+ * where growing the control itself would crowd the design.
+ */
+@utility tap {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, var(--tap-w, 100%));
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
   }
 }

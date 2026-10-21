@@ -87,7 +87,7 @@ export function LessonQuiz({ term, questions }: { term: TermKey; questions: read
                       >
                         <span
                           aria-hidden
-                          className={`mt-px grid size-5 shrink-0 place-items-center rounded-full border text-[11px] font-semibold ${
+                          className={`mt-px grid size-5 shrink-0 place-items-center rounded-full border text-xs font-semibold ${
                             state === "right" ? "border-gain bg-gain text-background" : state === "wrong" ? "border-loss bg-loss text-background" : "border-border text-muted"
                           }`}
                         >

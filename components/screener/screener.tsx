@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { StockLogo } from "@/components/stocks/stock-logo";
 import { shareFragment } from "@/lib/backtest/share";
 import { applyScreen, backtestOfScreen, EMPTY_SCREEN, METRICS, PRESETS, type MetricKey, type Screen, type ScreenerRow, type ScreenerView } from "@/lib/analytics/screener";
@@ -99,6 +99,63 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
     update({ ranges });
   };
   const sortBy = (key: MetricKey | "symbol") => setScreen((s) => ({ ...s, sort: key, descending: s.sort === key ? !s.descending : key !== "symbol" }));
+  const active = screen.sectors.length + Object.keys(screen.ranges).length + (screen.trend ? 1 : 0);
+  // On phones the results are rows with one number: the one sorted by, or a sensible default.
+  const shownKey: MetricKey = screen.sort !== "symbol" ? screen.sort : view === "company" ? "peRatio" : "r1Y";
+  const sheet = useRef<HTMLDialogElement>(null);
+
+  const filterControls = (
+    <>
+    <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Sectors">
+      {sectors.map((sector) => {
+        const on = screen.sectors.includes(sector);
+        return (
+          <button
+            key={sector}
+            type="button"
+            aria-pressed={on}
+            onClick={() => update({ sectors: on ? screen.sectors.filter((s) => s !== sector) : [...screen.sectors, sector] })}
+            className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${on ? "bg-accent/10 text-accent ring-accent/40" : "text-muted ring-border hover:text-foreground"}`}
+          >
+            {sector}
+          </button>
+        );
+      })}
+    </div>
+    <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
+      <label className="flex items-center justify-between gap-2 text-sm">
+        <span className="text-muted">Trend</span>
+        <select
+          value={screen.trend ?? ""}
+          onChange={(e) => update({ trend: e.target.value === "" ? null : (e.target.value as "above" | "below") })}
+          className="rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm"
+        >
+          <option value="">Any</option>
+          <option value="above">Above 200-day</option>
+          <option value="below">Below 200-day</option>
+        </select>
+      </label>
+      {RANGE_FILTERS.map(({ key, unit }) => {
+        const range = screen.ranges[key];
+        const shown = (v: number | undefined) => (v === undefined ? "" : String(Math.round(v * SCALE[unit] * 100) / 100));
+        return (
+          <fieldset key={key} className="flex items-center justify-between gap-2 text-sm">
+            <legend className="sr-only">{METRICS[key].label}</legend>
+            <span className="text-muted">
+              {METRICS[key].label}
+              {unit && ` (${unit === "B" ? "$B" : unit})`}
+            </span>
+            <span className="flex items-center gap-1">
+              <input aria-label={`${METRICS[key].label} at least`} inputMode="decimal" placeholder="min" value={shown(range?.min)} onChange={(e) => setRange(key, "min", e.target.value, unit)} className="w-16 rounded-lg border border-border bg-surface-raised px-2 py-1 text-right tabular-nums" />
+              <span className="text-muted">–</span>
+              <input aria-label={`${METRICS[key].label} at most`} inputMode="decimal" placeholder="max" value={shown(range?.max)} onChange={(e) => setRange(key, "max", e.target.value, unit)} className="w-16 rounded-lg border border-border bg-surface-raised px-2 py-1 text-right tabular-nums" />
+            </span>
+          </fieldset>
+        );
+      })}
+    </div>
+    </>
+  );
 
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
@@ -114,7 +171,7 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
               setScreen(preset === p.id ? EMPTY_SCREEN : p.screen);
               if (preset !== p.id) setView(p.view ?? "market");
             }}
-            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${preset === p.id ? "bg-accent text-white" : "bg-foreground/[0.06] hover:bg-foreground/[0.1]"}`}
+            className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${preset === p.id ? "bg-accent-fill text-white" : "bg-foreground/[0.06] hover:bg-foreground/[0.1]"}`}
           >
             {p.name}
           </button>
@@ -127,57 +184,46 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
       </div>
       {preset && <p className="-mt-2 text-sm text-muted">{PRESETS.find((p) => p.id === preset)?.description}</p>}
 
-      <details className="rounded-2xl border border-border bg-surface p-4 sm:p-5" open>
+      <details className="hidden rounded-2xl border border-border bg-surface p-4 sm:p-5 md:block" open>
         <summary className="cursor-pointer text-sm font-semibold">Filters</summary>
-        <div className="mt-4 flex flex-wrap gap-2" role="group" aria-label="Sectors">
-          {sectors.map((sector) => {
-            const on = screen.sectors.includes(sector);
-            return (
-              <button
-                key={sector}
-                type="button"
-                aria-pressed={on}
-                onClick={() => update({ sectors: on ? screen.sectors.filter((s) => s !== sector) : [...screen.sectors, sector] })}
-                className={`rounded-full px-2.5 py-1 text-xs font-medium ring-1 transition-colors ${on ? "bg-accent/10 text-accent ring-accent/40" : "text-muted ring-border hover:text-foreground"}`}
-              >
-                {sector}
-              </button>
-            );
-          })}
-        </div>
-        <div className="mt-4 grid grid-cols-1 gap-x-6 gap-y-3 sm:grid-cols-2 lg:grid-cols-4">
-          <label className="flex items-center justify-between gap-2 text-sm">
-            <span className="text-muted">Trend</span>
-            <select
-              value={screen.trend ?? ""}
-              onChange={(e) => update({ trend: e.target.value === "" ? null : (e.target.value as "above" | "below") })}
-              className="rounded-lg border border-border bg-surface-raised px-2 py-1 text-sm"
-            >
-              <option value="">Any</option>
-              <option value="above">Above 200-day</option>
-              <option value="below">Below 200-day</option>
-            </select>
-          </label>
-          {RANGE_FILTERS.map(({ key, unit }) => {
-            const range = screen.ranges[key];
-            const shown = (v: number | undefined) => (v === undefined ? "" : String(Math.round(v * SCALE[unit] * 100) / 100));
-            return (
-              <fieldset key={key} className="flex items-center justify-between gap-2 text-sm">
-                <legend className="sr-only">{METRICS[key].label}</legend>
-                <span className="text-muted">
-                  {METRICS[key].label}
-                  {unit && ` (${unit === "B" ? "$B" : unit})`}
-                </span>
-                <span className="flex items-center gap-1">
-                  <input aria-label={`${METRICS[key].label} at least`} inputMode="decimal" placeholder="min" value={shown(range?.min)} onChange={(e) => setRange(key, "min", e.target.value, unit)} className="w-16 rounded-lg border border-border bg-surface-raised px-2 py-1 text-right tabular-nums" />
-                  <span className="text-muted">–</span>
-                  <input aria-label={`${METRICS[key].label} at most`} inputMode="decimal" placeholder="max" value={shown(range?.max)} onChange={(e) => setRange(key, "max", e.target.value, unit)} className="w-16 rounded-lg border border-border bg-surface-raised px-2 py-1 text-right tabular-nums" />
-                </span>
-              </fieldset>
-            );
-          })}
-        </div>
+        {filterControls}
       </details>
+
+      {/* Phones: the filters open in a sheet from the bottom, so the results come first. */}
+      <button
+        type="button"
+        onClick={() => sheet.current?.showModal()}
+        className="flex min-h-11 items-center justify-center gap-2 rounded-full border border-border bg-surface text-sm font-medium focus-visible:outline-2 focus-visible:outline-accent md:hidden"
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" className="size-4" aria-hidden>
+          <path d="M4 6h16M7 12h10M10 18h4" />
+        </svg>
+        Filters{active > 0 && ` (${active})`}
+      </button>
+      <dialog
+        ref={sheet}
+        aria-labelledby="filters-title"
+        // A click on the backdrop (the dialog element itself, outside its content) closes it.
+        onClick={(e) => e.target === e.currentTarget && sheet.current?.close()}
+        className="fixed inset-x-0 top-auto bottom-0 m-0 max-h-[85dvh] w-full max-w-none animate-slide-up flex-col rounded-t-3xl border border-b-0 border-border bg-surface text-foreground shadow-2xl backdrop:bg-black/40 open:flex md:hidden"
+      >
+        <div className="flex items-center justify-between border-b border-border px-4 py-2">
+          <h2 id="filters-title" className="font-semibold">
+            Filters
+          </h2>
+          {active > 0 && (
+            <button type="button" onClick={() => update({ sectors: [], ranges: {}, trend: null })} className="min-h-11 px-2 text-sm text-accent">
+              Clear filters
+            </button>
+          )}
+        </div>
+        <div className="overflow-y-auto px-4 pb-4">{filterControls}</div>
+        <div className="border-t border-border p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))]">
+          <button type="button" onClick={() => sheet.current?.close()} className="min-h-12 w-full rounded-full bg-accent-fill text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent">
+            Show {results.length} {results.length === 1 ? "stock" : "stocks"}
+          </button>
+        </div>
+      </dialog>
 
       <section aria-label="Results" className="rounded-2xl border border-border bg-surface px-2 py-2 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-2">
@@ -201,14 +247,14 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
           </div>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
             {preset === "momentum" && (
-              <Link href="/screener/history" className="text-sm font-medium text-accent hover:underline" title="Apply this screen at the start of every month, using only the prices known then">
+              <Link href="/screener/history" className="tap text-sm font-medium text-accent hover:underline" title="Apply this screen at the start of every month, using only the prices known then">
                 Test this screen over time →
               </Link>
             )}
             {backtest && (
               <Link
                 href={`/backtest#${shareFragment(backtest)}`}
-                className="text-sm font-medium text-accent hover:underline"
+                className="tap text-sm font-medium text-accent hover:underline"
                 title="Buy and hold today's top five, equally weighted, over the last 3 years. They were picked with today's numbers, so this looks back with hindsight."
               >
                 Backtest today&apos;s top {Math.min(5, results.length)} →
@@ -216,18 +262,63 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
             )}
           </div>
         </div>
-        <div className="overflow-x-auto">
+        <div className="md:hidden">
+          <div className="flex items-center gap-2 px-2 pb-2">
+            <label htmlFor="screener-sort" className="text-sm text-muted">
+              Sort by
+            </label>
+            <select id="screener-sort" value={screen.sort} onChange={(e) => sortBy(e.target.value as MetricKey | "symbol")} className="min-h-10 min-w-0 flex-1 rounded-lg border border-border bg-surface-raised px-2">
+              <option value="symbol">Symbol</option>
+              {columns.map(({ key }) => (
+                <option key={key} value={key}>
+                  {METRICS[key].label}
+                </option>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => setScreen((s) => ({ ...s, descending: !s.descending }))}
+              aria-label={screen.descending ? "Sorted high to low; sort low to high" : "Sorted low to high; sort high to low"}
+              className="grid size-10 shrink-0 place-items-center rounded-lg border border-border bg-surface-raised focus-visible:outline-2 focus-visible:outline-accent"
+            >
+              <span aria-hidden>{screen.descending ? "↓" : "↑"}</span>
+            </button>
+          </div>
+          <ul className="divide-y divide-border">
+            {results.map((r) => {
+              const value = r[shownKey];
+              const tone = METRICS[shownKey].format === "signed" && value !== null ? (value >= 0 ? "text-gain" : "text-loss") : "";
+              return (
+                <li key={r.symbol}>
+                  <Link href={`/stocks/${r.symbol}`} className="flex min-h-14 items-center gap-3 rounded-xl px-2 py-2 transition-colors hover:bg-foreground/[0.04] focus-visible:outline-2 focus-visible:outline-accent">
+                    <StockLogo symbol={r.symbol} size={28} />
+                    <span className="min-w-0 flex-1">
+                      <span className="block font-semibold">{r.symbol}</span>
+                      <span className="block truncate text-xs text-muted">{r.name}</span>
+                    </span>
+                    <span className="text-right">
+                      <span className={`block font-medium tabular-nums ${tone}`}>{show(shownKey, value)}</span>
+                      <span className="block text-xs text-muted">{METRICS[shownKey].label}</span>
+                    </span>
+                  </Link>
+                </li>
+              );
+            })}
+          </ul>
+          {results.length === 0 && <p className="px-2 py-8 text-center text-sm text-muted">No stocks match. Loosen a filter.</p>}
+        </div>
+        <div className="hidden overflow-x-auto md:block">
           <table className="w-full text-sm">
             <thead>
               <tr className="border-b border-border text-xs text-muted">
                 <th scope="col" className="py-2 pr-3 text-left font-medium">
-                  <button type="button" onClick={() => sortBy("symbol")} className="hover:text-foreground">
+                  <button type="button" onClick={() => sortBy("symbol")} className="tap hover:text-foreground">
                     Stock {screen.sort === "symbol" && (screen.descending ? "▼" : "▲")}
                   </button>
                 </th>
                 {columns.map(({ key, className = "" }) => (
                   <th key={key} scope="col" aria-sort={screen.sort === key ? (screen.descending ? "descending" : "ascending") : undefined} className={`py-2 pl-3 text-right font-medium whitespace-nowrap ${className}`}>
-                    <button type="button" onClick={() => sortBy(key)} className={screen.sort === key ? "text-foreground" : "hover:text-foreground"}>
+                    <button type="button" onClick={() => sortBy(key)} className={`tap ${screen.sort === key ? "text-foreground" : "hover:text-foreground"}`}>
                       {screen.sort === key && (screen.descending ? "▼ " : "▲ ")}
                       {METRICS[key].label}
                     </button>

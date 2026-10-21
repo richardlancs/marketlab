@@ -34,7 +34,7 @@ export function WatchlistTable({ rows }: { rows: StockTableRow[] }) {
         <p className="mt-1 text-sm text-muted">Star a stock on its page or in the stocks table to follow it here.</p>
         <Link
           href="/stocks"
-          className="mt-5 inline-block rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="mt-5 inline-block rounded-full bg-accent-fill px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           Browse stocks
         </Link>

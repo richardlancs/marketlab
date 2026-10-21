@@ -52,7 +52,7 @@ export function Slider({
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         aria-valuetext={format(value)}
-        className="mt-2 w-full accent-accent"
+        className="mt-2 h-6 w-full accent-accent"
       />
     </div>
   );
@@ -185,26 +185,26 @@ export function DemoChart({
             ))}
           </svg>
           {shade?.label && (
-            <span className="absolute top-1 ml-1 rounded bg-surface/85 px-1 text-[11px] font-medium text-loss" style={{ left: pct(x(shade.from), WIDTH) }}>
+            <span className="absolute top-1 ml-1 rounded bg-surface/85 px-1 text-xs font-medium text-loss" style={{ left: pct(x(shade.from), WIDTH) }}>
               {shade.label}
             </span>
           )}
           {markers.map((m) => (
             <div key={`${m.index}-${m.label}`} className="absolute inset-y-0" style={{ left: pct(x(m.index), WIDTH) }}>
               <div className="h-full border-l border-dashed border-foreground/30" />
-              <span className="absolute bottom-0 ml-1 rounded bg-surface/85 px-1 text-[11px] whitespace-nowrap text-muted">{m.label}</span>
+              <span className="absolute bottom-0 ml-1 rounded bg-surface/85 px-1 text-xs whitespace-nowrap text-muted">{m.label}</span>
             </div>
           ))}
         </div>
         {ticks.map((t) => (
-          <span key={t} className="absolute right-0 -translate-y-1/2 text-[11px] text-muted tabular-nums" style={{ top: pct(scaleY(t, HEIGHT, domain), HEIGHT) }}>
+          <span key={t} className="absolute right-0 -translate-y-1/2 text-xs text-muted tabular-nums" style={{ top: pct(scaleY(t, HEIGHT, domain), HEIGHT) }}>
             {format(t)}
           </span>
         ))}
         {bands
           .filter((b) => b.label)
           .map((b) => (
-            <span key={b.label} className="absolute left-1 -translate-y-full text-[11px] text-accent" style={{ top: pct(scaleY(b.to, HEIGHT, domain), HEIGHT) }}>
+            <span key={b.label} className="absolute left-1 -translate-y-full text-xs text-accent" style={{ top: pct(scaleY(b.to, HEIGHT, domain), HEIGHT) }}>
               {b.label}
             </span>
           ))}

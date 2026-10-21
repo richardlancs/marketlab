@@ -22,7 +22,7 @@ export function TimeframePicker({ value, onChange, label = "Timeframe" }: { valu
           type="button"
           aria-pressed={timeframe === value}
           onClick={() => onChange(timeframe)}
-          className="relative rounded-full px-2.5 py-1.5 text-muted sm:px-3 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent aria-pressed:text-foreground"
+          className="tap rounded-full px-2.5 py-1.5 text-muted sm:px-3 transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent aria-pressed:text-foreground"
         >
           {timeframe}
         </button>

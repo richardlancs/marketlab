@@ -17,7 +17,7 @@ export default function NotFound() {
         <p className="mt-2 text-muted">There&apos;s no page or stock symbol here. Check the address, or head back to the dashboard.</p>
         <Link
           href="/"
-          className="mt-6 inline-block rounded-full bg-accent px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          className="mt-6 inline-block rounded-full bg-accent-fill px-5 py-2 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         >
           Back to the dashboard
         </Link>

@@ -59,7 +59,7 @@ export function WalkForward({ base, fast, slow }: { base: BacktestConfig; fast: 
             ))}
           </select>
         </label>
-        <button type="submit" disabled={pending} className="h-9 rounded-full bg-accent px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60">
+        <button type="submit" disabled={pending} className="h-9 rounded-full bg-accent-fill px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 disabled:opacity-60">
           {pending ? "Testing…" : "Run walk-forward test"}
         </button>
       </form>

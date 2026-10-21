@@ -124,7 +124,7 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
                 <span aria-hidden className="mr-2 inline-block size-2.5 rounded-[3px] align-middle" style={{ background: slice.color }} />
                 {slice.href && <StockLogo symbol={slice.label} size={22} className="mr-2 align-middle" />}
                 {slice.href ? (
-                  <Link href={slice.href} title={slice.name} className="rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
+                  <Link href={slice.href} title={slice.name} className="tap rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
                     {slice.label}
                   </Link>
                 ) : (

@@ -52,11 +52,11 @@ export async function StockFundamentals({ symbol, price, marketCap }: { symbol: 
         <Stat label="Free cash flow" value={money(last.freeCashFlow)} note={r.freeCashFlowYield === null ? "last fiscal year" : `${formatShare(r.freeCashFlowYield)} of market value`} term="freeCashFlow" />
       </dl>
 
-      <div className="mt-6 grid grid-cols-3 gap-4 border-t border-border pt-4">
+      <dl className="mt-6 grid grid-cols-3 gap-4 border-t border-border pt-4">
         <Stat label="P/E, reported earnings" value={r.peRatio === null ? (t?.netIncome != null && t.netIncome <= 0 ? "Loss" : DASH) : r.peRatio.toFixed(1)} term="peRatio" />
         <Stat label="Price to sales" value={r.priceToSales === null ? DASH : r.priceToSales.toFixed(1)} />
         <Stat label="Earnings yield" value={r.peRatio === null ? DASH : formatShare(1 / r.peRatio)} note="earnings ÷ market value" />
-      </div>
+      </dl>
 
       <YearsChart years={facts.years} />
 

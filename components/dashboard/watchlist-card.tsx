@@ -27,7 +27,7 @@ export function WatchlistCard({ rows }: { rows: Record<string, ReactNode> }) {
           Watchlist
         </h2>
         {account && watchlist.length > 0 && (
-          <Link href="/watchlist" className="text-xs text-accent hover:underline">
+          <Link href="/watchlist" className="tap text-xs text-accent hover:underline">
             {watchlist.length > MAX_ROWS ? `See all ${watchlist.length}` : "See all"}
           </Link>
         )}

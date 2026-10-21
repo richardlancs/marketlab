@@ -24,7 +24,7 @@ export async function FeaturedStock() {
             <StockLogo symbol={stock.symbol} size={40} />
             <div className="min-w-0">
             <h2 id="featured-stock" className="text-lg font-semibold tracking-tight">
-              <Link href={`/stocks/${stock.symbol}`} className="rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
+              <Link href={`/stocks/${stock.symbol}`} className="tap rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
                 {stock.symbol} <span className="font-normal text-muted">{stock.name}</span>
               </Link>
             </h2>

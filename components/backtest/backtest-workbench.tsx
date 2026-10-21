@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { revealOnPhone } from "@/components/ui/reveal";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, type ReproduceResult } from "@/lib/backtest-actions";
@@ -47,6 +48,11 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selected, setSelected] = useState<string[]>([]);
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  // On phones the results are below the settings: bring each new one into view.
+  useEffect(() => {
+    if (view.kind !== "empty") revealOnPhone(resultsHeading.current);
+  }, [view]);
   const saved = useSavedRuns();
   const sweep = useSweep();
   // The form as a config, for the sweep panel (null while the form has a mistake).
@@ -188,7 +194,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
         {/* aria-live: the results are announced when a run finishes. */}
         <Card aria-labelledby="results" aria-live="polite" aria-busy={running}>
           <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h2 id="results" className="text-lg font-semibold tracking-tight">
+            <h2 id="results" ref={resultsHeading} tabIndex={-1} className="text-lg font-semibold tracking-tight outline-none">
               {view.kind === "compare" ? "Comparison" : view.kind === "sweep" ? "Sweep" : "Results"}
             </h2>
             {view.kind === "result" && (
@@ -223,7 +229,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
                 <button
                   type="button"
                   onClick={() => openConfig(view.run.config)}
-                  className="mt-4 rounded-full bg-accent px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+                  className="mt-4 rounded-full bg-accent-fill px-4 py-2 text-sm font-medium text-white hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
                 >
                   Run with current prices
                 </button>
@@ -298,7 +304,7 @@ function SaveRun({
       <button
         type="submit"
         disabled={pending || !canSave || !name.trim()}
-        className="h-9 rounded-full bg-accent px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+        className="h-9 rounded-full bg-accent-fill px-4 text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
       >
         {pending ? "Saving…" : "Save run"}
       </button>

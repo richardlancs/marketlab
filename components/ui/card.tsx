@@ -9,7 +9,7 @@ import type { ComponentProps } from "react";
 export function Card({ className = "", ...props }: ComponentProps<"section">) {
   return (
     <section
-      className={`rounded-2xl border border-border bg-linear-to-b from-surface-raised to-surface p-5 shadow-sm shadow-black/[0.03] dark:shadow-[inset_0_1px_0_0_rgb(255_255_255/0.05)] ${className}`}
+      className={`rounded-2xl border border-border bg-linear-to-b from-surface-raised to-surface p-5 shadow-sm max-sm:px-4 shadow-black/[0.03] dark:shadow-[inset_0_1px_0_0_rgb(255_255_255/0.05)] ${className}`}
       {...props}
     />
   );

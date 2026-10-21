@@ -1,13 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState, useTransition, type FormEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, useTransition, type FormEvent, type ReactNode } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { ROWS } from "@/components/backtest/backtest-results";
 import { RunProvenance } from "@/components/backtest/run-provenance";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
+import { revealOnPhone } from "@/components/ui/reveal";
 import { benchmarkLabel, percentileLabel, reasonFor, STATUS_LABELS, type SavedScreen, type ScreenMonth, type ScreenResult, type ScreenSettings } from "@/lib/analytics/history";
 import { deleteBacktestAction } from "@/lib/backtest-actions";
 import { MAX_RUN_NAME } from "@/lib/backtest/config";
@@ -60,6 +61,11 @@ export function ScreenHistory({ firstDate, lastDate }: { firstDate: number; last
   const [error, setError] = useState<string | null>(null);
   const [running, startRunning] = useTransition();
   const saved = useSavedScreens();
+  const resultsHeading = useRef<HTMLHeadingElement>(null);
+  // On phones the results are below the form: bring each new one into view.
+  useEffect(() => {
+    if (view && !running) revealOnPhone(resultsHeading.current);
+  }, [view, running]);
 
   const set = (change: Partial<Form>) => setForm((f) => ({ ...f, ...change }));
 
@@ -163,7 +169,7 @@ export function ScreenHistory({ firstDate, lastDate }: { firstDate: number; last
             <button
               type="submit"
               disabled={running}
-              className="h-11 w-full rounded-full bg-accent text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
+              className="h-11 w-full rounded-full bg-accent-fill text-sm font-medium text-white transition-opacity hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50"
             >
               {running ? "Testing…" : "Test this screen over time"}
             </button>
@@ -182,7 +188,7 @@ export function ScreenHistory({ firstDate, lastDate }: { firstDate: number; last
           <ResultsSkeleton />
         ) : view ? (
           <Card aria-labelledby="screen-results">
-            <h2 id="screen-results" className="sr-only">
+            <h2 id="screen-results" ref={resultsHeading} tabIndex={-1} className="sr-only">
               Results
             </h2>
             {view.kind === "saved" ? <SavedBar view={view} onReproduce={() => reproduce(view.run)} /> : <SaveBar settings={view.settings} onSaved={(run, result) => (saved.add(run), setView({ kind: "saved", run, result, reproduction: null }))} />}
