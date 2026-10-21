@@ -17,6 +17,10 @@ export interface FormState {
   slow: string;
   installments: string;
   frequency: "monthly" | "quarterly";
+  /** Momentum rotation: how many stocks to hold, ranked over how many months, and whether a falling stock is skipped. */
+  top: string;
+  lookbackMonths: 3 | 6 | 12;
+  absolute: boolean;
   /** Custom rules: when to buy each stock, and when to sell it. */
   entry: RuleSetDraft;
   exit: RuleSetDraft;
@@ -49,6 +53,9 @@ export function defaultForm(lastDate: number): FormState {
     slow: "200",
     installments: "12",
     frequency: "quarterly",
+    top: "1",
+    lookbackMonths: 6,
+    absolute: true,
     entry: toDraft(RULE_PRESETS[0].entry),
     exit: toDraft(RULE_PRESETS[0].exit),
     start: toInput(yearsBefore(lastDate, 5)),
@@ -69,7 +76,10 @@ export function formFromConfig(config: BacktestConfig): FormState {
     fast: s.kind === "moving-average" ? String(s.fast) : "50",
     slow: s.kind === "moving-average" ? String(s.slow) : "200",
     installments: s.kind === "dollar-cost-averaging" ? String(s.installments) : "12",
-    frequency: s.kind === "rebalancing" ? s.frequency : "quarterly",
+    frequency: s.kind === "rebalancing" || s.kind === "risk-parity" ? s.frequency : "quarterly",
+    top: s.kind === "momentum-rotation" ? String(s.top) : "1",
+    lookbackMonths: s.kind === "momentum-rotation" ? s.lookbackMonths : 6,
+    absolute: s.kind === "momentum-rotation" ? s.absolute : true,
     entry: toDraft(s.kind === "rules" ? s.entry : RULE_PRESETS[0].entry),
     exit: toDraft(s.kind === "rules" ? s.exit : RULE_PRESETS[0].exit),
     start: toInput(config.start),
@@ -107,6 +117,14 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
     return { error: `Choose between 1 and ${LIMITS.maxInstallments} monthly purchases.` };
   }
 
+  const top = Number(form.top);
+  if (form.strategy === "momentum-rotation" && !(Number.isInteger(top) && top >= 1 && top <= symbols.length)) {
+    return { error: `Hold between 1 and ${symbols.length} of the stocks listed (momentum rotation picks among them).` };
+  }
+  if ((form.strategy === "momentum-rotation" || form.strategy === "risk-parity") && symbols.length < 2) {
+    return { error: "List at least two stocks: this strategy chooses or weights among them." };
+  }
+
   if (form.strategy === "rules") {
     for (const [name, draft] of [["buy", form.entry], ["sell", form.exit]] as const) {
       if (!parseRuleSet(fromDraft(draft))) {
@@ -137,7 +155,11 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
           ? { kind: "rebalancing", frequency: form.frequency }
           : form.strategy === "rules"
             ? { kind: "rules", entry: fromDraft(form.entry), exit: fromDraft(form.exit) }
-            : { kind: "buy-and-hold" };
+            : form.strategy === "momentum-rotation"
+              ? { kind: "momentum-rotation", top, lookbackMonths: form.lookbackMonths, absolute: form.absolute }
+              : form.strategy === "risk-parity"
+                ? { kind: "risk-parity", frequency: form.frequency }
+                : { kind: "buy-and-hold" };
 
   const config = parseConfig(
     {
@@ -161,6 +183,8 @@ const STRATEGY_HELP: Record<StrategyConfig["kind"], string> = {
   "dollar-cost-averaging": "Spread the starting cash over equal monthly purchases instead of investing it all at once.",
   rebalancing: "Invest at the weights below, then reset to them regularly by selling what grew and buying what shrank.",
   rules: "Build your own: buy each stock when your conditions are met, sell it when others are.",
+  "momentum-rotation": "Each month, hold the stocks below that rose the most lately. The weights below are ignored.",
+  "risk-parity": "Weight the stocks below by how calm they've been, so each adds about the same risk; reset regularly. The weights below are ignored.",
 };
 
 const input =
@@ -366,7 +390,36 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
             </p>
           </div>
         )}
-        {form.strategy === "rebalancing" && (
+        {form.strategy === "momentum-rotation" && (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label htmlFor="top" className={label}>
+                  Stocks to hold
+                </label>
+                <input id="top" type="number" inputMode="numeric" value={form.top} onChange={(e) => set({ top: e.target.value })} className={`${input} mt-1`} />
+              </div>
+              <div>
+                <label htmlFor="lookback" className={label}>
+                  Ranked by return over
+                </label>
+                <select id="lookback" value={form.lookbackMonths} onChange={(e) => set({ lookbackMonths: Number(e.target.value) as 3 | 6 | 12 })} className={`${input} mt-1`}>
+                  <option value={3}>3 months</option>
+                  <option value={6}>6 months</option>
+                  <option value={12}>12 months</option>
+                </select>
+              </div>
+            </div>
+            <label className="flex items-start gap-2 text-sm">
+              <input type="checkbox" checked={form.absolute} onChange={(e) => set({ absolute: e.target.checked })} className="mt-1 accent-accent" />
+              <span>
+                Only hold stocks that rose
+                <span className="block text-xs text-muted">If a pick fell over the period, keep its share in cash (&quot;dual momentum&quot;).</span>
+              </span>
+            </label>
+          </div>
+        )}
+        {(form.strategy === "rebalancing" || form.strategy === "risk-parity") && (
           <div>
             <label htmlFor="frequency" className={label}>
               Rebalance

@@ -9,6 +9,7 @@
  */
 import { sql } from "drizzle-orm";
 import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import type { AlertCondition } from "../trading";
 
 // ---------------------------------------------------------------------------
 // Better Auth's tables. Generated from Better Auth's own schema generator
@@ -258,6 +259,8 @@ export const priceAlert = sqliteTable(
     symbol: text("symbol").notNull(),
     direction: text("direction", { enum: ["above", "below"] }).notNull(),
     price: real("price").notNull(),
+    /** An indicator alert's condition (lib/trading.ts AlertCondition), as JSON; null for a price alert. */
+    condition: text("condition", { mode: "json" }).$type<AlertCondition>(),
     createdAt: integer("created_at").notNull(),
     triggeredAt: integer("triggered_at"),
     triggerPrice: real("trigger_price"),
@@ -323,4 +326,72 @@ export const lessonProgress = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
   },
   (table) => [primaryKey({ columns: [table.learnerId, table.term] })],
+);
+
+// ---------------------------------------------------------------------------
+// The price store and stored analytics (Phase 12). Prices are written by the
+// Next.js server from its market data (lib/db/prices.ts); the Python analytics
+// service reads them and writes analytics_result rows, which pages read.
+// ---------------------------------------------------------------------------
+
+/** Daily bars as the market-data source gives them, per source ("mock" or "tiingo") so the two never mix. Indices use their own symbol (SPX…). */
+export const dailyBar = sqliteTable(
+  "daily_bar",
+  {
+    source: text("source").notNull(),
+    symbol: text("symbol").notNull(),
+    /** The day's close (ms). */
+    time: integer("time").notNull(),
+    open: real("open").notNull(),
+    high: real("high").notNull(),
+    low: real("low").notNull(),
+    close: real("close").notNull(),
+    /** The close adjusted for every later dividend and split. */
+    adjClose: real("adj_close").notNull(),
+    volume: real("volume"),
+  },
+  (table) => [primaryKey({ columns: [table.source, table.symbol, table.time] })],
+);
+
+/** One row per stored series: its checksum (SHA-256 of every bar), so an unchanged series is never rewritten, and its latest fundamentals. */
+export const priceSeries = sqliteTable(
+  "price_series",
+  {
+    source: text("source").notNull(),
+    symbol: text("symbol").notNull(),
+    checksum: text("checksum").notNull(),
+    firstTime: integer("first_time").notNull(),
+    lastTime: integer("last_time").notNull(),
+    bars: integer("bars").notNull(),
+    /** Fundamentals as of the last bar, when the source has them (the mock market does; Tiingo's free data doesn't). */
+    marketCap: real("market_cap"),
+    peRatio: real("pe_ratio"),
+    /** The indicated yearly dividend over the price, as a fraction. */
+    dividendYield: real("dividend_yield"),
+    updatedAt: integer("updated_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.source, table.symbol] })],
+);
+
+/**
+ * Results the analytics service calculated from stored prices: a stock's
+ * risk and technical profile, and so on. One current row per kind and subject
+ * (a symbol, or "all"), with the checksum of the prices it used and the
+ * analytics version, so a page can tell a stale result from a fresh one.
+ */
+export const analyticsResult = sqliteTable(
+  "analytics_result",
+  {
+    kind: text("kind").notNull(),
+    subject: text("subject").notNull(),
+    source: text("source").notNull(),
+    version: text("version").notNull(),
+    inputChecksum: text("input_checksum").notNull(),
+    /** The last close the result includes (ms). */
+    asOf: integer("as_of").notNull(),
+    /** The result as JSON. */
+    result: text("result").notNull(),
+    computedAt: integer("computed_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.kind, table.subject, table.source] })],
 );

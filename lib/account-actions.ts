@@ -131,12 +131,12 @@ export async function cancelOrderAction(id: unknown): Promise<ActionResult> {
 
 export async function addAlertAction(input: unknown): Promise<ActionResult> {
   if (typeof input !== "object" || input === null) return { ok: false, message: "That alert isn't valid." };
-  const { symbol, direction, price } = input as Record<string, unknown>;
+  const { symbol, direction, price, condition } = input as Record<string, unknown>;
   if (typeof price !== "number" || (direction !== "above" && direction !== "below")) return { ok: false, message: "That alert isn't valid." };
   return forCurrentUser(async (userId) => {
     const real = await realSymbol(symbol);
     if (!real) return UNKNOWN;
-    return change(userId, [real], (account) => addAlert(account, { symbol: real, direction, price }, crypto.randomUUID(), Date.now()));
+    return change(userId, [real], (account) => addAlert(account, { symbol: real, direction, price, ...(condition !== undefined && { condition }) }, crypto.randomUUID(), Date.now()));
   });
 }
 

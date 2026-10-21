@@ -9,6 +9,7 @@ import { ThemeMenu } from "./theme-menu";
 const pages: NavItem[] = [
   { href: "/", label: "Dashboard" },
   { href: "/stocks", label: "Stocks" },
+  { href: "/screener", label: "Screener" },
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/backtest", label: "Backtest" },
@@ -25,7 +26,7 @@ export function Header() {
        * flex-wrap: on phones the nav drops to its own full-width row under the
        * logo (order-last + basis-full). From 768px (md) it sits in the top row.
        */}
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-8 px-4 sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 px-4 sm:px-6 lg:px-8">
         <Link href="/" className="flex h-14 items-center gap-2.5 font-semibold tracking-tight">
           <span
             aria-hidden
@@ -40,9 +41,9 @@ export function Header() {
 
         <nav
           aria-label="Main"
-          // On phones the row scrolls sideways if the links don't fit; the
-          // negative margin + padding lets it scroll right to the screen edge.
-          className="order-last -mx-4 flex basis-[calc(100%+2rem)] items-center gap-1 overflow-x-auto px-4 pb-2 text-sm [scrollbar-width:none] sm:-mx-6 sm:basis-[calc(100%+3rem)] sm:px-6 md:order-none md:m-0 md:basis-auto md:p-0"
+          // Below xl the links get their own row, which scrolls sideways if they
+          // don't fit; the negative margin + padding lets it reach the screen edge.
+          className="order-last -mx-4 flex basis-[calc(100%+2rem)] items-center gap-1 overflow-x-auto px-4 pb-2 text-sm [scrollbar-width:none] sm:-mx-6 sm:basis-[calc(100%+3rem)] sm:px-6 lg:-mx-8 lg:basis-[calc(100%+4rem)] lg:px-8 xl:order-none xl:m-0 xl:basis-auto xl:p-0"
         >
           {/*
            * usePathname needs Suspense here: stock pages for symbols not built

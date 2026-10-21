@@ -8,6 +8,8 @@
  *    can never apply anything twice.
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
  *    own, and other leftovers (including saved price snapshots no run uses).
+ * 3. Stores the latest prices and has the analytics service recalculate
+ *    what changed (lib/analytics/server.ts), with whatever time is left.
  *
  * Accounts go in batches, within a time budget: whatever doesn't fit waits
  * for the next run (or for its owner's next visit, which catches up too).
@@ -32,6 +34,8 @@ export interface DailyDeps {
   pruneRateLimits(before: number): Promise<void>;
   /** Deletes saved price snapshots no saved run refers to any more. */
   deleteOrphanSnapshots(limit: number): Promise<number>;
+  /** Stores the latest prices and recalculates stored analytics, until `deadline` (ms). Optional, so tests can leave it out. */
+  refreshAnalytics?(deadline: number): Promise<unknown>;
 }
 
 export interface DailySummary {
@@ -43,6 +47,8 @@ export interface DailySummary {
   guestsDeleted: number;
   learnersDeleted: number;
   snapshotsDeleted: number;
+  /** What the analytics step did, or why it didn't run. */
+  analytics?: unknown;
   ms: number;
 }
 
@@ -87,5 +93,15 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
   // After the guests: their saved runs (and so their snapshots' last references) went with them.
   const snapshotsDeleted = outOfTime() ? 0 : await deps.deleteOrphanSnapshots(500);
 
-  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, ms: deps.now() - start };
+  // Last, with the time that's left: analytics can always catch up tomorrow, or on a page visit.
+  let analytics: unknown;
+  if (deps.refreshAnalytics) {
+    try {
+      analytics = outOfTime() ? "skipped: out of time" : await deps.refreshAnalytics(start + budgetMs);
+    } catch (error) {
+      analytics = `failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, analytics, ms: deps.now() - start };
 }

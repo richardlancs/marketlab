@@ -41,6 +41,9 @@ class Database(Protocol):
     def execute(self, sql: str, args: Sequence[Any] = ()) -> int:
         """Runs a write; returns the number of rows it changed."""
 
+    def execute_many(self, statements: Sequence[tuple[str, Sequence[Any]]]) -> None:
+        """Runs several writes as one transaction: all of them, or (on any error) none."""
+
 
 class SqliteDatabase:
     def __init__(self, path: str | Path):
@@ -60,6 +63,15 @@ class SqliteDatabase:
         try:
             with connection:  # commits, or rolls back on error
                 return connection.execute(sql, tuple(args)).rowcount
+        finally:
+            connection.close()
+
+    def execute_many(self, statements: Sequence[tuple[str, Sequence[Any]]]) -> None:
+        connection = self._connect()
+        try:
+            with connection:
+                for sql, args in statements:
+                    connection.execute(sql, tuple(args))
         finally:
             connection.close()
 
@@ -116,6 +128,21 @@ class TursoDatabase:
 
     def execute(self, sql: str, args: Sequence[Any] = ()) -> int:
         return int(self._run(sql, args).get("affected_row_count", 0))
+
+    def execute_many(self, statements: Sequence[tuple[str, Sequence[Any]]]) -> None:
+        """One HTTP request: BEGIN, the statements, COMMIT. If any fails, closing the stream rolls the rest back."""
+        steps = [{"type": "execute", "stmt": {"sql": "BEGIN"}}]
+        steps += [{"type": "execute", "stmt": {"sql": sql, "args": [_encode(a) for a in args]}} for sql, args in statements]
+        steps += [{"type": "execute", "stmt": {"sql": "COMMIT"}}, {"type": "close"}]
+        try:
+            response = self.client.post(self.endpoint, json={"requests": steps}, headers=self.headers)
+        except httpx.HTTPError as error:
+            raise DatabaseError(f"The database couldn't be reached: {error}") from error
+        if response.status_code != 200:
+            raise DatabaseError(f"The database answered {response.status_code}.")
+        for result in response.json()["results"][:-1]:
+            if result.get("type") != "ok":
+                raise DatabaseError(f"The database refused a write: {result.get('error', {}).get('message', 'unknown error')}")
 
 
 def from_environment() -> Database:

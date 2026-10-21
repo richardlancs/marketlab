@@ -232,7 +232,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Portfolio", href: "/portfolio", text: "The Performance card shows your portfolio's volatility next to the index you compare it with." },
       { label: "Backtest", href: "/backtest", text: "Every backtest shows the volatility of the strategy and its benchmark. Try a single stock against five to watch diversification bring it down." },
     ],
-    related: ["sharpe", "maxDrawdown", "diversification", "beta"],
+    related: ["sharpe", "maxDrawdown", "valueAtRisk", "beta"],
     quiz: [
       {
         kind: "Terminology",
@@ -505,7 +505,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Compare two stocks", href: "/stocks/NVDA", text: "Look at a fast-growing company like NVIDIA, then a steady one like Coca-Cola (KO), over the same chart range." },
       { label: "Portfolio", href: "/portfolio", text: "The Performance card compares your portfolio with an index. A portfolio that swings more than the index in both directions has a high beta." },
     ],
-    related: ["volatility", "diversification", "benchmark"],
+    related: ["volatility", "correlation", "diversification", "benchmark"],
     quiz: [
       {
         kind: "Terminology",
@@ -740,6 +740,291 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 2,
         explanation: "Studies have found that missing a handful of the best days can cut long-run results sharply, and those days often arrive during sell-offs, when nervous investors are out.",
+      },
+    ],
+  },
+
+  correlation: {
+    why: [
+      "Owning ten stocks only spreads risk if they don't all fall on the same days. Ten chip makers can drop together on one piece of industry news, so they behave more like one big holding than ten. Correlation is the number that tells you how much two holdings really move as one.",
+      "It's the quiet engine behind [[diversification]]. Two investments with the same [[volatility]] can either add their swings together or partly cancel them out, and correlation decides which. It also shows how closely a fund or strategy tracks a [[benchmark]], and it's half of what makes up [[beta]].",
+    ],
+    how: {
+      paragraphs: [
+        "Take the daily returns of two investments over the same days. For each day, see how far each return was from its own average. On days when both are above average, or both below, they're moving together; when one is above and the other below, they're moving apart. Correlation averages that agreement and scales it so the answer always lands between −1 and 1.",
+        "At 1, the two move in perfect lockstep in direction and proportion. At 0, knowing one tells you nothing about the other. At −1, one rises exactly when the other falls. Most pairs of US stocks land somewhere between 0.2 and 0.7, because the whole market pulls them in the same direction on many days.",
+        "Correlation is about the direction of moves, not their size. A calm utility and a wild tech stock can be highly correlated if they tend to rise and fall on the same days, even though one moves far more. To get the size as well, combine it with volatility, which is exactly what beta does.",
+        "It matters for a mix because a portfolio's swings depend on how its holdings combine. Two holdings with a correlation of 1 add no diversification at all. Below 1, the mix swings less than the average of its parts, and the lower the correlation, the bigger that saving.",
+      ],
+      formula: {
+        expression: "Correlation = covariance of A and B ÷ (standard deviation of A × standard deviation of B)",
+        reading: "How much the two move together, divided by how much each moves on its own, so the answer runs from −1 to 1.",
+      },
+    },
+    example: {
+      setup: "Over five days, stock A returned +1%, −1%, +2%, −2% and 0%. Stock B returned +2%, 0%, +1%, −1% and −2%. Work out their correlation, then see what it does to a half-and-half mix.",
+      steps: [
+        "Averages: A's returns add up to 0, and so do B's, so both averages are 0% and each day's return is already its distance from the average.",
+        "Multiply the two returns on each day and add them up: (1 × 2) + (−1 × 0) + (2 × 1) + (−2 × −1) + (0 × −2) = 2 + 0 + 2 + 2 + 0 = 6.",
+        "Square each stock's returns and add them up: for A, 1 + 1 + 4 + 4 + 0 = 10; for B, 4 + 0 + 1 + 1 + 4 = 10.",
+        "Correlation = 6 ÷ √(10 × 10) = 6 ÷ 10 = 0.6.",
+        "Now suppose both stocks have a volatility of 20% a year. A half-and-half mix has a volatility of 20% × √((1 + correlation) ÷ 2). At a correlation of 0.6, that's 20% × √0.8 ≈ 17.9%.",
+        "At a correlation of 1 the mix would still swing 20%; at 0 it would swing 20% × √0.5 ≈ 14.1%.",
+      ],
+      result: "The two stocks have a correlation of 0.6: they usually move the same way, but not always. That's enough to cut the mix's volatility from 20% to about 17.9%, without giving up any average return. Less related holdings would cut it further.",
+    },
+    demo: "diversification",
+    reading: [
+      { label: "Above 0.8", meaning: "The two move almost as one. Holding both adds little diversification; think of two funds that track the same index, or two big banks." },
+      { label: "0.3 to 0.8", meaning: "The usual range for two US stocks, or a stock against the S&P 500. They share the market's big moves but have plenty of their own." },
+      { label: "Around 0", meaning: "Little link between their daily moves. Pairs like this smooth a portfolio the most, if each has a decent return of its own." },
+      { label: "Below 0", meaning: "They tend to move opposite ways. Rare between stocks; high-quality government bonds have often, but not always, played this role against stocks." },
+    ],
+    realWorld: [
+      "Fund managers look at a correlation matrix of their holdings, a grid with every pair's correlation, to spot clusters that would fall together. Pension funds use the same idea when they split money between stocks, bonds and other assets.",
+      "Correlations change, and usually rise in a crash. In sharp sell-offs like those of 2008 and early 2020, many stocks fell together on the same days, so diversification helped less exactly when it was needed most. The correlation of US stocks with US government bonds has also flipped between positive and negative over the decades.",
+      "Correlation with the market is how investors judge whether a fund is really doing something different. A fund with a correlation of 0.99 to the S&P 500 is close to an index fund, whatever its fees suggest.",
+    ],
+    mistakes: [
+      "Reading correlation as cause. Two stocks moving together may both be reacting to the same news, not to each other.",
+      "Assuming a low correlation will hold in a crisis. Correlations measured in calm years tend to understate how much things fall together in a panic.",
+      "Confusing correlation with similar returns. Two stocks can be highly correlated while one gains 30% a year and the other 5%; correlation compares the direction of daily moves, not how far each went in total.",
+      "Trusting a correlation from a few weeks of data. Short windows are noisy; a year of daily returns is a more sensible minimum.",
+    ],
+    inMarketLab: [
+      { label: "Stock pages", href: "/stocks/AAPL", text: "The Risk card shows each stock's correlation with the S&P 500 over the last year, next to its beta. Compare Apple with a steadier company like Coca-Cola (KO)." },
+      { label: "Portfolio risk analysis", href: "/portfolio", text: "Under Risk analysis, the Risk tab draws a heatmap of the correlation between every pair of your holdings, so clusters that move together stand out." },
+      { label: "Backtest", href: "/backtest", text: "Under the results, open More measures to see a strategy's correlation with its benchmark: close to 1 means it mostly moved like the thing it's compared with." },
+    ],
+    related: ["diversification", "beta", "volatility", "riskParity"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "Two stocks have a correlation of −0.5. What does that mean?",
+        choices: [
+          "One lost half of what the other gained",
+          "They have tended to move in opposite directions, though not perfectly",
+          "One is half as volatile as the other",
+          "They are unrelated",
+        ],
+        answer: 1,
+        explanation: "A negative correlation means that on days when one was above its average, the other tended to be below. −1 would be perfectly opposite; −0.5 is a looser tendency.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Two stocks each have a volatility of 30%. Which correlation gives a half-and-half mix of them the lowest volatility?",
+        choices: ["0.9", "0.5", "0.2", "1.0"],
+        answer: 2,
+        explanation: "The lower the correlation, the more their swings cancel out. At 1.0 the mix swings the full 30%; at 0.2 it swings 30% × √0.6 ≈ 23%.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A calm stock and a very volatile stock have a correlation of 0.9. What can you say?",
+        choices: [
+          "They move by similar amounts each day",
+          "They must be in the same industry",
+          "Holding both gives strong diversification",
+          "They tend to move in the same direction on the same days, but by different amounts",
+        ],
+        answer: 3,
+        explanation: "Correlation measures how consistently they move together, not how far. The size of the moves is what volatility measures.",
+      },
+      {
+        kind: "Real world",
+        prompt: "What has tended to happen to correlations between stocks during market crashes?",
+        choices: [
+          "They have risen, so diversification helped less",
+          "They have dropped to zero",
+          "They have turned negative",
+          "They don't change",
+        ],
+        answer: 0,
+        explanation: "In panics many stocks fall together, so correlations rise. That's why a portfolio diversified only across stocks still falls hard in a crash.",
+      },
+    ],
+  },
+
+  valueAtRisk: {
+    why: [
+      "[[volatility|Volatility]] says how much an investment swings on a typical day, in both directions. Most people care more about one direction: how much could I lose on a bad day? Value at Risk, or VaR, answers that in money or percent, which makes it easier to picture than a standard deviation.",
+      "It's one of the most widely used risk numbers in finance. Banks report it, fund managers set limits with it, and regulators have built rules around it. Knowing what it says, and especially what it leaves out, keeps you from reading it as a worst case, which it isn't.",
+    ],
+    how: {
+      paragraphs: [
+        "MarketLab works out a one-day, 95% historical VaR. Take the last year of daily returns, about 252 of them, and sort them from worst to best. The VaR is the loss at the 5% line: only about 1 day in 20 lost more. Most tools, MarketLab included, interpolate between the two days either side of that line, so the figure can sit between two actual returns.",
+        "VaR says nothing about how bad those worst days were. Expected shortfall, also called conditional VaR, fills that gap: it's the average loss on the days beyond the line. It's always at least as big as the VaR, and on a stock with a few terrible days it can be much bigger.",
+        "There's a shortcut, called parametric or normal VaR: assume returns follow a bell curve, and the 95% VaR is about 1.645 standard deviations of daily return below the average. It's a handy cross-check, but real returns have fat tails, meaning extreme days happen far more often than a bell curve predicts. So the normal version tends to understate the worst losses.",
+        "MarketLab shows losses as positive percentages: a VaR of 2.1% means a loss of 2.1%. Historical VaR also only knows the year it's built from. If that year was calm, the number will be small, however rough the next year turns out.",
+      ],
+      formula: {
+        expression: "95% VaR = the loss at the 5th percentile of daily returns; expected shortfall = the average of the losses beyond it",
+        reading: "The loss that only the worst 1 day in 20 went beyond, and how much those worst days lost on average.",
+      },
+    },
+    example: {
+      setup: "To keep the numbers small, take a portfolio worth $50,000 with 100 days of returns. Sorted from worst, its five worst days were −4.0%, −3.2%, −2.8%, −2.5% and −2.1%.",
+      steps: [
+        "5% of 100 days is 5 days, so the 95% line sits at the 5th-worst day: a loss of 2.1%. That's the one-day VaR.",
+        "In money: 2.1% of $50,000 = $1,050. On about 1 day in 20, the portfolio lost more than that.",
+        "Expected shortfall is the average of the five worst days: (4.0 + 3.2 + 2.8 + 2.5 + 2.1) ÷ 5 = 14.6 ÷ 5 = 2.92%, or $1,460.",
+        "Cross-check with the normal shortcut. If the daily standard deviation is 1.2% and the average return about 0, the normal VaR is 1.645 × 1.2% ≈ 1.97%.",
+        "The worst single day, −4.0%, was almost twice the VaR, and more than 3 standard deviations from the average, which a bell curve says should almost never happen.",
+      ],
+      result: "The VaR says a typical bad day costs about $1,050, and the expected shortfall says the worst 5% of days averaged $1,460. Neither caps the loss: the worst day here cost $2,000, and the next bad year can have worse days than the last.",
+    },
+    reading: [
+      { label: "Under 1.5%", meaning: "A calm investment over the last year. Broad index funds often land here in quiet years." },
+      { label: "1.5% to 3%", meaning: "Typical of a single large stock. A bad day costs a noticeable amount, but it's normal." },
+      { label: "Above 3%", meaning: "A volatile stock, or a very turbulent year. Expect daily losses this size a dozen or so times a year." },
+      { label: "Expected shortfall far above VaR", meaning: "The worst days were much worse than the line. That points to fat tails: rare but severe drops, such as crashes after earnings news." },
+    ],
+    realWorld: [
+      "Banks have reported VaR for their trading desks since the 1990s, and regulators long used it to set how much capital banks must hold. After the 2008 crisis, when losses blew far past reported VaR figures, international bank rules moved toward expected shortfall, because it looks at the size of the worst losses, not just where they begin.",
+      "Fund managers often set VaR limits, such as \"no more than 2% one-day VaR\", and cut positions when a portfolio drifts above them. Because VaR rises after turbulent days, those limits can force selling just after a fall.",
+      "Big losses beyond VaR are not rare surprises. A 95% one-day VaR is expected to be broken on about 12 or 13 days in a normal year, and in a crash several breaks can come in a row.",
+    ],
+    mistakes: [
+      "Reading VaR as the most you can lose. It's where the bad days start, not where they end; the worst day can be several times bigger.",
+      "Trusting a VaR built from a calm year. Historical VaR only knows the days it has seen, so it's lowest just before trouble arrives.",
+      "Assuming returns follow a bell curve. The normal shortcut tends to understate how often extreme losses happen.",
+      "Scaling one-day VaR to a year by assuming the days are independent. Bad days tend to cluster, so losses over weeks can be worse than that math suggests.",
+    ],
+    inMarketLab: [
+      { label: "Stock pages", href: "/stocks/NVDA", text: "The Risk card shows the 1-day VaR (95%) and the expected shortfall for the last year, with a histogram of daily returns and a line at the VaR. Compare NVIDIA with a calmer stock like Procter & Gamble (PG)." },
+      { label: "Portfolio risk analysis", href: "/portfolio", text: "Under Risk analysis, the Risk tab shows the same two numbers for your whole portfolio, worked out from its daily returns at today's weights." },
+    ],
+    related: ["volatility", "maxDrawdown", "monteCarlo"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "A stock's one-day 95% VaR is 2.5%. What does that mean?",
+        choices: [
+          "It can never lose more than 2.5% in a day",
+          "It has a 95% chance of rising tomorrow",
+          "Over the last year, only about 1 day in 20 lost more than 2.5%",
+          "It loses 2.5% on an average day",
+        ],
+        answer: 2,
+        explanation: "VaR marks the line of the worst 5% of days. It's not a cap: on those worst days the loss was bigger, sometimes much bigger.",
+      },
+      {
+        kind: "Using it",
+        prompt: "The five worst days out of 100 lost 5%, 4%, 3%, 3% and 2%. What's the expected shortfall at 95%?",
+        choices: ["2%", "3.4%", "5%", "17%"],
+        answer: 1,
+        explanation: "Add the five losses and divide by 5: (5 + 4 + 3 + 3 + 2) ÷ 5 = 17 ÷ 5 = 3.4%. The VaR is the 2% line; the shortfall is the average beyond it.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why does the normal (bell-curve) version of VaR tend to understate risk?",
+        choices: [
+          "It ignores the average return",
+          "It only works for bonds",
+          "It uses too many days",
+          "Real returns have more extreme days than a bell curve predicts",
+        ],
+        answer: 3,
+        explanation: "Stock returns have fat tails: big moves happen far more often than a bell curve allows, so a VaR that assumes one misses part of the danger.",
+      },
+      {
+        kind: "Real world",
+        prompt: "After the 2008 crisis, international bank rules shifted from VaR toward which measure?",
+        choices: ["Expected shortfall", "Beta", "The P/E ratio", "Dividend yield"],
+        answer: 0,
+        explanation: "Expected shortfall averages the losses beyond the VaR line, so it captures how bad the worst days are, which VaR alone ignores.",
+      },
+    ],
+  },
+
+  monteCarlo: {
+    why: [
+      "Any projection of a portfolio's future runs into the same problem: nobody knows the order of the good and bad years. A single line growing at an average rate hides that. Two investors with the same average return can end up far apart, depending on when the crashes come.",
+      "A Monte Carlo simulation replaces the single line with thousands of possible paths, and shows the spread. It turns a vague worry, \"what if it goes badly?\", into numbers: what a typical outcome looks like, what a bad one looks like, and how often the money ends up lower than it started.",
+    ],
+    how: {
+      paragraphs: [
+        "The name comes from the casino: the method relies on random draws. Each simulated path is built by repeatedly picking returns at random and stringing them together. Do that thousands of times and the paths fan out, with most bunched in the middle and a few out at the extremes.",
+        "Where the returns come from matters most. MarketLab's Projection uses a block bootstrap: it takes your portfolio's own past daily returns at today's weights, using up to the last three years, and draws whole month-long blocks of 21 sessions at a time, in random order, until it has ten years. Drawing whole blocks keeps calm stretches and stormy stretches together, the way they come in real markets, rather than mixing single days.",
+        "It builds 2,000 such ten-year paths. At each month it sorts them and shows two bands: the middle 50% of paths (from the 25th to the 75th percentile) and the middle 90% (from the 5th to the 95th), with the median, the middle path, as a line. It also counts what share of paths are below the starting value after 1, 5 and 10 years: the chance of a loss.",
+        "The result is not a forecast. It assumes the future will look like a reshuffled version of the recent past. If the last three years were unusually strong, the paths will be too optimistic, and they can't include a kind of crash that wasn't in the history.",
+      ],
+    },
+    example: {
+      setup: "Take a $10,000 portfolio and build two short paths of three months each. Each month is one block drawn at random from the portfolio's history, and each block's 21 sessions compound to one monthly return.",
+      steps: [
+        "Path 1 draws blocks that returned +2%, −5% and +3%. It grows by 1.02 × 0.95 × 1.03 ≈ 0.998, ending at about $9,981: a small loss.",
+        "Path 2 draws blocks that returned +3%, +2% and +2%. It grows by 1.03 × 1.02 × 1.02 ≈ 1.072, ending at about $10,716.",
+        "Repeat until there are 2,000 paths, then sort their end values from lowest to highest.",
+        "The middle 50% band runs from the 500th to the 1,500th path, and the 90% band from the 100th to the 1,900th.",
+        "If 260 of the 2,000 paths end below $10,000, the chance of a loss over that horizon is 260 ÷ 2,000 = 13%.",
+      ],
+      result: "The same history, reshuffled, gives very different endings: the two paths end over $700 apart after only three months. Over ten years the bands spread far wider, which is the point: the simulation shows a range of plausible outcomes rather than one number.",
+    },
+    reading: [
+      { label: "The median line", meaning: "Half the paths ended above it and half below. It's a middle outcome, not the expected one, and not a promise." },
+      { label: "The 50% band", meaning: "Where the middle half of paths land. Think of it as a fairly ordinary range of luck, good or bad." },
+      { label: "The 90% band", meaning: "Where nine in ten paths land. The bottom edge is a bad but not extreme outcome; real life can still fall below it." },
+      { label: "Chance of a loss", meaning: "The share of paths below the starting value. It usually falls as the horizon lengthens, for a portfolio that rose in the past, because good and bad stretches have more time to even out." },
+    ],
+    realWorld: [
+      "Financial planners use Monte Carlo tools to judge retirement plans, often reporting a \"probability of success\": the share of paths in which the money lasts. Pension funds use the same idea to see how likely they are to meet what they owe.",
+      "Different tools draw returns in different ways. Some assume a bell curve with a chosen average and volatility; others, like MarketLab's, resample real history. Resampling keeps the fat tails of real returns, but it can only repeat the kinds of days that already happened.",
+      "Results are very sensitive to the inputs. A model fed a strong decade will show rosy bands, and one fed a decade with a crash will look grim. Professionals usually run several sets of assumptions rather than trusting one.",
+    ],
+    mistakes: [
+      "Treating the median as a forecast. It's the middle of a set of reshuffled past returns, not a prediction of what will happen.",
+      "Reading the bottom of the 90% band as a worst case. One path in 20 ends below it, and the future can contain falls worse than any in the history used.",
+      "Forgetting that recent history drives it. A portfolio of stocks that soared lately will show high projected returns, which rarely repeat that neatly.",
+      "Changing holdings until the projection looks good. That's [[overfitting]] the past, applied to a projection instead of a backtest.",
+    ],
+    inMarketLab: [
+      { label: "Portfolio projection", href: "/portfolio", text: "Under Risk analysis, open the Projection tab to see 2,000 possible ten-year paths for your portfolio, the 50% and 90% bands, the median after 1, 5 and 10 years, and the chance of a loss at each." },
+      { label: "Value at Risk", href: "/learn/value-at-risk", text: "Read about Value at Risk for the one-day view of the same question: how much a bad day can cost." },
+    ],
+    related: ["volatility", "valueAtRisk", "compounding", "maxDrawdown"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does a Monte Carlo simulation of a portfolio produce?",
+        choices: [
+          "One exact forecast of its value",
+          "The best-performing stock to buy",
+          "Thousands of possible future paths, showing a range of outcomes",
+          "The portfolio's past return",
+        ],
+        answer: 2,
+        explanation: "It builds many random paths from assumed or past returns, and reports the spread: a middle path, bands, and how often money is lost.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Out of 2,000 simulated paths, 300 end below the starting value after 5 years. What's the chance of a loss?",
+        choices: ["3%", "6.7%", "30%", "15%"],
+        answer: 3,
+        explanation: "300 ÷ 2,000 = 0.15, so 15% of paths lost money over 5 years.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why does MarketLab draw month-long blocks of past returns, rather than single days?",
+        choices: [
+          "To keep calm and stormy stretches together, as they come in real markets",
+          "To make the simulation run faster",
+          "Because daily returns aren't stored",
+          "To guarantee the median is positive",
+        ],
+        answer: 0,
+        explanation: "Bad days tend to cluster. Drawing whole blocks keeps that pattern, so the paths include realistic rough patches instead of scattering bad days evenly.",
+      },
+      {
+        kind: "Real world",
+        prompt: "A retirement planner's tool says your plan has an 85% probability of success. What's the most sensible reading?",
+        choices: [
+          "You're guaranteed to have enough money",
+          "In 85% of the simulated paths the money lasted, under the tool's assumptions",
+          "Your investments will return 85%",
+          "There's a 15% chance the tool is wrong",
+        ],
+        answer: 1,
+        explanation: "The figure is the share of simulated paths that worked out. It depends on the assumptions fed in, and real markets can differ from all of them.",
       },
     ],
   },

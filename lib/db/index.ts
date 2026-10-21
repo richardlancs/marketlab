@@ -10,6 +10,7 @@ import { createBacktestRepository } from "./backtests";
 import { createGuestRepository } from "./guests";
 import { createLearningRepository } from "./learning";
 import { createLeaderboardRepository } from "./leaderboard";
+import { createPriceRepository } from "./prices";
 import * as schema from "./schema";
 
 /**
@@ -31,3 +32,4 @@ export const backtests = createBacktestRepository(db);
 export const leaderboard = createLeaderboardRepository(db);
 export const learning = createLearningRepository(db);
 export const guests = createGuestRepository(db);
+export const prices = createPriceRepository(db);

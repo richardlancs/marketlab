@@ -6,6 +6,7 @@ The details behind each feature. For setup, see the [README](../README.md).
 - [Orders, dividends and alerts](#orders-dividends-and-alerts)
 - [Accounts and guests](#accounts-and-guests)
 - [Lessons and progress](#lessons-and-progress)
+- [Research tools](#research-tools)
 - [Backtests](#backtests)
 - [The daily job](#the-daily-job)
 - [Email verification](#email-verification)
@@ -19,6 +20,14 @@ Prices come from one of two sources.
 - It moves forward one trading day at a time, following the real calendar.
 - Each stock and index starts from its real price and market cap around Oct 16, 2026, and pays dividends at roughly its real yield (`lib/market/anchors.ts`).
 - Only that starting point is real. The past before it and every move after it are simulated.
+- Stocks move together, like real ones (`lib/market/factors.ts`). Each day's move is:
+  - the market's move times the stock's beta (typical for its sector: utilities ≈ 0.5, semiconductors ≈ 1.5), plus
+  - its sector's own move, plus
+  - company-specific noise.
+- The market follows the S&P 500's real path roughly, through real turning points such as the 2022 bear market and the April 2025 sell-off.
+  - Volatility clusters (calm and stormy stretches), and big moves are more common than a bell curve suggests.
+  - The Nasdaq and the Dow are built from the same factors.
+- So beta, correlation, diversification and stress tests behave as they would with real data.
 
 **Tiingo (real end-of-day prices)**
 - Used when `TIINGO_API_KEY` is set.
@@ -65,7 +74,14 @@ Prices are end-of-day, so everything waiting for a price is checked at the close
 - **Stop orders** fill once a close reaches your level. They fill *at that close*, which can be much worse after a jump.
 - **Expiry:** an order lasts up to 90 days.
 - **Dividends and splits** apply on the ex-date to the shares you held at the previous close. A fractional share left by a split is paid in cash.
-- **Alerts** trigger on the first close past their level.
+- **Price alerts** trigger on the first close past their level.
+- **Indicator alerts** (`lib/alerts.ts`) trigger on the first close where their condition becomes true:
+  - RSI(14) crosses a level;
+  - the close crosses its N-day average;
+  - the day's move is at least X%;
+  - a new 52-week high or low.
+
+  They use split-adjusted closes, so a split never looks like a crash.
 
 One function, `lib/processing.ts`, catches an account up with the market. It runs in three places: the daily job, opening the site, and trading. It's safe to run twice: nothing is paid or filled twice.
 
@@ -100,9 +116,59 @@ Every account lives in the database (`lib/db/`).
 - Where: with the account when signed in; with the guest otherwise. It merges on sign-in.
 - How it's scored: `lib/learn-actions.ts` receives only the chosen answer and marks it on the server, so a request can't claim a pass.
 
+## Research tools
+
+These are calculated by the Python analytics service ([its README](../services/analytics/README.md)) from a price store in the database. The pages read the stored results.
+
+**Price store and nightly analytics**
+- The daily job copies every catalog stock's and index's daily bars, with market cap, P/E and dividend yield, into `daily_bar` and `price_series` (`lib/db/prices.ts`). Unchanged series are skipped.
+- It then has the service recalculate whatever changed (`lib/analytics/server.ts`).
+- A page that finds a result missing, or behind the latest close, calculates it on the spot instead of waiting for the job.
+
+**Stock pages: Risk and Technicals cards**
+- **Risk:**
+  - volatility (1 and 3 years) and a rolling-volatility chart;
+  - beta and correlation with the S&P 500;
+  - maximum drawdown and how long it took to recover;
+  - one-day 95% VaR and expected shortfall;
+  - best and worst days, and a histogram of daily returns;
+  - period returns.
+- **Technicals:**
+  - 50- and 200-day averages, and the 20-day EMA;
+  - RSI, MACD, Bollinger Bands and ATR;
+  - relative volume;
+  - states such as "Golden cross since …".
+
+**Screener (`/screener`)**
+- Every catalog stock with momentum 12-1, volatility, beta, RSI, distance from its high, yield, market cap and P/E (`lib/analytics/screener.ts`).
+- Filtering and sorting happen in the browser, so they're instant.
+- Presets: momentum leaders, low volatility, oversold in an uptrend, dividend payers, defensive.
+- "Backtest the top 5" opens buy-and-hold of the results, with a warning about look-ahead.
+
+**Portfolio: Risk analysis** (`app/api/portfolio/analysis`; holdings are read on the server)
+- **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation heatmap and sector exposure.
+- **Stress tests:** the market's worst falls in the data, replayed on today's weights, plus beta-scaled hypothetical shocks.
+- **Projection:** a 10-year Monte Carlo of 2,000 paths from month-long blocks of the portfolio's own daily returns.
+- **Optimise:** least-risk, best-Sharpe and risk-parity weightings of the same stocks, and the efficient frontier. These come from SciPy, long-only, with shrunk estimates.
+
 ## Backtests
 
-**Strategies:** buy and hold, moving-average crossover, dollar-cost averaging, rebalancing, and custom rules. Each run uses up to five stocks, with trading costs and a benchmark.
+**Strategies:**
+- buy and hold, moving-average crossover, dollar-cost averaging, rebalancing;
+- custom rules (price, averages, RSI, MACD, Bollinger Bands);
+- momentum rotation (hold the top N of your stocks by trailing return, optionally only if positive);
+- risk parity (weights by inverse volatility).
+
+Each run uses up to five stocks, with trading costs and a benchmark.
+
+**More measures** (`lib/backtest/analysis.ts`) under every result:
+- **Risk-adjusted:** Sortino and Calmar.
+- **Against the benchmark:** beta, alpha, correlation, tracking error and information ratio.
+- **Trades:** round trips, win rate, average win and loss, holding period, turnover, and costs paid (commission plus slippage).
+
+**Overfitting checks**
+- **Sweeps:** a sweep reports the deflated Sharpe ratio of its best cell (`lib/backtest/overfitting.ts`): how likely it is to be real, given how many settings were tried.
+- **Walk-forward test:** a crossover sweep over both averages offers one. It picks the best pair on each past window, tests it on the next unseen one, and compares the result with fixed settings and with buy and hold.
 
 **How a run works.** The browser sends only the settings. The server (`lib/backtest/server.ts`):
 1. checks them and the per-visitor rate limit;
@@ -116,7 +182,7 @@ Results are cached by the settings, the dataset's checksum and the engine's vers
 - `python`: [`services/analytics`](../services/analytics/README.md).
 
 With `python`:
-- buy-and-hold and crossover runs go to Python; everything else stays on TypeScript;
+- every strategy runs on Python; parameter sweeps stay on TypeScript;
 - every result names its engine and version;
 - a Python failure shows an error and never falls back to TypeScript.
 
@@ -146,13 +212,14 @@ A missing day is skipped for every stock, never filled in. The Python README has
 
 **Settings versions:** settings carry a `version`. Older settings are upgraded when read; newer ones are refused rather than misread.
 
-**Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
+**Python engine 1.2.0** adds the strategies above (all bit-identical with TypeScript on the parity fixtures). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
 
 ## The daily job
 
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the New York close. It:
 - loads fresh market data;
 - catches up every account, in batches of about 50 seconds;
+- with the time left, stores the latest prices and recalculates stored analytics (see [Research tools](#research-tools));
 - deletes guests unused for 180 days, old rate-limit counters, and snapshots no saved run uses.
 
 Only requests carrying `CRON_SECRET` are accepted.

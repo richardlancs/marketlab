@@ -75,4 +75,50 @@ describe("strategy worked examples", () => {
     expect(text).toContain(`= ${100 * 0.05} settings`);
     expect(text).toContain(`≈ ${((1 - 0.95 ** 100) * 100).toFixed(1)}%`);
   });
+
+  it("momentum rotation: ranking, the top 2 and the absolute rule", () => {
+    const text = exampleText(STRATEGIES_LESSONS.momentum);
+    const pct = (x: number) => `${x > 0 ? "+" : "−"}${Math.abs(Math.round(x * 1000) / 10)}%`;
+    const prices = { A: [120, 100], B: [45, 50], C: [66, 60], D: [82, 80] };
+    const scores = Object.entries(prices).map(([s, [now, then]]) => ({ s, r: now / then - 1 }));
+    for (const { r } of scores) expect(text).toContain(pct(r));
+    const ranked = [...scores].sort((a, b) => b.r - a.r).map((x) => x.s);
+    expect(ranked).toEqual(["A", "C", "D", "B"]);
+    expect(text).toContain("Ranked: A (+20%), C (+10%), D (+2.5%), B (−10%)");
+    expect(6 * 21).toBe(126);
+    expect(text).toContain("126 sessions");
+    expect(text).toContain(`= ${money(10_000 / 2)}`);
+    const later = { A: -0.04, B: -0.12, C: 0.03, D: -0.01 };
+    const top = Object.entries(later).sort((a, b) => b[1] - a[1]).slice(0, 2);
+    expect(top.map(([s]) => s)).toEqual(["C", "D"]);
+    expect(top.filter(([, r]) => r > 0).map(([s]) => s)).toEqual(["C"]);
+    // Quiz: 3 months of 21 sessions, and 12-1 momentum from $40 to $50.
+    expect(3 * 21).toBe(63);
+    expect(50 / 40 - 1).toBe(0.25);
+    expect(48 / 40 - 1).toBeCloseTo(0.2, 12);
+  });
+
+  it("risk parity: inverse-volatility weights and equal contributions", () => {
+    const text = exampleText(STRATEGIES_LESSONS.riskParity);
+    const weights = (vols: number[]) => {
+      const inverse = vols.map((v) => 1 / v);
+      const total = inverse.reduce((a, b) => a + b, 0);
+      return inverse.map((x) => x / total);
+    };
+    expect(0.5 * 15).toBe(7.5);
+    expect(text).toContain("= 7.5%");
+    const two = weights([0.15, 0.3]);
+    expect((1 / 0.15).toFixed(2)).toBe("6.67");
+    expect((1 / 0.3).toFixed(2)).toBe("3.33");
+    expect(1 / 0.15 + 1 / 0.3).toBeCloseTo(10, 10);
+    for (const w of two) expect(text).toContain(`≈ ${(w * 100).toFixed(1)}%`);
+    expect(two[0] * 0.15).toBeCloseTo(0.1, 12);
+    expect(two[1] * 0.3).toBeCloseTo(0.1, 12);
+    const three = weights([0.1, 0.2, 0.4]);
+    expect(1 / 0.1 + 1 / 0.2 + 1 / 0.4).toBeCloseTo(17.5, 10);
+    for (const w of three) expect(text).toContain(`≈ ${(w * 100).toFixed(1)}%`);
+    expect(three[0] / three[2]).toBeCloseTo(4, 10);
+    // Quiz: 20% and 40% volatility.
+    expect(weights([0.2, 0.4]).map((w) => Math.round(w * 100))).toEqual([67, 33]);
+  });
 });

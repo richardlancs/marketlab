@@ -73,9 +73,9 @@ def test_saves_its_own_result_with_the_snapshot(store):
     response = client.post("/v1/saved-runs", json=save_body(), headers=AUTH)
     assert response.status_code == 200, response.text
     [row] = store.query("SELECT * FROM backtest_run")
-    assert (row["user_id"], row["engine"], row["engine_version"], row["data_source"], row["simulated"]) == ("owner-1", "python", "1.1.0", "mock", 1)
+    assert (row["user_id"], row["engine"], row["engine_version"], row["data_source"], row["simulated"]) == ("owner-1", "python", "1.2.0", "mock", 1)
     result = json.loads(row["result"])
-    assert result["provenance"]["engine"] == {"name": "python", "version": "1.1.0"}
+    assert result["provenance"]["engine"] == {"name": "python", "version": "1.2.0"}
     assert len(result["outcome"]["run"]["equity"]) == 60
     assert json.loads(row["summary"])["finalValue"] == result["outcome"]["run"]["metrics"]["finalValue"]
     [snap] = store.query("SELECT * FROM price_snapshot")

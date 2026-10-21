@@ -77,11 +77,11 @@ describe("choosing an engine", () => {
     expect(configuredEngine()).toBe("typescript");
   });
 
-  it("sends only the strategies Python implements to Python", () => {
+  it("sends every strategy to Python when it's selected", () => {
     expect(engineFor(config(), "python")).toBe("python");
     expect(engineFor(config({ strategy: { kind: "buy-and-hold" } }), "python")).toBe("python");
-    expect(engineFor(config({ strategy: { kind: "rebalancing", frequency: "monthly" } }), "python")).toBe("typescript");
-    expect(engineFor(config({ strategy: { kind: "dollar-cost-averaging", installments: 6 } }), "python")).toBe("typescript");
+    expect(engineFor(config({ strategy: { kind: "rebalancing", frequency: "monthly" } }), "python")).toBe("python");
+    expect(engineFor(config({ strategy: { kind: "dollar-cost-averaging", installments: 6 } }), "python")).toBe("python");
     expect(engineFor(config(), "typescript")).toBe("typescript");
   });
 

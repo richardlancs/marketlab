@@ -223,7 +223,7 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         text: "Opens a backtest that holds a third each in Apple, Coca-Cola and JPMorgan and resets the weights every three months, compared with buying and holding them.",
       },
     ],
-    related: ["diversification", "volatility", "buyAndHold", "tradingCosts"],
+    related: ["diversification", "riskParity", "buyAndHold", "tradingCosts"],
     quiz: [
       {
         kind: "Terminology",
@@ -428,6 +428,202 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         choices: ["They became stronger", "They often weakened noticeably", "They stayed exactly the same"],
         answer: 1,
         explanation: "Many published patterns weakened afterward: some were partly luck in the original data, and others faded as investors traded on them.",
+      },
+    ],
+  },
+
+  momentum: {
+    why: [
+      "Stocks that have risen strongly over the last several months have, on average, tended to keep doing a little better than the rest for a while afterward. This pattern, called momentum, is one of the most studied in finance, and it has shown up across many decades and many countries' markets.",
+      "A momentum rotation turns that pattern into a simple rule: keep switching into whatever has been rising most. It's also one of the most painful strategies to hold. It can lag badly when the market's leadership suddenly changes, and knowing why helps you judge a backtest that looks too good.",
+    ],
+    how: {
+      paragraphs: [
+        "You choose a list of stocks and how many to hold, N. At the start of each month, measure each stock's trailing return over a lookback of 3, 6 or 12 months. MarketLab counts a month as 21 trading days, so a 6-month lookback compares today's close with the close 126 sessions ago.",
+        "Rank the stocks by that return and hold the top N, putting 1/N of the money in each. Everything else is sold. Next month, rank again: a stock that drops out of the top N is sold, and the new leader is bought. The weights you enter for the stocks are ignored.",
+        "An optional rule, \"only hold stocks that rose\", adds absolute momentum to the relative ranking; together they're called dual momentum. A stock in the top N is skipped if its own trailing return is zero or below, and its share of the money waits in cash. When everything is falling, the strategy is fully in cash, which can soften long bear markets, at the cost of missing sharp rebounds.",
+        "Researchers often use 12-1 momentum instead: the return from 12 months ago to 1 month ago, skipping the latest month, because the very latest month has tended to partly reverse. MarketLab's Screener uses 12-1 momentum for its Momentum leaders preset; the backtest strategy uses the plain trailing return.",
+      ],
+      formula: {
+        expression: "Score = close today ÷ close (21 × months) sessions ago − 1; hold the top N, 1/N each",
+        reading: "Rank by recent return, and own an equal slice of each of the leaders.",
+      },
+    },
+    example: {
+      setup: "You run a 6-month momentum rotation on four stocks, holding the top 2, with $10,000 and \"only hold stocks that rose\" turned on. Today's closes, and the closes 126 sessions ago, are: A $120 and $100, B $45 and $50, C $66 and $60, D $82 and $80.",
+      steps: [
+        "Trailing returns: A 120 ÷ 100 − 1 = +20%; B 45 ÷ 50 − 1 = −10%; C 66 ÷ 60 − 1 = +10%; D 82 ÷ 80 − 1 = +2.5%.",
+        "Ranked: A (+20%), C (+10%), D (+2.5%), B (−10%). The top 2 are A and C, and both rose.",
+        "Each gets 1/2 of the money: $10,000 ÷ 2 = $5,000 in A and $5,000 in C.",
+        "A month later, after a sell-off, the 6-month returns are A −4%, B −12%, C +3% and D −1%. The top 2 are now C and D.",
+        "D's own return is below zero, so with the rule on it's skipped. C gets its 1/2 share and the other 1/2 stays in cash. A is sold.",
+      ],
+      result: "The strategy rotated out of A as it fell, and moved half the money to cash when only one stock was still rising. Turned off, the rule would have bought D anyway, putting all the money back in stocks during the sell-off.",
+    },
+    reading: [
+      { label: "Short lookback (3 months)", meaning: "Reacts quickly to new leaders, but trades more and is fooled by short bursts." },
+      { label: "Long lookback (12 months)", meaning: "Steadier rankings and fewer trades, but slower to leave a stock after its run ends." },
+      { label: "Small N (1 or 2)", meaning: "Concentrated: the result hangs on a few stocks, so it can soar or slump far more than the group." },
+      { label: "Lots of time in cash", meaning: "With \"only hold stocks that rose\" on, a long spell in cash means the chosen stocks were mostly falling. Check [[exposure|time invested]] next to the return." },
+    ],
+    realWorld: [
+      "Momentum was documented in a widely cited 1993 study by Narasimhan Jegadeesh and Sheridan Titman, and it has since been found in stocks, bonds, currencies and commodities. Many funds now offer momentum strategies, often built on 12-1 momentum and rebalanced monthly or quarterly.",
+      "Its big weakness is the momentum crash. When a long fall suddenly reverses, the beaten-down stocks rebound hardest while the strategy still holds last year's safe leaders. In 2009, momentum strategies in US stocks lost heavily in a few months as the market rebounded.",
+      "Dual momentum, popularized by Gary Antonacci, uses the absolute rule as a crude bear-market switch. Like other timing rules, it has sometimes cut drawdowns and sometimes just missed rebounds, depending on the period tested.",
+    ],
+    mistakes: [
+      "Testing on today's winners. Choosing stocks you already know soared, then showing momentum picked them, is hindsight, not evidence.",
+      "Ignoring [[tradingCosts|trading costs]]. Monthly rotation can trade a lot, and each switch costs a little.",
+      "Trying every lookback and N until one wins. That's [[overfitting]]; the gaps between 3, 6 and 12 months should be modest if the idea is sound.",
+      "Expecting it to work every year. Momentum has had long dry spells and sudden crashes even when it worked over decades.",
+    ],
+    inMarketLab: [
+      {
+        label: "Backtest: momentum rotation",
+        href: backtestLink({ kind: "momentum-rotation", top: 2, lookbackMonths: 6, absolute: true }, ["AAPL", "MSFT", "NVDA", "XOM"]),
+        text: "Opens a 6-month rotation among Apple, Microsoft, NVIDIA and Exxon Mobil, holding the top 2 that rose, compared with holding all four equally.",
+      },
+      { label: "Screener: Momentum leaders", href: "/screener?preset=momentum", text: "The Momentum leaders preset lists the top fifth of stocks by 12-1 momentum that are still above their 200-day average." },
+    ],
+    related: ["maCrossover", "exposure", "overfitting", "riskParity"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does a momentum rotation hold each month?",
+        choices: [
+          "The stocks that fell the most, expecting a rebound",
+          "The top N of your chosen stocks by trailing return",
+          "Every stock, in equal amounts",
+          "The cheapest stocks by P/E ratio",
+        ],
+        answer: 1,
+        explanation: "It ranks the chosen stocks by their return over the lookback and holds the leaders, 1/N of the money each, re-ranking every month.",
+      },
+      {
+        kind: "Using it",
+        prompt: "With a 3-month lookback, how many trading sessions back does MarketLab compare today's close with?",
+        choices: ["63", "90", "21", "252"],
+        answer: 0,
+        explanation: "MarketLab counts 21 trading days a month, so 3 months is 3 × 21 = 63 sessions.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A stock closed at $40 twelve months ago, $50 one month ago and $48 today. What is its 12-1 momentum?",
+        choices: ["+20%", "−4%", "+25%", "+30%"],
+        answer: 2,
+        explanation: "12-1 momentum skips the latest month: $50 ÷ $40 − 1 = +25%. The plain 12-month return would be $48 ÷ $40 − 1 = +20%.",
+      },
+      {
+        kind: "Real world",
+        prompt: "When have momentum strategies tended to suffer their worst losses?",
+        choices: [
+          "In long, steady bull markets",
+          "When interest rates are stable",
+          "When companies pay large dividends",
+          "When a long fall suddenly reverses into a sharp rebound",
+        ],
+        answer: 3,
+        explanation: "In a sharp rebound, the stocks that fell most bounce hardest while the strategy still holds the previous leaders. 2009 is the classic example.",
+      },
+    ],
+  },
+
+  riskParity: {
+    why: [
+      "Putting equal money into each holding sounds balanced, but the risk isn't. If one stock swings three times as much as another, it drives most of the portfolio's ups and downs, even at the same weight. Equal dollars can mean very unequal risk.",
+      "Risk parity sets the weights so that each holding adds about the same amount of risk instead. It's one of the main alternatives to weighting by money or by size, and some of the largest funds in the world use versions of it to spread risk across stocks, bonds and other assets.",
+    ],
+    how: {
+      paragraphs: [
+        "Work out each holding's [[volatility]], then weight it by one divided by that volatility, scaled so the weights add up to 100%. A stock half as volatile as another gets twice the weight. Since each holding's weight times its volatility comes out the same, each contributes about the same amount of swing.",
+        "MarketLab's Risk parity backtest uses the standard deviation of each stock's last 63 daily returns, about three months, and resets the weights at the start of every month or quarter, as you choose. Between resets, the weights drift with prices, as in [[rebalancing]]. It waits in cash until there are 63 returns to measure.",
+        "This simple version ignores [[correlation]]: it treats each holding's risk on its own. Two closely related stocks each get their full share, so together they add more risk than an unrelated one. Full risk parity, used by the Optimise tab in the portfolio's Risk analysis, accounts for how holdings move together and sets weights so their risk contributions come out equal, within its cap on any one stock.",
+        "Because risk parity leans toward calmer holdings, it usually swings less than equal weights. It doesn't aim for the highest return: calm stocks are often slower growers, so in a strong rally led by volatile stocks it tends to lag.",
+      ],
+      formula: {
+        expression: "weight of a holding = (1 ÷ its volatility) ÷ (sum of 1 ÷ volatility over all holdings)",
+        reading: "The calmer a holding, the bigger its weight, so each adds about the same risk.",
+      },
+    },
+    example: {
+      setup: "You hold two stocks: a steady one with a volatility of 15% and a volatile one with 30%. Compare equal weights with risk parity, then add a third stock.",
+      steps: [
+        "Equal weights: 50% × 15% = 7.5% of swing from the steady stock, and 50% × 30% = 15% from the volatile one. The volatile stock contributes twice as much.",
+        "Risk parity: 1 ÷ 0.15 ≈ 6.67 and 1 ÷ 0.30 ≈ 3.33, which add up to 10. The weights are 6.67 ÷ 10 ≈ 66.7% and 3.33 ÷ 10 ≈ 33.3%.",
+        "Check the contributions: 66.7% × 15% = 10% and 33.3% × 30% = 10%. They're equal.",
+        "With three stocks at 10%, 20% and 40% volatility: 1 ÷ volatility gives 10, 5 and 2.5, which add up to 17.5. The weights are 10 ÷ 17.5 ≈ 57.1%, 5 ÷ 17.5 ≈ 28.6% and 2.5 ÷ 17.5 ≈ 14.3%.",
+      ],
+      result: "Risk parity puts about two thirds in the steady stock, so each holding adds the same 10% of swing. With three stocks, the calmest gets four times the weight of the wildest, because it's a quarter as volatile.",
+    },
+    reading: [
+      { label: "One holding with a very large weight", meaning: "It's much calmer than the others. Check that it isn't just a stock that happened to be quiet for three months." },
+      { label: "Weights close to equal", meaning: "The holdings have had similar volatility, so risk parity and equal weights give almost the same portfolio." },
+      { label: "Lower volatility than equal weights", meaning: "The usual result: leaning toward calm holdings smooths the ride." },
+      { label: "Lower return than equal weights", meaning: "Common when the volatile holdings led the market. Balanced risk is the aim, not the top return." },
+    ],
+    realWorld: [
+      "Bridgewater's All Weather fund, launched in 1996, popularized the idea across asset classes: rather than the classic 60% stocks and 40% bonds, where stocks drive most of the risk, it balances risk between stocks, bonds and commodities, often using borrowing to lift the calmer bond side.",
+      "Risk parity funds had a hard year in 2022, when stocks and bonds fell together. Balancing risk only spreads it if the holdings don't all fall at once, which is why correlation matters.",
+      "Many equity funds use the simpler inverse-volatility weighting described here, sometimes as part of low-volatility strategies, because it needs only each holding's own volatility, which is far easier to estimate than a full set of correlations.",
+    ],
+    mistakes: [
+      "Thinking equal risk means low risk. A risk parity portfolio of five volatile tech stocks is still very volatile; it just spreads that risk evenly.",
+      "Forgetting correlation. The simple inverse-volatility version can still concentrate risk in a group of related holdings.",
+      "Trusting three months of volatility too much. A stock that was calm lately can turn volatile, and the weights only catch up at the next reset.",
+      "Expecting it to beat the market. It's built to balance risk, and it often trails in strong rallies led by the most volatile stocks.",
+    ],
+    inMarketLab: [
+      {
+        label: "Backtest: risk parity",
+        href: backtestLink({ kind: "risk-parity", frequency: "monthly" }, ["NVDA", "AAPL", "KO", "JNJ"]),
+        text: "Opens a monthly risk parity backtest of NVIDIA, Apple, Coca-Cola and Johnson & Johnson, compared with holding them in equal amounts.",
+      },
+      { label: "Portfolio Optimise tab", href: "/portfolio", text: "Under Risk analysis, the Optimise tab compares your weights with Least risk, Best Sharpe and Risk parity weightings of the same stocks, and plots each on a chart of risk against return." },
+    ],
+    related: ["volatility", "rebalancing", "correlation", "diversification"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does risk parity try to make equal?",
+        choices: [
+          "The money in each holding",
+          "Each holding's return",
+          "The amount of risk each holding adds",
+          "The number of shares of each holding",
+        ],
+        answer: 2,
+        explanation: "It sets weights so each holding contributes about the same risk, which means calmer holdings get more money.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Two stocks have volatilities of 20% and 40%. What are their inverse-volatility weights?",
+        choices: ["About 67% and 33%", "50% and 50%", "About 33% and 67%", "80% and 20%"],
+        answer: 0,
+        explanation: "1 ÷ 0.20 = 5 and 1 ÷ 0.40 = 2.5, which add up to 7.5. So 5 ÷ 7.5 ≈ 67% and 2.5 ÷ 7.5 ≈ 33%: the calmer stock gets twice the weight.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why might a simple inverse-volatility portfolio still be dominated by one kind of risk?",
+        choices: [
+          "Because it puts all the money in one stock",
+          "Because it ignores how closely the holdings move together",
+          "Because it never rebalances",
+          "Because it only works with bonds",
+        ],
+        answer: 1,
+        explanation: "It weights each holding on its own volatility. Several closely related holdings each get a full share, so together they add more than their share of risk.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why was 2022 a hard year for many risk parity funds?",
+        choices: [
+          "Stocks rose too fast",
+          "Volatility was zero",
+          "Fees went up",
+          "Stocks and bonds fell at the same time",
+        ],
+        answer: 3,
+        explanation: "Risk parity spreads risk between assets in the hope they don't all fall together. In 2022, rising interest rates pushed both stocks and bonds down.",
       },
     ],
   },

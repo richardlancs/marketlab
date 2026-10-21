@@ -58,4 +58,50 @@ describe("the indicators lessons' worked examples", () => {
     // Quiz: average gain 0.60, average loss 0.20.
     expect(100 - 100 / (1 + 0.6 / 0.2)).toBeCloseTo(75, 10);
   });
+
+  it("MACD: a line of 1.50 crossing above a signal of 1.26", () => {
+    const lesson = INDICATORS_LESSONS.macd as Lesson;
+    const line = 105.4 - 103.9;
+    expect(line.toFixed(2)).toBe("1.50");
+    const k = 2 / (9 + 1);
+    expect(k).toBe(0.2);
+    const signal = k * 1.5 + (1 - k) * 1.2;
+    expect(signal.toFixed(2)).toBe("1.26");
+    expect((k * 1.5).toFixed(2)).toBe("0.30");
+    expect(((1 - k) * 1.2).toFixed(2)).toBe("0.96");
+    expect((1.5 - signal).toFixed(2)).toBe("0.24");
+    expect(1.1 <= 1.2 && 1.5 > signal).toBe(true);
+    for (const s of ["$105.40", "$103.90", "1.50", "0.30", "0.96", "1.26", "0.24"]) expect(text(lesson)).toContain(s);
+    // MarketLab's MACD is the 12-day EMA minus the 26-day EMA; the line needs 26 closes and the signal 34.
+    const closes = Array.from({ length: 60 }, (_, i) => 100 + 10 * Math.sin(i / 5) + i / 4);
+    const macd = indicatorSeries({ kind: "macd" }, closes);
+    const ema12 = indicatorSeries({ kind: "ema", days: 12 }, closes);
+    const ema26 = indicatorSeries({ kind: "ema", days: 26 }, closes);
+    expect(macd.findIndex((v) => !Number.isNaN(v))).toBe(25);
+    expect(last(macd)).toBeCloseTo(last(ema12) - last(ema26), 10);
+    expect(indicatorSeries({ kind: "macd-signal" }, closes).findIndex((v) => !Number.isNaN(v))).toBe(33);
+    // Quiz: histogram 0.80 − 1.00.
+    expect(0.8 - 1).toBeCloseTo(-0.2, 10);
+  });
+
+  it("Bollinger Bands: $96 to $104 around $100, with a %B of 0.875", () => {
+    const lesson = INDICATORS_LESSONS.bollingerBands as Lesson;
+    const closes = [97, 101, 99, 100, 103];
+    const mean = closes.reduce((a, b) => a + b, 0) / closes.length;
+    expect(mean).toBe(100);
+    const squares = closes.reduce((a, c) => a + (c - mean) ** 2, 0);
+    expect(squares).toBe(20);
+    const sd = Math.sqrt(squares / closes.length);
+    expect(sd).toBe(2);
+    const upper = last(indicatorSeries({ kind: "bollinger-upper", days: 5 }, closes));
+    const lower = last(indicatorSeries({ kind: "bollinger-lower", days: 5 }, closes));
+    expect(upper).toBeCloseTo(104, 10);
+    expect(lower).toBeCloseTo(96, 10);
+    const percentB = (103 - lower) / (upper - lower);
+    expect(percentB).toBeCloseTo(0.875, 10);
+    for (const s of ["500", "$100", "20", "$2", "$104", "$96", "7 ÷ 8", "0.875"]) expect(text(lesson)).toContain(s);
+    // Quiz: %B from $90–$110 at $95, and bands of $50 ± 2 × $1.50.
+    expect((95 - 90) / (110 - 90)).toBe(0.25);
+    expect([50 - 2 * 1.5, 50 + 2 * 1.5]).toEqual([47, 53]);
+  });
 });

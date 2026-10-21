@@ -24,7 +24,7 @@ export interface EngineInfo {
 export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.1.0" };
 
 /** The strategies the Python service runs. */
-const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new Set(["buy-and-hold", "moving-average"]);
+const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new Set(["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity"]);
 
 /**
  * The simulation rules and data policy every result was calculated under,

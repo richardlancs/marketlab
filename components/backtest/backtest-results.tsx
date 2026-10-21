@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
+import { analyseRun } from "@/lib/backtest/analysis";
 import { describeRuleSet } from "@/lib/backtest/rules";
 import { ReturnHeatmap } from "./return-heatmap";
 import { Explain } from "@/components/ui/explain";
@@ -114,6 +115,8 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
         )}
       </div>
 
+      <MoreMeasures config={config} outcome={outcome} benchmarkLabel={other} />
+
       <ReturnHeatmap run={run} benchmark={benchmark} strategyName={strategyName} benchmarkName={other} />
 
       {/* The chart's numbers as a table, for screen readers and for reading exact values. */}
@@ -197,5 +200,61 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
         )}
       </div>
     </div>
+  );
+}
+
+/** Risk-adjusted returns, the strategy against its benchmark, and its trades (lib/backtest/analysis.ts). */
+function MoreMeasures({ config, outcome, benchmarkLabel }: { config: BacktestConfig; outcome: BacktestOutcome; benchmarkLabel: string }) {
+  const a = analyseRun(outcome.run, outcome.benchmark, config);
+  const ratio = (v: number | null) => (v === null ? "—" : v.toFixed(2));
+  const days = (v: number | null) => (v === null ? "—" : `${Math.round(v)} days`);
+  const groups: { title: string; items: [string, string, string?][] }[] = [
+    {
+      title: "Risk-adjusted",
+      items: [
+        ["Sortino ratio", ratio(a.sortino), "return per unit of downside"],
+        ["Calmar ratio", ratio(a.calmar), "annual return / max drawdown"],
+      ],
+    },
+    {
+      title: `Against ${benchmarkLabel.toLowerCase() === "buy and hold" ? "buying and holding" : benchmarkLabel}`,
+      items: [
+        ["Beta", ratio(a.beta)],
+        ["Alpha", a.alpha === null ? "—" : formatPercent(a.alpha), "a year, beyond what beta explains"],
+        ["Correlation", ratio(a.correlation)],
+        ["Tracking error", a.trackingError === null ? "—" : formatShare(a.trackingError), "how far it strays, a year"],
+        ["Information ratio", ratio(a.informationRatio), "extra return per unit of straying"],
+      ],
+    },
+    {
+      title: "Trades",
+      items: [
+        ["Round trips", String(a.roundTrips), "bought, then fully sold"],
+        ["Win rate", a.winRate === null ? "—" : formatShare(a.winRate)],
+        ["Average win / loss", a.averageGain === null && a.averageLoss === null ? "—" : `${a.averageGain === null ? "—" : formatCurrency(a.averageGain)} / ${a.averageLoss === null ? "—" : formatCurrency(a.averageLoss)}`],
+        ["Average holding", days(a.averageHoldingDays), "calendar days"],
+        ["Turnover", a.turnover === null ? "—" : `${a.turnover.toFixed(1)}× a year`, "traded value / average value"],
+        ["Costs paid", formatCurrency(a.commissions + a.slippage), `${formatCurrency(a.commissions)} commission, ${formatCurrency(a.slippage)} slippage`],
+      ],
+    },
+  ];
+  return (
+    <details className="group text-sm" open>
+      <summary className="cursor-pointer font-medium text-accent">More measures</summary>
+      <div className="mt-3 grid gap-6 sm:grid-cols-3">
+        {groups.map((g) => (
+          <dl key={g.title}>
+            <p className="text-xs font-semibold tracking-wide text-muted uppercase">{g.title}</p>
+            {g.items.map(([label, value, note]) => (
+              <div key={label} className="mt-2">
+                <dt className="text-xs text-muted">{label}</dt>
+                <dd className="font-medium tabular-nums">{value}</dd>
+                {note && <dd className="text-xs text-muted">{note}</dd>}
+              </div>
+            ))}
+          </dl>
+        ))}
+      </div>
+    </details>
   );
 }

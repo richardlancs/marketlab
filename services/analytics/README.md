@@ -1,6 +1,11 @@
 # MarketLab analytics (Python)
 
-A FastAPI service that calculates backtests with the same rules as MarketLab's TypeScript engine (`lib/backtest/engine.ts`). The Next.js server calls it when `BACKTEST_ENGINE=python`. It supports **buy and hold** and the **moving-average crossover**; everything else stays on TypeScript.
+A FastAPI service that does MarketLab's numerical work. Only the Next.js server calls it, with a shared token.
+
+- **Backtests:** every strategy, with the same rules as MarketLab's TypeScript engine (`lib/backtest/engine.ts`), when `BACKTEST_ENGINE=python`. That covers buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation and risk parity. Parameter sweeps stay on TypeScript.
+- **Walk-forward tests** of the crossover: choose settings on the past, test them on the next window.
+- **Stored analytics:** each stock's risk and technical profile, calculated nightly from the price store. These feed the stock pages and the Screener.
+- **Portfolio analysis:** risk, stress tests, a Monte Carlo projection and optimisation (SciPy).
 
 - The engine: pure functions on plain data, with no FastAPI involved, so it works in notebooks and tests. Each part is its own module:
   - `analytics/data.py`: validates prices and aligns them into trading sessions;
@@ -10,6 +15,13 @@ A FastAPI service that calculates backtests with the same rules as MarketLab's T
   - `analytics/accounting.py`: cash, shares and a ledger row per session;
   - `analytics/metrics.py`: returns, drawdown, volatility, Sharpe and exposure;
   - `analytics/engine.py`: runs them in order and is the public interface (`run_config`, `Config`, `Outcome`).
+- Analytics built on the price store:
+  - `analytics/store.py`: reads stored daily bars and writes `analytics_result` rows, with checksums and `ANALYTICS_VERSION`;
+  - `analytics/technicals.py`: standard indicators as of a close (SMA, EMA, RSI, MACD, Bollinger, ATR);
+  - `analytics/profiles.py`: a stock's risk and technical profile;
+  - `analytics/jobs.py`: recalculates stale profiles in time-boxed batches;
+  - `analytics/portfolio.py`: portfolio risk, stress tests, Monte Carlo and optimisation;
+  - `analytics/walkforward.py`: walk-forward testing.
 - `analytics/api.py`: the HTTP layer: Pydantic models, authentication and limits.
 - `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing Python-engine runs (see [Database access](#database-access)).
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
@@ -18,7 +30,8 @@ A FastAPI service that calculates backtests with the same rules as MarketLab's T
   - `test_timing.py`: the timing rule and no look-ahead, warm-up, missing and duplicate data, costs, and the ledger;
   - `test_api.py`: authentication, validation and limits;
   - `test_parity.py`: results compared with the TypeScript engine on fixed datasets;
-  - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client.
+  - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client;
+  - `test_analytics.py`: indicators, profiles, the stored-analytics job, portfolio analysis and walk-forward tests.
 
 ## Setup
 
@@ -45,7 +58,7 @@ npm run dev                    # Next.js, in another terminal
 curl http://127.0.0.1:8000/health
 ```
 
-Then run a buy-and-hold or moving-average backtest on `/backtest`. The line under the results says "Calculated by the Python engine 1.1.0".
+Then run a backtest on `/backtest`. The line under the results says "Calculated by the Python engine 1.2.0".
 
 ## Tests
 
@@ -60,7 +73,7 @@ Every `/v1` request needs `Authorization: Bearer <ANALYTICS_SERVICE_TOKEN>`. Err
 
 ### `GET /health`
 
-No token needed. Returns `{ "status": "ok", "engine": { "name": "python", "version": "1.1.0" } }`. Next.js reads the version, and includes it in each result's cache key.
+No token needed. Returns `{ "status": "ok", "engine": { "name": "python", "version": "1.2.0" } }`. Next.js reads the version, and includes it in each result's cache key.
 
 ### `POST /v1/backtests`
 
@@ -90,7 +103,7 @@ Response, with the same shapes as the TypeScript engine's `BacktestOutcome`:
 
 ```jsonc
 {
-  "engine": { "name": "python", "version": "1.1.0" },
+  "engine": { "name": "python", "version": "1.2.0" },
   "run":       { "equity": [{ "time": ..., "price": ... }], "trades": [{ "time", "symbol", "side", "shares", "price", "commission" }],
                  "metrics": { "finalValue", "totalReturn", "cagr", "maxDrawdown", "drawdownPeak", "drawdownTrough",
                               "volatility", "sharpe", "trades", "exposure" },
@@ -144,6 +157,52 @@ Reads that owner's saved run and its snapshot from the database, recalculates fr
 - 409 for a run saved before results were kept, or one calculated by the TypeScript engine (the Next.js server reproduces those itself);
 - 503 when the database is down.
 
+### `POST /v1/analytics/stock-profiles`
+
+**Body:** `{ source: "mock" | "tiingo", symbols?: string[], budgetMs?: number }`.
+
+It recalculates the stock profiles that are missing, or whose prices or `ANALYTICS_VERSION` changed, and stops when `budgetMs` (default 8,000) runs out.
+
+**Returns:** `{ computed, unchanged, missing, failed, remaining, ms }`. Call it again with `remaining` to continue.
+
+### `POST /v1/analytics/portfolio`
+
+**Body:** `{ source, holdings: [{ symbol, value, sector? }], cash }`, with up to 30 holdings.
+
+It analyses today's weights using stored prices: risk, each holding's share of the risk, correlations, VaR, stress tests, a Monte Carlo projection and optimised weightings. See `analytics/portfolio.py`. Nothing is saved.
+
+**Returns:** `{ analysis, inputChecksum, version }`.
+
+### `POST /v1/backtests/walk-forward`
+
+**Body:** `{ source, config, fast: { from, to, step }, slow: { from, to, step }, trainYears: 1–3, testMonths: 3 | 6 | 12 }`.
+
+For a moving-average `config`, it tests up to 100 (short, long) pairs. On each training window it picks the pair with the best Sharpe ratio, then runs it on the next test window. Results include each fold and the chained out-of-sample curve, next to the fixed settings and buy and hold.
+
+## Stored analytics
+
+**Price store**
+- The Next.js server copies each source's daily bars into `daily_bar`, one `price_series` row per symbol.
+- Each `price_series` row holds the series' SHA-256 checksum and its latest fundamentals.
+- An unchanged series is skipped and new days are appended. A whole series is rewritten when a dividend or split rescales its adjusted past.
+
+**Results**
+- This service reads that table and writes `analytics_result` rows: one per kind and subject, for example `stock-profile` / `AAPL`.
+- Each row records the checksum of the prices it used, `ANALYTICS_VERSION` and its last close. So a job skips anything unchanged, and a new analytics version recalculates everything once.
+
+**The daily job** (`lib/maintenance.ts`), after catching up accounts:
+1. syncs every catalog stock and index;
+2. calls `/v1/analytics/stock-profiles` in roughly 8-second calls until nothing remains.
+
+A page that finds a profile missing, or older than the latest close, does the same for that one stock on the spot. So pages work before the job has ever run, including locally.
+
+**Profile conventions** (`profiles.py`, `technicals.py`)
+- **Returns** are simple daily returns of adjusted closes, so dividends are included.
+- **Indicators** use closes through the latest one, the charting-site definitions. A backtest decision for day D uses `indicators.py` instead, which ends at D−1; strategies never import `technicals.py`.
+- **Beta and correlation** are measured against the S&P 500, on the days both have prices.
+- **VaR and expected shortfall** are one-day, 95%, historical, over the last year.
+- **Dividends** are recovered from the ratio between adjusted and traded closes.
+
 ## Database access
 
 The service uses MarketLab's own database, through the same `DATABASE_URL` and `DATABASE_AUTH_TOKEN` as the Next.js server:
@@ -151,8 +210,8 @@ The service uses MarketLab's own database, through the same `DATABASE_URL` and `
 - **Online (`libsql://…`):** Turso's HTTP API (`/v2/pipeline`) through `httpx`. That needs no native driver, so nothing has to compile on Vercel.
 
 What it reads and writes:
-- **It writes** Python-engine saved runs (`backtest_run`, with their result and provenance columns) and their snapshots (`price_snapshot`, stored once per checksum).
-- **It reads** a saved run and its snapshot to reproduce it.
+- **It writes** Python-engine saved runs (`backtest_run`, with their result and provenance columns), their snapshots (`price_snapshot`, stored once per checksum) and stored analytics (`analytics_result`).
+- **It reads** a saved run and its snapshot to reproduce it, and stored prices (`daily_bar`, `price_series`) for analytics. It never writes prices: the Next.js server does.
 - **The Next.js server still** lists and opens saved runs, and handles everything else: accounts, guests, lesson progress, and TypeScript-engine runs.
 
 Ownership:
@@ -250,13 +309,14 @@ To print this yourself, see [Using the engine directly](#using-the-engine-direct
 
 ## Parity with the TypeScript engine
 
-`tests/fixtures/parity.json` holds fixed inputs and the TypeScript engine's exact results, generated by `lib/backtest/parity.test.ts` with `UPDATE_PARITY_FIXTURES=1`. The 9 cases cover:
-- costs, and both benchmark kinds;
-- two stocks, and missing dates;
-- a date window, and a warm-up longer than the data;
-- a commission larger than the cash;
-- a sawtooth price that forces many trades;
-- a crossover that sells out and buys back in.
+`tests/fixtures/parity.json` holds fixed inputs and the TypeScript engine's exact results, generated by `lib/backtest/parity.test.ts` with `UPDATE_PARITY_FIXTURES=1`. The 21 cases cover:
+- **every strategy:** buy and hold, crossovers, dollar-cost averaging, monthly and quarterly rebalancing, momentum rotation (with and without the absolute filter), risk parity, and custom rules using RSI, EMA, moving-average crosses, MACD and Bollinger Bands, combined with "all" and "any";
+- **costs,** and both benchmark kinds;
+- **two and three stocks,** and missing dates;
+- **a date window,** and a warm-up longer than the data;
+- **a commission larger than the cash;**
+- **a sawtooth price** that forces many trades;
+- **a crossover that sells out and buys back in.**
 
 | Compared | Tolerance |
 |---|---|

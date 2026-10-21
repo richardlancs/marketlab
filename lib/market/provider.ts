@@ -11,6 +11,8 @@ export interface Series {
   /** Fundamentals, when the source has them. */
   marketCap: number | null;
   peRatio: number | null;
+  /** The indicated yearly dividend as a fraction of the price, when the source knows it (the mock market does). */
+  dividendYield?: number | null;
   /** Dividends and splits in the same period, oldest first. */
   actions: CorporateAction[];
   /** Prices every 5 minutes through the latest days (see intraday.ts), or empty if the source has none. */

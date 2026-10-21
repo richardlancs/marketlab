@@ -144,7 +144,7 @@ export const INDICATORS_LESSONS: Partial<Record<TermKey, Lesson>> = {
     ],
     realWorld: [
       "Short-term traders often use EMAs, such as the 9-, 12-, 20- or 26-day, because they respond quickly. Longer-term investors more often quote simple averages like the 200-day, where speed matters less.",
-      "MACD, one of the most popular indicators on charting sites, is built entirely from EMAs: the gap between a 12-day and a 26-day EMA, plus a 9-day EMA of that gap. Wilder's smoothing, used in the [[rsi|RSI]], is also a kind of exponential average.",
+      "[[macd|MACD]], one of the most popular indicators on charting sites, is built entirely from EMAs: the gap between a 12-day and a 26-day EMA, plus a 9-day EMA of that gap. Wilder's smoothing, used in the [[rsi|RSI]], is also a kind of exponential average.",
       "Faster isn't automatically better. A quicker signal catches turns earlier but also reacts to more noise, which means more trades, more costs and more whipsaws. Testing has not shown EMAs to be reliably more profitable than simple averages; which looks better depends on the stock and the period.",
     ],
     mistakes: [
@@ -157,7 +157,7 @@ export const INDICATORS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Custom rules", href: "/backtest", text: "Choose Custom rules and pick Exponential average in a condition, such as \"price crosses above 20-day EMA\", then compare it with the same rule using a simple average." },
       { label: "Moving average lesson", href: "/learn/moving-average", text: "Read the simple moving average lesson to see the lag that the EMA is designed to shorten." },
     ],
-    related: ["sma", "maCrossover", "rsi"],
+    related: ["sma", "maCrossover", "rsi", "macd"],
     quiz: [
       {
         kind: "Terminology",
@@ -249,7 +249,7 @@ export const INDICATORS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Backtest: RSI oversold bounce", href: backtestLink(preset("RSI oversold bounce"), ["AAPL"]), text: "Test a classic RSI rule on Apple: buy when RSI(14) is below 30, and sell when it's above 70." },
       { label: "Custom rules", href: "/backtest", text: "Choose Custom rules to combine RSI with a trend filter, like \"RSI(14) is below 30 and price is above 200-day average\", using up to 4 conditions." },
     ],
-    related: ["sma", "ema", "overfitting"],
+    related: ["sma", "ema", "macd", "overfitting"],
     quiz: [
       {
         kind: "Terminology",
@@ -288,6 +288,216 @@ export const INDICATORS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 3,
         explanation: "Overbought only means recent gains have outweighed losses. In strong trends the RSI can stay high for weeks, which is why selling at 70 often means selling early.",
+      },
+    ],
+  },
+
+  macd: {
+    why: [
+      "Two moving averages of different lengths tell slightly different stories. A short one follows the last few weeks; a long one follows the last few months. When the short one pulls ahead of the long one, recent prices are running faster than the longer trend, and when it falls back, that push is fading.",
+      "MACD turns that gap into a single line you can watch. Gerald Appel created it in the late 1970s, and it's now one of the most common indicators on charting sites, often shown in a panel under the price chart. It's popular because it combines trend and momentum in one picture, but it's built entirely from past prices, so it shares their lag.",
+    ],
+    how: {
+      paragraphs: [
+        "The MACD line is the 12-day [[ema|exponential average]] of the close minus the 26-day one. When the price has been rising, the faster 12-day average sits above the slower 26-day one and the line is positive. When the price has been falling, it's negative. The further from zero, the stronger the recent move compared with the longer trend.",
+        "The signal line is a 9-day exponential average of the MACD line itself: a smoothed, slower copy. The histogram is the gap between the two, MACD minus signal, usually drawn as bars. When the bars grow, the MACD line is pulling away from its signal; when they shrink toward zero, the two are converging, which is where the name comes from.",
+        "The most watched event is a crossover. When the MACD line crosses above its signal line, momentum is turning up, and many traders read it as a buy signal; crossing below is the sell signal. Crossing zero means the 12-day average has crossed the 26-day one, a slower trend signal.",
+        "MarketLab starts each exponential average from a simple average of its first closes, as many tools do, so the MACD line needs 26 closes and the signal line 34 before they appear. Tools that start their averages differently show slightly different early values.",
+      ],
+      formula: {
+        expression: "MACD = 12-day EMA − 26-day EMA; signal = 9-day EMA of MACD; histogram = MACD − signal",
+        reading: "How far the short-term average is ahead of the longer one, compared with its own recent average.",
+      },
+    },
+    example: {
+      setup: "Yesterday a stock's MACD line was 1.10 and its signal line 1.20, so the line was below the signal. Today its 12-day EMA is $105.40 and its 26-day EMA is $103.90.",
+      steps: [
+        "Today's MACD line: $105.40 − $103.90 = 1.50.",
+        "The signal line is a 9-day EMA, so its smoothing factor is 2 ÷ (9 + 1) = 0.2. New signal: 0.2 × 1.50 + 0.8 × 1.20 = 0.30 + 0.96 = 1.26.",
+        "Histogram: 1.50 − 1.26 = 0.24, a positive bar.",
+        "Yesterday the line (1.10) was below its signal (1.20); today it (1.50) is above it (1.26). The MACD line has crossed above its signal line.",
+      ],
+      result: "Today is a bullish crossover: the 12-day average is $1.50 ahead of the 26-day one and pulling further ahead of its recent pace. That's a description of the last few weeks, not a promise about the next few; in choppy markets crossovers like this are often reversed within days.",
+    },
+    reading: [
+      { label: "MACD above zero and rising", meaning: "The short-term average is above the longer one and the gap is widening: a strengthening uptrend over the last few weeks." },
+      { label: "MACD crosses above its signal line", meaning: "The classic buy signal: upward momentum is picking up. MarketLab's stock pages call the state bullish when the histogram is positive." },
+      { label: "MACD crosses below its signal line", meaning: "The classic sell signal: momentum is fading or turning down. Shown as bearish." },
+      { label: "Price makes a new high but MACD doesn't", meaning: "A divergence: the push behind the rise may be weakening. Often watched, often wrong." },
+    ],
+    realWorld: [
+      "MACD is a default indicator on almost every charting site and trading app, and the 12, 26 and 9 settings are nearly universal. That's partly convention: the lengths were picked decades ago and stuck, not because they're best for every stock.",
+      "Traders often use MACD as a filter rather than a trigger, for example buying an [[rsi|RSI]] dip only while MACD is above zero. Combining indicators can cut false signals, but each extra rule also adds a chance of [[overfitting]].",
+      "Like any trend tool, it works best in long, steady moves and worst in sideways markets, where the line keeps crossing its signal. Tests of simple MACD crossover rules on stocks have found mixed results, often no better than [[buyAndHold|buy and hold]] after costs.",
+    ],
+    mistakes: [
+      "Comparing MACD values between stocks. The line is in dollars of price gap, so a $500 stock has a far bigger MACD than a $20 one with the same trend.",
+      "Trading every crossover in a choppy market. Each false signal costs a little in [[tradingCosts|trading costs]].",
+      "Forgetting it's built from moving averages. It lags, so crossovers arrive after the turn has started.",
+      "Tuning the 12, 26 and 9 until a backtest looks great. Different settings will win on different stretches of history.",
+    ],
+    inMarketLab: [
+      { label: "Stock pages", href: "/stocks/AAPL", text: "The Technicals card shows the MACD line, its signal line and whether the state is bullish or bearish." },
+      {
+        label: "Backtest: MACD crossover",
+        href: backtestLink(
+          {
+            kind: "rules",
+            entry: { combine: "all", conditions: [{ left: { kind: "macd" }, op: "crosses-above", right: { kind: "macd-signal" } }] },
+            exit: { combine: "all", conditions: [{ left: { kind: "macd" }, op: "crosses-below", right: { kind: "macd-signal" } }] },
+          },
+          ["AAPL"],
+        ),
+        text: "Test the classic rule on Apple: buy when MACD crosses above MACD signal line, and sell when it crosses below. Build your own with Custom rules.",
+      },
+    ],
+    related: ["ema", "rsi", "maCrossover", "bollingerBands"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is the MACD line?",
+        choices: [
+          "The 12-day EMA minus the 26-day EMA",
+          "The 9-day average of the price",
+          "The highest close of the last 26 days",
+          "The RSI over 12 days",
+        ],
+        answer: 0,
+        explanation: "It's the gap between a fast and a slow exponential average. The 9-day EMA of that gap is the signal line.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A stock's 12-day EMA is $48.00 and its 26-day EMA is $50.00. What is its MACD, and what does the sign tell you?",
+        choices: [
+          "+2.00: an uptrend",
+          "0: no trend",
+          "−2.00: the short-term average is below the longer one",
+          "−2.00: the stock will fall tomorrow",
+        ],
+        answer: 2,
+        explanation: "$48.00 − $50.00 = −2.00. A negative MACD means recent prices have been weaker than the longer trend. It describes the past, not tomorrow.",
+      },
+      {
+        kind: "Using it",
+        prompt: "The MACD line is 0.80 and the signal line is 1.00. What is the histogram?",
+        choices: ["1.80", "0.20", "0.80", "−0.20"],
+        answer: 3,
+        explanation: "Histogram = MACD − signal = 0.80 − 1.00 = −0.20. A negative bar means the line is below its signal.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Where do simple MACD crossover rules tend to struggle most?",
+        choices: [
+          "In long, steady uptrends",
+          "In sideways, choppy markets",
+          "On large companies",
+          "When the stock pays a dividend",
+        ],
+        answer: 1,
+        explanation: "In a sideways market the MACD line keeps crossing its signal, so the rule buys and sells repeatedly on moves that soon reverse.",
+      },
+    ],
+  },
+
+  bollingerBands: {
+    why: [
+      "Is a $5 move big? For a calm stock it might be the biggest move in months; for a volatile one it's an ordinary Tuesday. Fixed rules like \"sell after a 5% rise\" ignore that. Bollinger Bands measure moves against the stock's own recent swings, so the same rule adjusts to each stock and each period.",
+      "John Bollinger introduced them in the 1980s, and they're now standard on charting sites. They're used in two opposite ways: some traders buy when the price touches the lower band, expecting a bounce, and others buy when it breaks above the upper band, expecting a trend. Knowing what the bands measure helps you see why both can fail.",
+    ],
+    how: {
+      paragraphs: [
+        "Start with the 20-day [[sma|simple moving average]] of the close: that's the middle band. Then work out the standard deviation of the same 20 closes, a measure of how far they spread around the average. The upper band is the average plus 2 standard deviations; the lower band is the average minus 2.",
+        "When prices swing a lot, the standard deviation grows and the bands widen. In a calm stretch they squeeze together. A narrow squeeze is often watched as a sign that a bigger move is coming, though it doesn't say which way.",
+        "%B says where the latest close sits between the bands: 0 is on the lower band, 1 on the upper band and 0.5 at the middle. It can go below 0 or above 1 when the price closes outside the bands. MarketLab uses the population standard deviation of the 20-day window, dividing by 20 rather than 19, as John Bollinger does. Some tools divide by 19, which makes the bands slightly wider.",
+        "If prices followed a bell curve, about 95% of closes would land inside 2 standard deviations. Real prices trend and have fat tails, so closes outside the bands are more common than that, and a close outside them isn't rare or automatically extreme.",
+      ],
+      formula: {
+        expression: "Bands = 20-day average ± 2 × standard deviation of the 20 closes; %B = (close − lower) ÷ (upper − lower)",
+        reading: "A channel around the recent average, as wide as the recent swings, and where today's close sits in it.",
+      },
+    },
+    example: {
+      setup: "To keep the arithmetic short, use a 5-day window instead of 20. A stock closed at $97, $101, $99, $100 and $103. Work out the bands and %B.",
+      steps: [
+        "Middle band: (97 + 101 + 99 + 100 + 103) ÷ 5 = 500 ÷ 5 = $100.",
+        "Distances from the average: −3, +1, −1, 0 and +3. Their squares: 9, 1, 1, 0 and 9, which add up to 20.",
+        "Population standard deviation: √(20 ÷ 5) = √4 = $2.",
+        "Upper band: $100 + 2 × $2 = $104. Lower band: $100 − 2 × $2 = $96.",
+        "%B for the last close: ($103 − $96) ÷ ($104 − $96) = 7 ÷ 8 = 0.875.",
+      ],
+      result: "The bands run from $96 to $104, and the last close of $103 sits at a %B of 0.875, near the top of the recent range. That says the price is high compared with the last few days' swings, not that it's about to fall.",
+    },
+    reading: [
+      { label: "%B above 1", meaning: "The close is above the upper band: unusually high compared with the last 20 days. In a strong uptrend, the price can ride the upper band for weeks." },
+      { label: "%B around 0.5", meaning: "The close is near the 20-day average, in the middle of its recent range." },
+      { label: "%B below 0", meaning: "The close is below the lower band. Some read it as oversold, but in a sharp fall the price can keep hugging the lower band." },
+      { label: "Bands squeezing together", meaning: "Swings have been small lately. Calm stretches often end with a bigger move, in either direction." },
+    ],
+    realWorld: [
+      "Mean-reversion traders buy near the lower band and sell near the middle or upper band, betting that stretched prices snap back. It tends to work in sideways markets and fail badly in strong downtrends, where \"cheap\" keeps getting cheaper.",
+      "Breakout traders do the opposite: a close above the upper band after a squeeze is read as the start of a trend. John Bollinger himself advised combining the bands with other indicators, such as [[rsi|RSI]] or volume, rather than trading touches alone.",
+      "Options traders watch the width of the bands as a rough view of recent [[volatility]], since a wider channel means bigger recent swings.",
+    ],
+    mistakes: [
+      "Treating a touch of the upper band as a sell signal by itself. In strong trends, prices often stay near or above the upper band for a long time.",
+      "Assuming 95% of closes stay inside the bands. That would only hold for a bell curve; real prices break out more often.",
+      "Forgetting the bands lag. They're built from the last 20 closes, so after a sudden jump they take days to catch up.",
+      "Mixing up the standard deviations. Bands built with the sample version (dividing by 19) come out slightly wider than with the population version (dividing by 20).",
+    ],
+    inMarketLab: [
+      { label: "Stock pages", href: "/stocks/TSLA", text: "The Technicals card shows the lower and upper Bollinger Bands for the last 20 days and the latest %B." },
+      {
+        label: "Backtest: buy below the lower band",
+        href: backtestLink(
+          {
+            kind: "rules",
+            entry: { combine: "all", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "bollinger-lower", days: 20 } }] },
+            exit: { combine: "all", conditions: [{ left: { kind: "price" }, op: "above", right: { kind: "sma", days: 20 } }] },
+          },
+          ["KO"],
+        ),
+        text: "Test a mean-reversion rule on Coca-Cola: buy when the price is below the lower Bollinger band, and sell once it's back above the 20-day average. Change the rules under Custom rules.",
+      },
+    ],
+    related: ["sma", "volatility", "rsi", "macd"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What sets the width of Bollinger Bands?",
+        choices: [
+          "A fixed 5% above and below the price",
+          "The standard deviation of recent closes",
+          "The company's earnings",
+          "The number of shares traded",
+        ],
+        answer: 1,
+        explanation: "The bands sit 2 standard deviations either side of the 20-day average, so they widen when recent closes are spread out and narrow when they're bunched together.",
+      },
+      {
+        kind: "Using it",
+        prompt: "The lower band is $90, the upper band $110, and the stock closed at $95. What is %B?",
+        choices: ["0.95", "0.5", "0.25", "−0.25"],
+        answer: 2,
+        explanation: "($95 − $90) ÷ ($110 − $90) = 5 ÷ 20 = 0.25: a quarter of the way up from the lower band.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A stock's 20-day average is $50 and the standard deviation of those 20 closes is $1.50. Where are the bands?",
+        choices: ["$47 and $53", "$48.50 and $51.50", "$45 and $55", "$49 and $51"],
+        answer: 0,
+        explanation: "2 × $1.50 = $3, so the bands are $50 − $3 = $47 and $50 + $3 = $53.",
+      },
+      {
+        kind: "Real world",
+        prompt: "When does buying every touch of the lower band tend to go worst?",
+        choices: [
+          "In a calm, sideways market",
+          "When the bands are wide",
+          "In a strong, lasting downtrend",
+          "On stocks that pay dividends",
+        ],
+        answer: 2,
+        explanation: "In a strong downtrend the price can hug the lower band for weeks, so each \"cheap\" buy is followed by further falls.",
       },
     ],
   },

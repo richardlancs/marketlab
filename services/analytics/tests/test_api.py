@@ -38,14 +38,14 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 
 def test_health_needs_no_token(client):
-    assert client.get("/health").json() == {"status": "ok", "engine": {"name": "python", "version": "1.1.0"}}
+    assert client.get("/health").json() == {"status": "ok", "engine": {"name": "python", "version": "1.2.0"}}
 
 
 def test_runs_a_backtest_and_answers_in_camel_case(client):
     response = client.post("/v1/backtests", json=body(), headers=AUTH)
     assert response.status_code == 200
     data = response.json()
-    assert data["engine"] == {"name": "python", "version": "1.1.0"}
+    assert data["engine"] == {"name": "python", "version": "1.2.0"}
     assert set(data["run"]["metrics"]) >= {"finalValue", "totalReturn", "cagr", "maxDrawdown", "sharpe", "exposure"}
     assert len(data["run"]["equity"]) == 60
 
@@ -65,7 +65,7 @@ def test_refuses_everything_when_no_token_is_configured(monkeypatch):
     "overrides, problem",
     [
         ({"strategy": {"kind": "moving-average", "fast": 30, "slow": 20}}, "shorter than the long one"),
-        ({"strategy": {"kind": "rebalancing", "frequency": "monthly"}}, "strategy"),
+        ({"strategy": {"kind": "astrology"}}, "strategy"),
         ({"holdings": [{"symbol": "AAPL", "weight": 0.5}]}, "add up to 100%"),
         ({"initialCash": 5}, "initialCash"),
         ({"start": T0 + 100 * DAY}, "start must be before the end"),

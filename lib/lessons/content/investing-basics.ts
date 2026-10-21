@@ -145,7 +145,7 @@ export const INVESTING_BASICS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         text: "This backtest holds five stocks from different industries against the S&P 500. Compare its volatility and drawdown with a backtest of any one of them alone.",
       },
     ],
-    related: ["etf", "volatility", "beta", "rebalancing"],
+    related: ["etf", "volatility", "correlation", "rebalancing"],
     quiz: [
       {
         kind: "Terminology",

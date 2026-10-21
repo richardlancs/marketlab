@@ -67,6 +67,7 @@ function makeCases(): Case[] {
   const aapl = walk(1, times, 150, 0.0006, 0.02);
   const ko = walk(2, times, 55, 0.0002, 0.01);
   const market = walk(3, times, 4500, 0.0004, 0.012);
+  const msft = walk(4, times, 300, 0.0005, 0.016);
   const short = weekdays(40);
   // Every 7th day missing from KO: the run uses only days both stocks have.
   const koGaps = ko.filter((_, i) => i % 7 !== 3);
@@ -137,6 +138,90 @@ function makeCases(): Case[] {
       config: base([["AAPL", 1]], { kind: "moving-average", fast: 2, slow: 5 }, times.slice(0, reentry.length), { initialCash: 1000 }),
       prices: { AAPL: reentry },
       market: market.slice(0, reentry.length),
+    },
+    {
+      name: "momentum-top1-absolute",
+      description: "Momentum rotation among three stocks: each month, hold the one with the best 6-month return, only if it's positive.",
+      config: base([["AAPL", 0.4], ["KO", 0.3], ["MSFT", 0.3]], { kind: "momentum-rotation", top: 1, lookbackMonths: 6, absolute: true }, times, { costs: { commission: 1, slippageBps: 5 } }),
+      prices: { AAPL: aapl, KO: ko, MSFT: msft },
+      market,
+    },
+    {
+      name: "momentum-top2-3m-missing-dates",
+      description: "Momentum rotation: the best two of three on 3-month returns (KO missing every 7th day), no absolute filter.",
+      config: base([["AAPL", 0.4], ["KO", 0.3], ["MSFT", 0.3]], { kind: "momentum-rotation", top: 2, lookbackMonths: 3, absolute: false }, times),
+      prices: { AAPL: aapl, KO: koGaps, MSFT: msft },
+      market,
+    },
+    {
+      name: "risk-parity-monthly-costs",
+      description: "Risk parity among three stocks (weights by 1 / 63-day volatility), reset monthly, with costs.",
+      config: base([["AAPL", 0.4], ["KO", 0.3], ["MSFT", 0.3]], { kind: "risk-parity", frequency: "monthly" }, times, { costs: { commission: 1, slippageBps: 5 }, benchmark: "market" }),
+      prices: { AAPL: aapl, KO: ko, MSFT: msft },
+      market,
+    },
+    {
+      name: "risk-parity-quarterly-missing-dates",
+      description: "Risk parity between AAPL and KO (KO missing every 7th day), reset quarterly.",
+      config: base([["AAPL", 0.5], ["KO", 0.5]], { kind: "risk-parity", frequency: "quarterly" }, times),
+      prices: { AAPL: aapl, KO: koGaps },
+      market,
+    },
+    {
+      name: "rules-macd-cross",
+      description: "Custom rules: buy when MACD crosses above its signal line, sell when it crosses below, with costs.",
+      config: base([["AAPL", 1]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "macd" }, op: "crosses-above", right: { kind: "macd-signal" } }] }, exit: { combine: "all", conditions: [{ left: { kind: "macd" }, op: "crosses-below", right: { kind: "macd-signal" } }] } }, times, { costs: { commission: 1, slippageBps: 5 } }),
+      prices: { AAPL: aapl },
+      market,
+    },
+    {
+      name: "rules-bollinger-reversion",
+      description: "Custom rules: buy when the price drops below its lower 20-day Bollinger band, sell when it rises above the upper one.",
+      config: base([["AAPL", 0.5], ["KO", 0.5]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "bollinger-lower", days: 20 } }] }, exit: { combine: "any", conditions: [{ left: { kind: "price" }, op: "above", right: { kind: "bollinger-upper", days: 20 } }] } }, times),
+      prices: { AAPL: aapl, KO: ko },
+      market,
+    },
+    {
+      name: "dca-two-stocks-costs",
+      description: "Dollar-cost averaging into AAPL 70% and KO 30% over 12 monthly installments, with costs.",
+      config: base([["AAPL", 0.7], ["KO", 0.3]], { kind: "dollar-cost-averaging", installments: 12 }, times, { costs: { commission: 1, slippageBps: 5 } }),
+      prices: { AAPL: aapl, KO: ko },
+      market,
+    },
+    {
+      name: "rebalance-monthly-costs",
+      description: "AAPL and KO 50/50, rebalanced monthly, with costs, against the market.",
+      config: base([["AAPL", 0.5], ["KO", 0.5]], { kind: "rebalancing", frequency: "monthly" }, times, { costs: { commission: 1, slippageBps: 5 }, benchmark: "market" }),
+      prices: { AAPL: aapl, KO: ko },
+      market,
+    },
+    {
+      name: "rebalance-quarterly-missing-dates",
+      description: "AAPL 60% and KO 40% (KO missing every 7th day), rebalanced quarterly.",
+      config: base([["AAPL", 0.6], ["KO", 0.4]], { kind: "rebalancing", frequency: "quarterly" }, times),
+      prices: { AAPL: aapl, KO: koGaps },
+      market,
+    },
+    {
+      name: "rules-rsi-bounce",
+      description: "Custom rules: buy when RSI(14) is below 30, sell when it's above 70, with costs.",
+      config: base([["AAPL", 1]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "rsi", days: 14 }, op: "below", right: { kind: "value", value: 30 } }] }, exit: { combine: "all", conditions: [{ left: { kind: "rsi", days: 14 }, op: "above", right: { kind: "value", value: 70 } }] } }, times, { costs: { commission: 1, slippageBps: 5 } }),
+      prices: { AAPL: aapl },
+      market,
+    },
+    {
+      name: "rules-golden-cross-two-stocks",
+      description: "Custom rules on two stocks: buy when the 20-day average crosses above the 60-day, sell when it crosses below.",
+      config: base([["AAPL", 0.5], ["KO", 0.5]], { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "sma", days: 20 }, op: "crosses-above", right: { kind: "sma", days: 60 } }] }, exit: { combine: "all", conditions: [{ left: { kind: "sma", days: 20 }, op: "crosses-below", right: { kind: "sma", days: 60 } }] } }, times),
+      prices: { AAPL: aapl, KO: ko },
+      market,
+    },
+    {
+      name: "rules-any-ema-rsi",
+      description: "Custom rules with 'any': buy when the price is above its 30-day EMA or RSI(10) is below 35; sell when the price is below the EMA or RSI is above 60.",
+      config: base([["AAPL", 1]], { kind: "rules", entry: { combine: "any", conditions: [{ left: { kind: "price" }, op: "above", right: { kind: "ema", days: 30 } }, { left: { kind: "rsi", days: 10 }, op: "below", right: { kind: "value", value: 35 } }] }, exit: { combine: "any", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "ema", days: 30 } }, { left: { kind: "rsi", days: 10 }, op: "above", right: { kind: "value", value: 60 } }] } }, times, { costs: { commission: 0.5, slippageBps: 2 } }),
+      prices: { AAPL: aapl },
+      market,
     },
   ];
 }

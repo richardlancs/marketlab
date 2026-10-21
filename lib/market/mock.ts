@@ -3,14 +3,18 @@
  * same numbers, and moving forward one trading day at a time with the real
  * calendar.
  *
- * - Up to ANCHOR_DAY (Oct 16, 2026), each history is a random path that ends
- *   at the stock's real price that day (./anchors.ts). Only that end point
- *   is real: the path to it is made up.
- * - After it, each day's move comes from a seed made of the symbol and that
- *   day's date. A day's price therefore never changes once it exists, no
- *   matter when you look: tomorrow simply adds one more day.
+ * - Stocks move together, like real ones: each day's move is the market's
+ *   move times the stock's beta, plus its sector's move, plus its own
+ *   (./factors.ts). The market follows the S&P 500's real path roughly.
+ * - Up to ANCHOR_DAY (Oct 16, 2026), each history ends at the stock's real
+ *   price that day (./anchors.ts). Only that end point is real: the path to
+ *   it is simulated.
+ * - After it, each day's moves come from seeds made of that day's date. A
+ *   day's price therefore never changes once it exists, no matter when you
+ *   look: tomorrow simply adds one more day.
  */
-import { bridge, gaussian, hashString, mulberry32, type Rng } from "../random";
+import { gaussian, hashString, mulberry32, type Rng } from "../random";
+import { factorProfile, indexReturns, MARKET_VOLATILITY, SECTORS, stockReturns } from "./factors";
 import { intradayPrices } from "./intraday";
 import type { CorporateAction, DailyBar } from "../types";
 import { ANCHORS, INDEX_ANCHORS } from "./anchors";
@@ -99,7 +103,10 @@ export function specFor(symbol: string): Spec {
   const generatedPrice = round2(logUniform(rng, 15, 600));
   const generatedCap = logUniform(rng, 10e9, 500e9);
   const generatedPe = 10 + rng() * 35;
-  const generatedVolatility = 0.012 + rng() * 0.023;
+  // Its own (company-specific) daily volatility, between 0.6% and 1.4% (typical for large companies), on top of what its beta and sector bring.
+  const ownVolatility = 0.006 + rng() * 0.008;
+  const { sector, beta } = factorProfile(symbol);
+  const generatedVolatility = Math.sqrt(beta ** 2 * MARKET_VOLATILITY ** 2 + SECTORS[sector].volatility ** 2 + ownVolatility ** 2);
   const generatedVolume = logUniform(rng, 2e6, 40e6);
   const generatedYield = rng() < 0.6 ? 0.005 + rng() * 0.03 : 0;
   const core = CORE[symbol];
@@ -122,11 +129,18 @@ export function specFor(symbol: string): Spec {
  * real yield) pay it every quarter; indices never do.
  */
 function closes(symbol: string, spec: Spec, lastDay: number): { days: number[]; closes: number[]; actions: CorporateAction[] } {
-  const rng = rngFor(symbol);
   const pastDays = tradingDaysEndingAt(ANCHOR_DAY, HISTORY_BARS);
-  const annualReturn = -0.1 + rng() * 0.4; // somewhere between -10% and +30% a year
-  const start = spec.price / (1 + annualReturn) ** 5;
-  const values = bridge(rng, start, spec.price, pastDays.length - 1, spec.dailyVolatility);
+  const index = indexReturns(symbol, lastDay);
+  const path = index ?? stockReturns(symbol, spec.dailyVolatility, lastDay);
+  const annualReturn = -0.1 + rngFor(symbol)() * 0.4; // somewhere between -10% and +30% a year
+  const start = index ? index.start : spec.price / (1 + annualReturn) ** 5;
+
+  // The past: the factor moves, tilted evenly so the path starts at `start` and ends exactly at the anchor price.
+  const n = pastDays.length;
+  const cumulative = [0];
+  for (let i = 1; i < n; i++) cumulative.push(cumulative[i - 1] + path.returns[i]);
+  const tilt = cumulative[n - 1] - Math.log(spec.price / start);
+  const values = cumulative.map((c, i) => (i === n - 1 ? spec.price : start * Math.exp(c - (i / (n - 1)) * tilt)));
 
   const yearlyYield = spec.dividendYield ?? 0;
   const paysDividends = yearlyYield > 0;
@@ -137,10 +151,9 @@ function closes(symbol: string, spec: Spec, lastDay: number): { days: number[]; 
   const actions: CorporateAction[] = [];
   let price = spec.price;
   let sinceStart = 0;
-  for (const day of futureDays) {
-    const dayRng = rngFor(`${symbol}:${day}`);
-    // A small upward drift (about 7% a year), like stock markets over time.
-    price *= Math.exp(gaussian(dayRng) * spec.dailyVolatility + 0.00027);
+  for (const [j, day] of futureDays.entries()) {
+    // The market's upward drift (about 7.5% a year) comes in through beta.
+    price *= Math.exp(path.returns[n + j]);
     if (day >= ACTIONS_START) {
       const time = day + CLOSE_OFFSET;
       // On the ex-date the price drops by the dividend, or by the split ratio.
@@ -219,6 +232,7 @@ export function mockSeries(symbol: string, now: number): Series {
     bars,
     marketCap: spec.sharesOutstanding ? price * spec.sharesOutstanding * splits : null,
     peRatio: spec.earningsPerShare ? Math.round((price / (spec.earningsPerShare / splits)) * 10) / 10 : null,
+    dividendYield: spec.sharesOutstanding === undefined ? null : (spec.dividendYield ?? 0),
     actions: actions.filter((a) => a.time >= bars[0].time),
     intraday: intradayPrices(symbol, bars),
   };

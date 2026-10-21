@@ -60,11 +60,25 @@ export interface PendingOrder {
 }
 
 /** "Tell me when KO closes above $70." */
+/**
+ * What an indicator alert watches for, instead of a price (lib/alerts.ts).
+ * `direction` on the alert says which way: "above" is RSI rising past the
+ * level, the price crossing above its average, a rise of the size, or a new
+ * 52-week high; "below" the opposite.
+ */
+export type AlertCondition =
+  | { kind: "rsi"; days: number; level: number }
+  | { kind: "sma-cross"; days: number }
+  | { kind: "move"; percent: number }
+  | { kind: "range-52w" };
+
 export interface PriceAlert {
   id: string;
   symbol: string;
   direction: "above" | "below";
+  /** The price to cross; for an indicator alert, the price when it was set. */
   price: number;
+  condition?: AlertCondition;
   createdAt: number;
   /** The close it triggered on, once it has. */
   triggeredAt?: number;
@@ -248,15 +262,36 @@ export function parsePendingOrder(o: unknown, known: (s: unknown) => s is string
   };
 }
 
+/** An indicator alert's condition, or null if it isn't a valid one. */
+export function parseAlertCondition(value: unknown): AlertCondition | null {
+  if (!isRecord(value)) return null;
+  const int = (v: unknown, min: number, max: number) => Number.isInteger(v) && (v as number) >= min && (v as number) <= max;
+  switch (value.kind) {
+    case "rsi":
+      return int(value.days, 2, 100) && typeof value.level === "number" && value.level > 0 && value.level < 100 ? { kind: "rsi", days: value.days as number, level: value.level } : null;
+    case "sma-cross":
+      return int(value.days, 5, 250) ? { kind: "sma-cross", days: value.days as number } : null;
+    case "move":
+      return typeof value.percent === "number" && value.percent >= 0.5 && value.percent <= 50 ? { kind: "move", percent: value.percent } : null;
+    case "range-52w":
+      return { kind: "range-52w" };
+    default:
+      return null;
+  }
+}
+
 export function parsePriceAlert(a: unknown, known: (s: unknown) => s is string): PriceAlert | null {
   if (!isRecord(a) || typeof a.id !== "string" || !known(a.symbol) || (a.direction !== "above" && a.direction !== "below")) return null;
   if (!isPrice(a.price) || !isTime(a.createdAt) || !isOptional(a.triggeredAt, isTime) || !isOptional(a.triggerPrice, isPrice)) return null;
   if (a.seen !== undefined && typeof a.seen !== "boolean") return null;
+  const condition = a.condition === undefined || a.condition === null ? undefined : parseAlertCondition(a.condition);
+  if (condition === null) return null;
   return {
     id: a.id,
     symbol: a.symbol,
     direction: a.direction,
     price: a.price,
+    ...(condition && { condition }),
     createdAt: a.createdAt,
     ...(a.triggeredAt !== undefined && { triggeredAt: a.triggeredAt as number }),
     ...(a.triggerPrice !== undefined && { triggerPrice: a.triggerPrice as number }),

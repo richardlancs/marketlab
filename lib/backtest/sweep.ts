@@ -30,7 +30,7 @@ const ruleParams = (rules: RuleSet, side: "entry" | "exit"): SweepParam[] =>
     (["left", "right"] as const).flatMap((part) => {
       const indicator: Indicator = c[part];
       const name = `${side === "entry" ? "Buy" : "Sell"} rule ${i + 1}: ${indicatorName(indicator)}`;
-      if (indicator.kind === "sma" || indicator.kind === "ema") return [{ id: `${side}.${i}.${part}`, label: `${name} (days)`, min: 2, max: 250, value: indicator.days }];
+      if (indicator.kind === "sma" || indicator.kind === "ema" || indicator.kind === "bollinger-upper" || indicator.kind === "bollinger-lower") return [{ id: `${side}.${i}.${part}`, label: `${name} (days)`, min: 2, max: 250, value: indicator.days }];
       if (indicator.kind === "rsi") return [{ id: `${side}.${i}.${part}`, label: `${name} (days)`, min: 2, max: 100, value: indicator.days }];
       if (indicator.kind === "value") return [{ id: `${side}.${i}.${part}`, label: `${side === "entry" ? "Buy" : "Sell"} rule ${i + 1}: level`, min: 0, max: 100, value: indicator.value }];
       return [];

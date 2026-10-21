@@ -6,6 +6,7 @@ import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
 import type { BacktestConfig } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
+import { selectionCheck } from "@/lib/backtest/overfitting";
 import { SWEEP_LIMITS, sweepableParams, type Axis, type SweepResult } from "@/lib/backtest/sweep";
 import { formatPercent } from "@/lib/format";
 import type { SweepState } from "./use-sweep";
@@ -188,6 +189,12 @@ export function SweepResults({ result, measure, onOpen }: { result: SweepResult;
     cells: Array.from({ length: width }, (_, c) => valueOf(r * width + c)),
   }));
   const invalid = result.points.filter((p) => !p.metrics).length;
+  const span = result.points.find((p) => p.config)?.config;
+  const sessions = span ? Math.round(((span.end - span.start) / (365.25 * 86_400_000)) * 252) : 0;
+  const check = selectionCheck(
+    result.points.map((p) => p.metrics?.sharpe ?? null),
+    sessions,
+  );
 
   return (
     <div className="space-y-3">
@@ -218,6 +225,13 @@ export function SweepResults({ result, measure, onOpen }: { result: SweepResult;
         <span className="inline-flex items-center gap-1 font-medium text-foreground">
           The best cell is probably luck. <Explain term="overfitting" />
         </span> Settings that did best in the past usually just fit that period&apos;s ups and downs, and rarely stay best. A strategy is more convincing when a whole neighborhood of settings does well, not one cell.
+        {check && (
+          <>
+            {" "}
+            Here: the best of {check.trials} tries had a Sharpe ratio of {check.best.toFixed(2)}, where luck alone would be expected to reach about {Math.max(0, check.expectedByLuck).toFixed(2)}. Allowing for that, the chance its real Sharpe ratio is above zero is about{" "}
+            <span className="font-medium text-foreground">{Math.round(check.probability * 100)}%</span> (deflated Sharpe ratio).
+          </>
+        )}
       </p>
     </div>
   );

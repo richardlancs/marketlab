@@ -109,4 +109,63 @@ describe("measuring results worked examples", () => {
     expect(t).toContain((0.0005 / 0.012 * Math.sqrt(252)).toFixed(2));
     expect(t).toContain((0.0005 / 0.006 * Math.sqrt(252)).toFixed(2));
   });
+
+  it("correlation", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.correlation);
+    const a = [1, -1, 2, -2, 0];
+    const b = [2, 0, 1, -1, -2];
+    const mean = (xs: number[]) => xs.reduce((s, x) => s + x, 0) / xs.length;
+    expect(mean(a)).toBe(0);
+    expect(mean(b)).toBe(0);
+    const products = a.reduce((s, x, i) => s + x * b[i], 0);
+    const squaresA = a.reduce((s, x) => s + x * x, 0);
+    const squaresB = b.reduce((s, x) => s + x * x, 0);
+    expect(t).toContain(`= ${products}.`);
+    expect(t).toContain(`= ${squaresA};`);
+    expect(t).toContain(`= ${squaresB}.`);
+    const correlation = products / Math.sqrt(squaresA * squaresB);
+    expect(correlation).toBe(0.6);
+    expect(t).toContain(`= ${correlation}.`);
+    const mix = (rho: number, vol = 0.2) => vol * Math.sqrt((1 + rho) / 2);
+    expect(t).toContain(`≈ ${pct(mix(0.6), 1)}`);
+    expect(t).toContain(`≈ ${pct(mix(0), 1)}`);
+    expect(mix(1)).toBeCloseTo(0.2, 12);
+    // Quiz: 30% volatility at a correlation of 0.2.
+    expect(t).toContain(`≈ ${pct(mix(0.2, 0.3))}`);
+  });
+
+  it("Value at Risk", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.valueAtRisk);
+    const worst = [4.0, 3.2, 2.8, 2.5, 2.1];
+    expect(Math.round(100 * 0.05)).toBe(worst.length);
+    expect(t).toContain(usd(50_000 * 0.021));
+    const sum = worst.reduce((a, b) => a + b, 0);
+    expect(sum).toBeCloseTo(14.6, 10);
+    const shortfall = sum / worst.length;
+    expect(t).toContain(`${shortfall.toFixed(2)}%`);
+    expect(t).toContain(usd((50_000 * shortfall) / 100));
+    expect(t).toContain(`≈ ${(1.645 * 1.2).toFixed(2)}%`);
+    expect(4.0 / 1.2).toBeGreaterThan(3);
+    expect(t).toContain(usd(50_000 * 0.04));
+    expect(t).toContain(`about 12 or 13 days`);
+    expect(252 * 0.05).toBeCloseTo(12.6, 10);
+    // Quiz: the average of the five worst losses.
+    expect((5 + 4 + 3 + 3 + 2) / 5).toBe(3.4);
+  });
+
+  it("Monte Carlo simulation", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.monteCarlo);
+    const one = 1.02 * 0.95 * 1.03;
+    const two = 1.03 * 1.02 * 1.02;
+    expect(t).toContain(`≈ ${one.toFixed(3)}`);
+    expect(t).toContain(`≈ ${two.toFixed(3)}`);
+    expect(t).toContain(usd(10_000 * one));
+    expect(t).toContain(usd(10_000 * two));
+    expect(10_000 * (two - one)).toBeGreaterThan(700);
+    expect(t).toContain(`${2_000 * 0.25}th to the ${(2_000 * 0.75).toLocaleString("en-US")}th`);
+    expect(t).toContain(`${2_000 * 0.05}th to the ${(2_000 * 0.95).toLocaleString("en-US")}th`);
+    expect(t).toContain(`= ${pct(260 / 2_000)}`);
+    // Quiz: 300 of 2,000 paths below the start.
+    expect(300 / 2_000).toBe(0.15);
+  });
 });

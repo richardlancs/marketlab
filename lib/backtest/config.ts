@@ -6,14 +6,16 @@
 import type { PricePoint } from "../types";
 import { runBacktest, type BacktestRun, type Costs, type Series } from "./engine";
 import { parseRuleSet, ruleStrategy, type RuleSet } from "./rules";
-import { buyAndHold, dollarCostAveraging, movingAverageCrossover, rebalancing, type Weights } from "./strategies";
+import { buyAndHold, dollarCostAveraging, momentumRotation, movingAverageCrossover, rebalancing, riskParity, type Weights } from "./strategies";
 
 export type StrategyConfig =
   | { kind: "buy-and-hold" }
   | { kind: "moving-average"; fast: number; slow: number }
   | { kind: "dollar-cost-averaging"; installments: number }
   | { kind: "rebalancing"; frequency: "monthly" | "quarterly" }
-  | { kind: "rules"; entry: RuleSet; exit: RuleSet };
+  | { kind: "rules"; entry: RuleSet; exit: RuleSet }
+  | { kind: "momentum-rotation"; top: number; lookbackMonths: 3 | 6 | 12; absolute: boolean }
+  | { kind: "risk-parity"; frequency: "monthly" | "quarterly" };
 
 /**
  * The version of the config format. Version 1 (Phase 4) had no `version`
@@ -48,6 +50,8 @@ export const STRATEGY_NAMES: Record<StrategyConfig["kind"], string> = {
   "dollar-cost-averaging": "Dollar-cost averaging",
   rebalancing: "Rebalancing",
   rules: "Custom rules",
+  "momentum-rotation": "Momentum rotation",
+  "risk-parity": "Risk parity",
 };
 
 export const LIMITS = {
@@ -76,6 +80,10 @@ function strategyFor(config: BacktestConfig) {
       return rebalancing(weights, s.frequency);
     case "rules":
       return ruleStrategy(weights, s.entry, s.exit);
+    case "momentum-rotation":
+      return momentumRotation(weights, s.top, s.lookbackMonths, s.absolute);
+    case "risk-parity":
+      return riskParity(weights, s.frequency);
   }
 }
 
@@ -151,7 +159,10 @@ export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean
     const exit = parseRuleSet(s.exit);
     if (!entry || !exit) return null;
     strategy = { kind: "rules", entry, exit };
-  } else return null;
+  } else if (s.kind === "momentum-rotation" && Number.isInteger(s.top) && inRange(s.top, 1, holdings.length) && (s.lookbackMonths === 3 || s.lookbackMonths === 6 || s.lookbackMonths === 12) && typeof s.absolute === "boolean")
+    strategy = { kind: "momentum-rotation", top: s.top as number, lookbackMonths: s.lookbackMonths, absolute: s.absolute };
+  else if (s.kind === "risk-parity" && (s.frequency === "monthly" || s.frequency === "quarterly")) strategy = { kind: "risk-parity", frequency: s.frequency };
+  else return null;
 
   if (!isNumber(v.start) || !isNumber(v.end) || v.start >= v.end) return null;
   if (!inRange(v.initialCash, LIMITS.minCash, LIMITS.maxCash)) return null;

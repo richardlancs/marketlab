@@ -10,6 +10,9 @@ Next.js server's own market data, never from a browser.
     POST /v1/backtests                       Runs one backtest. See BacktestRequest / BacktestResponse.
     POST /v1/saved-runs                      Calculates a run from a snapshot and saves it (database).
     POST /v1/saved-runs/{id}/reproduce       Reads a saved run (database), recalculates it, compares.
+    POST /v1/analytics/stock-profiles        Recalculates stored stock profiles that are missing or stale (database).
+    POST /v1/analytics/portfolio             Risk, stress tests, Monte Carlo and optimisation for a set of holdings (stored prices).
+    POST /v1/backtests/walk-forward          Walk-forward test of a moving-average crossover (stored prices).
 """
 
 from __future__ import annotations
@@ -18,6 +21,8 @@ import hmac
 import json
 import math
 import os
+
+import pandas as pd
 from typing import Annotated, Literal, Union
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
@@ -27,7 +32,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import engine, saved
+from . import engine, jobs, portfolio, saved, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -63,6 +68,91 @@ class MovingAverage(Model):
         return self
 
 
+class DollarCostAveraging(Model):
+    kind: Literal["dollar-cost-averaging"]
+    installments: Annotated[int, Field(ge=1, le=60)]
+
+
+class Rebalancing(Model):
+    kind: Literal["rebalancing"]
+    frequency: Literal["monthly", "quarterly"]
+
+
+# Custom rules (lib/backtest/rules.ts): plain data, checked here exactly as parseRuleSet does.
+class PriceIndicator(Model):
+    kind: Literal["price"]
+
+
+class AverageIndicator(Model):
+    kind: Literal["sma", "ema"]
+    days: Annotated[int, Field(ge=2, le=250)]
+
+
+class RsiIndicator(Model):
+    kind: Literal["rsi"]
+    days: Annotated[int, Field(ge=2, le=100)]
+
+
+class MacdIndicator(Model):
+    kind: Literal["macd", "macd-signal"]
+
+
+class BollingerIndicator(Model):
+    kind: Literal["bollinger-upper", "bollinger-lower"]
+    days: Annotated[int, Field(ge=2, le=250)]
+
+
+class ValueIndicator(Model):
+    kind: Literal["value"]
+    value: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
+
+
+Indicator = Annotated[Union[PriceIndicator, AverageIndicator, RsiIndicator, MacdIndicator, BollingerIndicator, ValueIndicator], Field(discriminator="kind")]
+
+
+def _unit(indicator) -> str:
+    if indicator.kind in ("rsi", "value"):
+        return "score"
+    return "macd" if indicator.kind in ("macd", "macd-signal") else "dollars"
+
+
+class Condition(Model):
+    left: Indicator
+    op: Literal["above", "below", "crosses-above", "crosses-below"]
+    right: Indicator
+
+    @model_validator(mode="after")
+    def comparable(self):
+        if self.left.kind == "value":
+            raise ValueError("a constant can only be on the right")
+        if _unit(self.left) != _unit(self.right):
+            raise ValueError("both sides of a condition must be prices or both scores")
+        return self
+
+
+class RuleSet(Model):
+    combine: Literal["all", "any"]
+    conditions: Annotated[list[Condition], Field(min_length=1, max_length=4)]
+
+
+class RulesStrategy(Model):
+    kind: Literal["rules"]
+    entry: RuleSet
+    exit: RuleSet
+
+
+class MomentumRotationModel(Model):
+    kind: Literal["momentum-rotation"]
+    top: Annotated[int, Field(ge=1, le=5)]
+    lookback_months: Literal[3, 6, 12]
+    absolute: bool
+
+
+class RiskParityModel(Model):
+    kind: Literal["risk-parity"]
+    frequency: Literal["monthly", "quarterly"]
+
+
 class CostsModel(Model):
     commission: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
     slippage_bps: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
@@ -73,7 +163,7 @@ class ConfigModel(Model):
 
     version: Annotated[int, Field(ge=1, le=2)]
     holdings: Annotated[list[Holding], Field(min_length=1, max_length=5)]
-    strategy: Annotated[Union[BuyAndHold, MovingAverage], Field(discriminator="kind")]
+    strategy: Annotated[Union[BuyAndHold, MovingAverage, DollarCostAveraging, Rebalancing, RulesStrategy, MomentumRotationModel, RiskParityModel], Field(discriminator="kind")]
     start: int
     end: int
     initial_cash: Annotated[float, Field(ge=100, le=10_000_000, allow_inf_nan=False)]
@@ -89,6 +179,8 @@ class ConfigModel(Model):
             raise ValueError("each stock may appear once")
         if abs(sum(h.weight for h in self.holdings) - 1) > 0.001:
             raise ValueError("the weights must add up to 100%")
+        if self.strategy.kind == "momentum-rotation" and self.strategy.top > len(self.holdings):
+            raise ValueError("momentum rotation can't hold more stocks than are listed")
         return self
 
 
@@ -302,6 +394,13 @@ def to_engine_config(c: ConfigModel, warmup: str = "within-period") -> engine.Co
         fast=getattr(c.strategy, "fast", None),
         slow=getattr(c.strategy, "slow", None),
         warmup=warmup,
+        installments=getattr(c.strategy, "installments", None),
+        frequency=getattr(c.strategy, "frequency", None),
+        top=getattr(c.strategy, "top", None),
+        lookback_months=getattr(c.strategy, "lookback_months", None),
+        absolute=getattr(c.strategy, "absolute", None),
+        entry=c.strategy.entry.model_dump() if c.strategy.kind == "rules" else None,
+        exit=c.strategy.exit.model_dump() if c.strategy.kind == "rules" else None,
     )
 
 
@@ -385,3 +484,109 @@ def reproduce_run(run_id: Annotated[str, Path(min_length=1, max_length=64)], bod
         raise HTTPException(status_code=409, detail=str(error)) from error
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+# --- Stored analytics ----------------------------------------------------------
+
+Source = Literal["mock", "tiingo"]
+Symbol = Annotated[str, Field(pattern=r"^[A-Z0-9][A-Z0-9.\-]{0,9}$")]
+
+
+class JobRequest(Model):
+    source: Source
+    symbols: Annotated[list[Symbol], Field(max_length=200)] | None = None
+    """Only these (default: every stored series)."""
+    budget_ms: Annotated[int, Field(ge=500, le=25_000)] = 8000
+
+
+@app.post("/v1/analytics/stock-profiles", dependencies=[Depends(require_token)])
+def stock_profiles(body: JobRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Recalculates the stock profiles that are missing or stale, as far as the time budget allows; `remaining` lists the rest."""
+    summary = jobs.run_stock_profiles(db, body.source, body.symbols, body.budget_ms)
+    return {
+        "computed": len(summary.computed),
+        "unchanged": summary.unchanged,
+        "missing": summary.missing,
+        "failed": summary.failed,
+        "remaining": summary.remaining,
+        "ms": summary.ms,
+    }
+
+
+class PortfolioHolding(Model):
+    symbol: Symbol
+    value: Annotated[float, Field(ge=0, le=1e12, allow_inf_nan=False)]
+    sector: Annotated[str, Field(max_length=60)] | None = None
+
+
+class PortfolioRequest(Model):
+    source: Source
+    holdings: Annotated[list[PortfolioHolding], Field(min_length=1, max_length=30)]
+    cash: Annotated[float, Field(ge=0, le=1e12, allow_inf_nan=False)] = 0.0
+
+
+@app.post("/v1/analytics/portfolio", dependencies=[Depends(require_token)])
+def portfolio_analysis(body: PortfolioRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Analyses these holdings with the stored prices (the Next.js server stores them first). Nothing is saved."""
+    symbols = list(dict.fromkeys(h.symbol for h in body.holdings))
+    bars = store.load_bars(db, body.source, [*symbols, store.MARKET])
+    index = store.series_index(db, body.source, [*symbols, store.MARKET])
+    checksum = store.input_checksum(index)
+    values: dict[str, float] = {}
+    for h in body.holdings:
+        values[h.symbol] = values.get(h.symbol, 0.0) + h.value
+    try:
+        result = portfolio.portfolio_analysis(
+            {s: b for s, b in bars.items() if s in values},
+            values,
+            body.cash,
+            {h.symbol: h.sector for h in body.holdings},
+            bars.get(store.MARKET),
+            seed_text=f"{checksum}:{sorted(values.items())}:{body.cash}",
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"analysis": result, "inputChecksum": checksum, "version": store.ANALYTICS_VERSION}
+
+
+class AxisModel(Model):
+    from_: Annotated[int, Field(alias="from", ge=2, le=250)]
+    to: Annotated[int, Field(ge=2, le=250)]
+    step: Annotated[int, Field(ge=1, le=250)]
+
+    def values(self) -> list[int]:
+        return list(range(self.from_, self.to + 1, self.step))
+
+
+class WalkForwardRequest(Model):
+    source: Source
+    config: ConfigModel
+    fast: AxisModel
+    slow: AxisModel
+    train_years: Annotated[int, Field(ge=1, le=3)] = 2
+    test_months: Literal[3, 6, 12] = 6
+
+
+@app.post("/v1/backtests/walk-forward", dependencies=[Depends(require_token)])
+def walk_forward(body: WalkForwardRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Walk-forward test of a moving-average crossover on the stored prices (the Next.js server stores them first)."""
+    if body.config.strategy.kind != "moving-average":
+        raise HTTPException(status_code=422, detail="Walk-forward testing is available for the moving-average crossover.")
+    symbols = [h.symbol for h in body.config.holdings]
+    bars = store.load_bars(db, body.source, symbols)
+    missing = [s for s in symbols if s not in bars]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"No stored prices for {', '.join(missing)}.")
+    prices = {s: pd.Series(bars[s]["adj_close"].to_numpy(), index=bars[s].index, name=s) for s in symbols}
+    try:
+        result = walkforward.walk_forward(
+            prices,
+            to_engine_config(body.config),
+            walkforward.Grid(fast=body.fast.values(), slow=body.slow.values()),
+            train_sessions=body.train_years * 252,
+            test_sessions=body.test_months * 21,
+        )
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    index = store.series_index(db, body.source, symbols)
+    return {"result": result, "inputChecksum": store.input_checksum(index), "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION}}

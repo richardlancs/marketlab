@@ -15,6 +15,12 @@ export type Indicator =
   | { kind: "sma"; days: number }
   | { kind: "ema"; days: number }
   | { kind: "rsi"; days: number }
+  /** MACD (12/26-day EMAs) and its 9-day signal line: compared with each other. */
+  | { kind: "macd" }
+  | { kind: "macd-signal" }
+  /** Bollinger Bands: the `days`-day average plus or minus 2 standard deviations. */
+  | { kind: "bollinger-upper"; days: number }
+  | { kind: "bollinger-lower"; days: number }
   /** A constant, only for comparing with RSI (0 to 100). */
   | { kind: "value"; value: number };
 
@@ -41,8 +47,11 @@ export const OPERATOR_NAMES: Record<Operator, string> = {
   "crosses-below": "crosses below",
 };
 
-/** Prices and averages are in dollars; RSI is a 0–100 score. Only like can be compared with like. */
-const unitOf = (indicator: Indicator): "dollars" | "score" => (indicator.kind === "rsi" || indicator.kind === "value" ? "score" : "dollars");
+export type Unit = "dollars" | "score" | "macd";
+
+/** Prices, averages and bands are in dollars; RSI is a 0–100 score; MACD is its own scale. Only like can be compared with like. */
+export const unitOf = (indicator: Pick<Indicator, "kind">): Unit =>
+  indicator.kind === "rsi" || indicator.kind === "value" ? "score" : indicator.kind === "macd" || indicator.kind === "macd-signal" ? "macd" : "dollars";
 
 export function indicatorName(indicator: Indicator): string {
   switch (indicator.kind) {
@@ -54,6 +63,14 @@ export function indicatorName(indicator: Indicator): string {
       return `${indicator.days}-day EMA`;
     case "rsi":
       return `RSI(${indicator.days})`;
+    case "macd":
+      return "MACD";
+    case "macd-signal":
+      return "MACD signal";
+    case "bollinger-upper":
+      return `upper Bollinger band (${indicator.days})`;
+    case "bollinger-lower":
+      return `lower Bollinger band (${indicator.days})`;
     case "value":
       return String(indicator.value);
   }
@@ -80,6 +97,12 @@ export function parseIndicator(value: unknown): Indicator | null {
       return isDays(value.days, RULE_LIMITS.maxAverageDays) ? { kind: value.kind, days: value.days } : null;
     case "rsi":
       return isDays(value.days, RULE_LIMITS.maxRsiDays) ? { kind: "rsi", days: value.days } : null;
+    case "macd":
+    case "macd-signal":
+      return { kind: value.kind };
+    case "bollinger-upper":
+    case "bollinger-lower":
+      return isDays(value.days, RULE_LIMITS.maxAverageDays) ? { kind: value.kind, days: value.days } : null;
     case "value":
       return typeof value.value === "number" && value.value >= 0 && value.value <= 100 ? { kind: "value", value: value.value } : null;
     default:
@@ -178,6 +201,43 @@ function rsiStream(days: number): Stream {
   };
 }
 
+/** The MACD line: the 12-day EMA minus the 26-day EMA (both fed every close). */
+function macdStream(): Stream {
+  const fast = emaStream(12);
+  const slow = emaStream(26);
+  return (close) => {
+    const a = fast(close);
+    const b = slow(close);
+    return a - b;
+  };
+}
+
+/** The MACD signal line: the 9-day EMA of the MACD line, fed once the line exists. */
+function macdSignalStream(): Stream {
+  const line = macdStream();
+  const signal = emaStream(9);
+  return (close) => {
+    const value = line(close);
+    return Number.isNaN(value) ? Number.NaN : signal(value);
+  };
+}
+
+/** A Bollinger band: the `days`-day average plus (`side` 1) or minus (−1) 2 population standard deviations, summed left to right. */
+function bollingerStream(days: number, side: 1 | -1): Stream {
+  const window: number[] = [];
+  return (close) => {
+    window.push(close);
+    if (window.length > days) window.shift();
+    if (window.length < days) return Number.NaN;
+    let sum = 0;
+    for (const x of window) sum = sum + x;
+    const mean = sum / days;
+    let squares = 0;
+    for (const x of window) squares = squares + (x - mean) ** 2;
+    return mean + side * 2 * Math.sqrt(squares / days);
+  };
+}
+
 function streamFor(indicator: Indicator): Stream {
   switch (indicator.kind) {
     case "price":
@@ -188,6 +248,14 @@ function streamFor(indicator: Indicator): Stream {
       return emaStream(indicator.days);
     case "rsi":
       return rsiStream(indicator.days);
+    case "macd":
+      return macdStream();
+    case "macd-signal":
+      return macdSignalStream();
+    case "bollinger-upper":
+      return bollingerStream(indicator.days, 1);
+    case "bollinger-lower":
+      return bollingerStream(indicator.days, -1);
     case "value":
       return () => indicator.value;
   }

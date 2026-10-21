@@ -117,10 +117,10 @@ export function SearchDialog() {
         aria-haspopup="dialog"
         aria-keyshortcuts="Meta+K Control+K"
         // An icon button up to 1024px (lg), where the nav needs the room; a search-box-shaped button above.
-        className="flex size-9 items-center justify-center gap-2 rounded-full text-muted transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent active:scale-95 lg:w-56 lg:justify-start lg:border lg:border-border lg:bg-foreground/[0.03] lg:pr-2 lg:pl-3 lg:active:scale-100"
+        className="flex size-9 items-center justify-center gap-2 rounded-full text-muted transition-colors hover:bg-foreground/5 hover:text-foreground focus-visible:outline-2 focus-visible:outline-accent active:scale-95 lg:w-44 lg:justify-start lg:border lg:border-border lg:bg-foreground/[0.03] lg:pr-2 lg:pl-3 lg:active:scale-100"
       >
         <SearchIcon />
-        <span className="hidden flex-1 text-left text-sm lg:block">Search stocks</span>
+        <span className="hidden flex-1 truncate text-left text-sm whitespace-nowrap lg:block">Search</span>
         {shortcut && (
           <kbd className="hidden rounded-md border border-border px-1.5 py-0.5 font-sans text-[11px] leading-none lg:block">{shortcut}</kbd>
         )}

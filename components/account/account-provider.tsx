@@ -23,7 +23,7 @@ import { decodeAccount, STORAGE_KEY } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
 import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
-import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert } from "@/lib/trading";
+import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert, type AlertCondition } from "@/lib/trading";
 import type { StockQuote } from "@/lib/types";
 
 /** What every action resolves to: success, or a message to show. */
@@ -63,7 +63,7 @@ interface AccountContextValue {
   /** A limit or stop order, filled later at a close (lib/orders.ts). */
   placePendingOrder(order: NewOrder): Promise<Outcome>;
   cancelOrder(id: string): Promise<Outcome>;
-  addAlert(alert: { symbol: string; direction: PriceAlert["direction"]; price: number }): Promise<Outcome>;
+  addAlert(alert: { symbol: string; direction: PriceAlert["direction"]; price: number; condition?: AlertCondition }): Promise<Outcome>;
   removeAlert(id: string): Promise<Outcome>;
   /** The user has seen their triggered alerts: clears the header badge. */
   markAlertsSeen(): Promise<Outcome>;

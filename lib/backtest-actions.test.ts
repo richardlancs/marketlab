@@ -21,8 +21,10 @@ const python = vi.hoisted(() => {
 });
 vi.mock("./backtest/python-client", () => python);
 vi.mock("./owner", () => ({ currentOwner: async () => owner.current }));
+const analytics = vi.hoisted(() => ({ walkForwardOnServer: vi.fn() }));
+vi.mock("./analytics/server", () => analytics);
 
-const { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, runSweepAction, saveBacktestAction } = await import("./backtest-actions");
+const { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, runSweepAction, saveBacktestAction, walkForwardAction } = await import("./backtest-actions");
 
 const config: BacktestConfig = {
   version: CONFIG_VERSION,
@@ -142,3 +144,18 @@ describe("saved results", () => {
   });
 });
 
+describe("walk-forward tests", () => {
+  const range = { from: 10, to: 50, step: 10 };
+  it("check the settings before asking the analytics service, and count against the sweep limit", async () => {
+    analytics.walkForwardOnServer.mockResolvedValue({ ok: true, result: {} });
+    limits.calls.length = 0;
+    expect(await walkForwardAction(config, range, { from: 100, to: 200, step: 50 }, 2, 6)).toEqual({ ok: true, result: {} });
+    expect(analytics.walkForwardOnServer).toHaveBeenCalledWith(config, range, { from: 100, to: 200, step: 50 }, 2, 6);
+    expect(limits.calls).toEqual(["sweep"]);
+    analytics.walkForwardOnServer.mockClear();
+    expect((await walkForwardAction({ ...config, strategy: { kind: "buy-and-hold" } }, range, range, 2, 6)).ok).toBe(false);
+    expect((await walkForwardAction(config, { from: 0, to: 5, step: 1 }, range, 2, 6)).ok).toBe(false);
+    expect((await walkForwardAction(config, range, range, 7, 6)).ok).toBe(false);
+    expect(analytics.walkForwardOnServer).not.toHaveBeenCalled();
+  });
+});

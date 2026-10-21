@@ -11,6 +11,8 @@ import { BacktestResults, holdingsLabel } from "./backtest-results";
 import { RunComparison } from "./run-comparison";
 import { SavedRuns } from "./saved-runs";
 import { SweepPanel, SweepResults, type Measure } from "./sweep-panel";
+import type { SweepResult } from "@/lib/backtest/sweep";
+import { WalkForward } from "./walk-forward";
 import { useSavedRuns } from "./use-saved-runs";
 import { useSweep } from "./use-sweep";
 import { parseShareFragment, shareFragment } from "@/lib/backtest/share";
@@ -230,7 +232,10 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             {view.kind === "compare" && <RunComparison runs={view.runs} outcomes={view.outcomes} />}
             {view.kind === "sweep" &&
               (sweep.state.status === "done" ? (
-                <SweepResults result={sweep.state.result} measure={view.measure} onOpen={openConfig} />
+                <>
+                  <SweepResults result={sweep.state.result} measure={view.measure} onOpen={openConfig} />
+                  <WalkForwardFromSweep base={sweepBase} result={sweep.state.result} />
+                </>
               ) : (
                 <p className="py-16 text-center text-sm text-muted">
                   {sweep.state.status === "running"
@@ -376,3 +381,13 @@ function SavedRunBar({ view, onRerun, onReproduce }: { view: Extract<View, { kin
   );
 }
 
+/** A walk-forward test of the swept crossover pairs, when both averages were varied. */
+function WalkForwardFromSweep({ base, result }: { base: BacktestConfig | null; result: SweepResult }) {
+  if (base?.strategy.kind !== "moving-average") return null;
+  const axis = (id: string) => result.axes.find((a) => a.param.id === id)?.values;
+  const fast = axis("fast");
+  const slow = axis("slow");
+  if (!fast || !slow) return null;
+  const range = (values: number[]) => ({ from: values[0], to: values[values.length - 1], step: values.length > 1 ? values[1] - values[0] : 1 });
+  return <WalkForward base={base} fast={range(fast)} slow={range(slow)} />;
+}

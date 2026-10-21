@@ -180,7 +180,11 @@ describe("mock dividends and splits", () => {
   });
 
   it("split a stock after a big run: the close drops by the ratio, the adjusted history doesn't jump", () => {
-    const { bars, actions } = mockSeries("TSLA", newYork(2028, 6, 1, 18)); // reaches 2.5× its starting price in Oct 2027
+    // Whichever stock first runs to 2.5× its starting price by mid-2030.
+    const when = newYork(2030, 6, 1, 18);
+    const splitter = STOCK_SYMBOLS.find((s) => mockSeries(s, when).actions.some((a) => a.kind === "split"));
+    if (!splitter) throw new Error("expected some stock to split");
+    const { bars, actions } = mockSeries(splitter, when);
     const split = actions.find((a) => a.kind === "split");
     if (split?.kind !== "split") throw new Error("expected a split");
     const i = bars.findIndex((b) => b.time === split.time);

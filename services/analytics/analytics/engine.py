@@ -48,19 +48,33 @@ import pandas as pd
 
 from .accounting import DayRecord, Portfolio
 from .data import MAX_POINTS, InputError, Sessions, align, to_series
-from .execution import MIN_TRADE_VALUE, Costs, Trade, execute_target
+from .execution import MIN_TRADE_VALUE, Costs, Trade, buy, execute_target
 from .metrics import TRADING_DAYS_PER_YEAR, YEAR_MS, Metrics, compute_metrics
-from .strategies import BuyAndHold, DecisionContext, History, LookAheadError, MovingAverageCrossover, Strategy, Target
+from .strategies import (
+    Buy,
+    BuyAndHold,
+    DecisionContext,
+    DollarCostAveraging,
+    History,
+    LookAheadError,
+    MomentumRotation,
+    MovingAverageCrossover,
+    Rebalancing,
+    RiskParity,
+    Rules,
+    Strategy,
+    Target,
+)
 
 __all__ = [
     "ASSUMPTIONS", "ENGINE_NAME", "ENGINE_VERSION", "MARKET", "MAX_POINTS", "MIN_TRADE_VALUE", "TRADING_DAYS_PER_YEAR", "YEAR_MS",
-    "BuyAndHold", "Config", "Costs", "Decision", "DecisionContext", "DayRecord", "History", "InputError", "LookAheadError",
+    "Buy", "BuyAndHold", "Config", "Costs", "Decision", "DollarCostAveraging", "Rebalancing", "Rules", "DecisionContext", "DayRecord", "History", "InputError", "LookAheadError",
     "Metrics", "MovingAverageCrossover", "Outcome", "Run", "Sessions", "Strategy", "Target", "Trade", "Warmup",
     "align", "compute_metrics", "run_backtest", "run_config", "to_series",
 ]
 
 ENGINE_NAME = "python"
-ENGINE_VERSION = "1.1.0"
+ENGINE_VERSION = "1.2.0"
 
 #: The rules every run follows, in words (recorded with results; matches lib/backtest/engines.ts ASSUMPTIONS).
 ASSUMPTIONS = {
@@ -83,8 +97,10 @@ class Decision:
 
     time: int
     target: Mapping[str, float]
+    """Target weights, or (for a "buy" decision) dollar amounts to spend."""
     based_on: int | None
     """The last session whose prices the decision could use (the previous session), or None on the very first one."""
+    kind: Literal["target", "buy"] = "target"
 
 
 @dataclass(frozen=True)
@@ -138,7 +154,12 @@ def simulate(sessions: Sessions, strategy: Strategy, *, initial_cash: float, cos
         target = strategy.decide(ctx)
         # 2. Execute at this session's close.
         closes = {s: sessions.closes[s][day] for s in symbols}
-        if target is not None:
+        if isinstance(target, Buy):
+            decisions.append(Decision(time, dict(target.amounts), sessions.times[day - 1] if day > 0 else None, "buy"))
+            for symbol, amount in target.amounts.items():
+                if symbol in portfolio.shares and amount > 0 and (t := buy(portfolio, time, symbol, amount, closes[symbol], costs)):
+                    trades.append(t)
+        elif target is not None:
             decisions.append(Decision(time, dict(target), sessions.times[day - 1] if day > 0 else None))
             trades.extend(execute_target(portfolio, target, closes, time, costs))
         # 3. Value at this session's close.
@@ -173,7 +194,7 @@ class Config:
     """The settings MarketLab's backtester uses (lib/backtest/config.ts), for the strategies this engine runs."""
 
     holdings: list[tuple[str, float]]
-    strategy: Literal["buy-and-hold", "moving-average"]
+    strategy: Literal["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity"]
     start: int
     end: int
     initial_cash: float
@@ -182,6 +203,13 @@ class Config:
     fast: int | None = None
     slow: int | None = None
     warmup: Warmup = "within-period"
+    installments: int | None = None
+    frequency: Literal["monthly", "quarterly"] | None = None
+    entry: Mapping | None = None
+    exit: Mapping | None = None
+    top: int | None = None
+    lookback_months: int | None = None
+    absolute: bool | None = None
 
 
 @dataclass(frozen=True)
@@ -205,9 +233,29 @@ def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Serie
     series = {s: prices[s] for s in weights}
     warnings: list[str] = []
 
+    history_before = 0
     if config.strategy == "buy-and-hold":
         strategy: Strategy = BuyAndHold(weights)
-        history_before = 0
+    elif config.strategy == "dollar-cost-averaging":
+        if not config.installments or config.installments < 1:
+            raise InputError("Dollar-cost averaging needs a number of installments.")
+        strategy = DollarCostAveraging(weights, config.installments)
+    elif config.strategy == "momentum-rotation":
+        if not config.top or config.top > len(weights) or config.lookback_months not in (3, 6, 12) or config.absolute is None:
+            raise InputError("Momentum rotation needs how many stocks to hold (up to the number listed) and a 3, 6 or 12-month look-back.")
+        strategy = MomentumRotation(weights, config.top, config.lookback_months, config.absolute)
+    elif config.strategy == "risk-parity":
+        if config.frequency not in ("monthly", "quarterly"):
+            raise InputError("Risk parity needs a frequency: monthly or quarterly.")
+        strategy = RiskParity(weights, config.frequency)
+    elif config.strategy == "rebalancing":
+        if config.frequency not in ("monthly", "quarterly"):
+            raise InputError("Rebalancing needs a frequency: monthly or quarterly.")
+        strategy = Rebalancing(weights, config.frequency)
+    elif config.strategy == "rules":
+        if not config.entry or not config.exit:
+            raise InputError("A rule strategy needs entry and exit rules.")
+        strategy = Rules(weights, config.entry, config.exit)
     else:
         if config.fast is None or config.slow is None:
             raise InputError("A moving-average crossover needs a short and a long average.")

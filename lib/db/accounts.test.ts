@@ -160,7 +160,10 @@ describe("account repository", () => {
       const placed = placePendingOrder(a, { symbol: "AAPL", side: "buy", type: "limit", shares: 2, price: 198.5, duration: "gtc" }, `${userId}-o1`, day(0) + 1);
       if (!placed.ok) return placed;
       const alerted = addAlert(placed.account, { symbol: "KO", direction: "above", price: 59 }, `${userId}-a1`, day(0) + 1);
-      return alerted.ok ? { ok: true, account: alerted.account } : alerted;
+      if (!alerted.ok) return alerted;
+      // An indicator alert too: its condition is stored as JSON and must read back the same.
+      const indicator = addAlert(alerted.account, { symbol: "MSFT", direction: "above", price: 60, condition: { kind: "sma-cross", days: 50 } }, `${userId}-a2`, day(0) + 2);
+      return indicator.ok ? { ok: true, account: indicator.account } : indicator;
     });
     const result = await repo.update(userId, market(day(3)), (a) => ({ ok: true, account: a }));
     if (!result.ok) throw new Error(result.message);
@@ -168,7 +171,8 @@ describe("account repository", () => {
     expect(saved).toEqual(result.account);
     expect(saved?.events?.[0]).toMatchObject({ kind: "dividend", shares: 40, cash: 10 });
     expect(saved?.orders?.[0]).toMatchObject({ status: "filled", fillPrice: 198 });
-    expect(saved?.alerts?.[0]).toMatchObject({ triggeredAt: day(1) });
+    expect(saved?.alerts?.find((a) => a.id === `${userId}-a1`)).toMatchObject({ triggeredAt: day(1) });
+    expect(saved?.alerts?.find((a) => a.id === `${userId}-a2`)).toMatchObject({ condition: { kind: "sma-cross", days: 50 } });
     expect(saved?.trades[0]).toMatchObject({ id: `${userId}-o1`, shares: 2, price: 198 });
     // Processing again (another tab, a retry) changes nothing.
     await repo.update(userId, market(day(3)), (a) => ({ ok: true, account: a }));

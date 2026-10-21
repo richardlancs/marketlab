@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { refreshAnalytics } from "@/lib/analytics/server";
 import { accounts, backtests, guests, learning } from "@/lib/db";
 import { getMarket, getProcessingData } from "@/lib/market";
 import { runDaily } from "@/lib/maintenance";
@@ -39,6 +40,7 @@ export async function GET(request: Request) {
     deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
     pruneRateLimits,
     deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
+    refreshAnalytics: (deadline) => refreshAnalytics(deadline),
   });
   console.log("[cron] daily job:", JSON.stringify(summary));
   return Response.json(summary, { headers: { "Cache-Control": "no-store" } });

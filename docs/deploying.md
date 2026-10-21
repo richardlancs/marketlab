@@ -21,6 +21,15 @@ DATABASE_URL=libsql://… DATABASE_AUTH_TOKEN=… npm run db:migrate
 
 Migrations only add tables and columns, so they're safe to apply ahead of the code.
 
+Migration 0007 (Phase 12) adds:
+- the price store (`daily_bar`, `price_series`);
+- stored analytics (`analytics_result`);
+- `price_alert.condition`, for indicator alerts.
+
+The first daily job after deploying fills the store: about 130,000 rows for the mock market, a few seconds of work.
+
+The Python service now includes SciPy. Its bundle is about 170 MB, within Vercel's 500 MB limit for Python functions.
+
 ## Environment variables
 
 Set them in Project → Settings → Environment Variables, separately for Production and Preview.

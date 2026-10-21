@@ -11,7 +11,7 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import type { MarketData } from "../processing";
-import type { MarketIndex, Stock } from "../types";
+import type { DailyBar, MarketIndex, Stock } from "../types";
 import { buildMarket, toQuote, type Market } from "./build";
 import { mockProvider } from "./mock";
 import { isTiingoBlocked, marketMode } from "./mode";
@@ -19,7 +19,7 @@ import type { Listing, MarketDataProvider } from "./provider";
 import { isSymbolFormat, normalizeSymbol } from "./symbols";
 import { parseFilings, parseTickerMap, type Filing } from "./filings";
 import { createTiingoProvider, fetchTiingoNews, type NewsItem } from "./tiingo";
-import { STOCK_SYMBOLS } from "./universe";
+import { INDICES, STOCK_SYMBOLS } from "./universe";
 
 export type { Market } from "./build";
 export type { Listing } from "./provider";
@@ -159,6 +159,39 @@ export async function getStockDetail(input: string): Promise<StockDetail | null>
   if (listing === "failed") return { status: "unavailable", listing: { symbol, name: symbol, sector: null } };
   const stock = await cachedExtraStock(listing);
   return stock ? { status: "ok", stock } : { status: "unavailable", listing };
+}
+
+/** The current source's name in the price store ("mock" or "tiingo"). */
+export const priceSource = () => marketMode();
+
+export interface StoreSeries {
+  bars: DailyBar[];
+  marketCap: number | null;
+  peRatio: number | null;
+  dividendYield: number | null;
+}
+
+/** Daily bars (and fundamentals) for the price store, cached like the rest. Indices are stored under their own symbol (SPX…). Null if they can't be loaded now. */
+async function cachedBars(symbol: string): Promise<StoreSeries | null> {
+  "use cache";
+  cacheTag("market", `bars:${symbol}`);
+  const provider = selectProvider();
+  const index = INDICES.find((i) => i.symbol === symbol);
+  try {
+    const series = await provider.getSeries(index ? provider.indexSymbol(index) : symbol, Date.now());
+    cacheLife("hours");
+    return { bars: series.bars, marketCap: series.marketCap, peRatio: series.peRatio, dividendYield: series.dividendYield ?? null };
+  } catch (error) {
+    // Never stored from a fallback: the store keeps each source's own prices.
+    console.error(`[market] Couldn't load bars for ${symbol}:`, error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return null;
+  }
+}
+
+export async function getBarsForStore(input: string): Promise<StoreSeries | null> {
+  const symbol = normalizeSymbol(input);
+  return isSymbolFormat(symbol) ? cachedBars(symbol) : null;
 }
 
 export async function getIndices(): Promise<MarketIndex[]> {

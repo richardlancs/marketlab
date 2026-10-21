@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addAlert } from "./alerts";
+import { addAlert, describeAlert } from "./alerts";
 import { cancelPendingOrder, describeOrder, placePendingOrder, triggers, type NewOrder } from "./orders";
 import { processAccount, type MarketData } from "./processing";
 import { parseAccount, type Account } from "./trading";
@@ -146,6 +146,60 @@ describe("alerts", () => {
     if (!added.ok) throw new Error();
     const after = processAccount(added.account, data({ A: [40, 44, 30] }));
     expect(after.alerts?.[0]).toMatchObject({ triggeredAt: close(2), triggerPrice: 44 });
+  });
+});
+
+describe("indicator alerts", () => {
+  const withAlert = (input: Parameters<typeof addAlert>[1], after: number) => {
+    const added = addAlert(base(), input, "al", close(after) + 1);
+    if (!added.ok) throw new Error(added.message);
+    return added.account;
+  };
+  const flat = (n: number, price = 100) => Array.from({ length: n }, () => price);
+
+  it("fire on a big daily move, in the direction asked", () => {
+    const account = withAlert({ symbol: "A", direction: "above", price: 100, condition: { kind: "move", percent: 5 } }, 2);
+    expect(processAccount(account, data({ A: [100, 100, 104, 110, 120] })).alerts?.[0]).toMatchObject({ triggeredAt: close(4), triggerPrice: 110 });
+    const down = withAlert({ symbol: "A", direction: "below", price: 100, condition: { kind: "move", percent: 5 } }, 2);
+    expect(processAccount(down, data({ A: [100, 100, 104, 110, 120] })).alerts?.[0].triggeredAt).toBeUndefined();
+  });
+
+  it("fire when the close crosses its average, not while it's already above", () => {
+    const account = withAlert({ symbol: "A", direction: "above", price: 100, condition: { kind: "sma-cross", days: 5 } }, 6);
+    const prices = [...flat(5), 90, 90, 95, 101, 102];
+    expect(processAccount(account, data({ A: prices })).alerts?.[0]).toMatchObject({ triggeredAt: close(9), triggerPrice: 101 });
+  });
+
+  it("fire when RSI crosses a level", () => {
+    const account = withAlert({ symbol: "A", direction: "below", price: 100, condition: { kind: "rsi", days: 14, level: 30 } }, 20);
+    const prices = [...Array.from({ length: 20 }, (_, i) => 100 + (i % 2 ? 1 : -1)), ...Array.from({ length: 10 }, (_, i) => 98 - 2 * i)];
+    const after = processAccount(account, data({ A: prices })).alerts?.[0];
+    expect(after?.triggeredAt).toBeGreaterThan(close(20));
+    expect(after?.triggerPrice).toBeLessThan(98);
+  });
+
+  it("fire on a new 52-week high only with a year of history", () => {
+    const account = withAlert({ symbol: "A", direction: "above", price: 100, condition: { kind: "range-52w" } }, 250);
+    expect(processAccount(account, data({ A: [...flat(255), 99, 101] })).alerts?.[0]).toMatchObject({ triggeredAt: close(257), triggerPrice: 101 });
+    const young = withAlert({ symbol: "A", direction: "above", price: 100, condition: { kind: "range-52w" } }, 3);
+    expect(processAccount(young, data({ A: [...flat(10), 150] })).alerts?.[0].triggeredAt).toBeUndefined();
+  });
+
+  it("aren't fooled by a split", () => {
+    const account = withAlert({ symbol: "B", direction: "below", price: 100, condition: { kind: "move", percent: 10 } }, 2);
+    const split: CorporateAction = { symbol: "B", time: close(4), kind: "split", ratio: 2 };
+    const after = processAccount(account, data({ A: [50, 50, 50, 50, 50], B: [100, 100, 101, 50.5, 50] }, { B: [split] }));
+    expect(after.alerts?.[0].triggeredAt).toBeUndefined();
+  });
+
+  it("are described, validated and kept through a save", () => {
+    expect(describeAlert({ direction: "above", price: 1, condition: { kind: "rsi", days: 14, level: 70 } })).toBe("RSI(14) rises above 70");
+    expect(describeAlert({ direction: "below", price: 1, condition: { kind: "sma-cross", days: 200 } })).toBe("crosses below its 200-day average");
+    expect(describeAlert({ direction: "above", price: 70, condition: undefined })).toBe("closes at or above $70.00");
+    expect(addAlert(base(), { symbol: "A", direction: "above", price: 1, condition: { kind: "rsi", days: 14, level: 120 } }, "x", 0).ok).toBe(false);
+    expect(addAlert(base(), { symbol: "A", direction: "above", price: 1, condition: { kind: "sell-everything" } }, "x", 0).ok).toBe(false);
+    const account = withAlert({ symbol: "A", direction: "above", price: 100, condition: { kind: "sma-cross", days: 50 } }, 1);
+    expect(parseAccount(JSON.parse(JSON.stringify(account)), (s): s is string => typeof s === "string")?.alerts?.[0].condition).toEqual({ kind: "sma-cross", days: 50 });
   });
 });
 

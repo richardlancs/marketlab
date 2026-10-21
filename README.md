@@ -6,7 +6,7 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
 
 ## Features
 
-- **Markets:** a dashboard, a stocks table, stock pages and ⌘K search across about 95 US stocks and 3 indices.
+- **Markets:** a dashboard, a stocks table, stock pages and ⌘K search across about 95 US stocks and 3 indices. The simulated market moves like the real one: shared market and sector moves, realistic betas, and calm and stormy stretches.
 - **Simulated trading:** market, limit and stop orders, with dividends and stock splits applied.
 - **Your watchlist and portfolio** are saved with or without an account. A guest's data moves into the account on sign-in.
 - **Portfolio analytics:**
@@ -14,11 +14,15 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
   - return, drawdown, volatility and Sharpe ratio;
   - sector breakdown;
   - CSV export.
-- **Price alerts,** checked at every close by a daily job.
+- **Research tools:**
+  - risk and technicals on every stock page;
+  - a screener with presets;
+  - portfolio risk analysis with stress tests, a Monte Carlo projection and optimised weightings.
+- **Alerts** on prices and indicators (RSI, average crosses, big moves, 52-week highs), checked at every close by a daily job.
 - **Backtesting:**
-  - four built-in strategies (buy and hold, moving-average crossover, dollar-cost averaging, rebalancing), or your own rules;
+  - six built-in strategies (buy and hold, moving-average crossover, dollar-cost averaging, rebalancing, momentum rotation, risk parity), or your own rules;
   - up to five stocks, with trading costs and a benchmark;
-  - parameter sweeps;
+  - parameter sweeps, with overfitting checks and walk-forward testing;
   - saved runs that can be reproduced exactly;
   - share links.
 - **Learn:** 29 short lessons with demos and quizzes, plus ⓘ explanations of terms throughout the app.
@@ -63,11 +67,12 @@ npm run analytics:dev           # the Python service on :8000, alongside npm run
 | `app/` | Pages and API routes |
 | `components/` | UI |
 | `lib/market/` | Market data: the mock market, Tiingo, the stock catalog and caching |
-| `lib/backtest/` | The TypeScript backtest engine, strategies, the engine choice, price snapshots |
+| `lib/backtest/` | The TypeScript backtest engine, strategies, the engine choice, price snapshots, extra measures |
+| `lib/analytics/` | Stored analytics: the price store sync, stock profiles, the screener, portfolio analysis |
 | `lib/lessons/` | The lessons and their demos |
 | `lib/db/` | The database schema (Drizzle), accounts, guests, saved runs |
 | `lib/*-actions.ts` | Server Actions: every change goes through these |
-| `services/analytics/` | The Python backtest service ([README](services/analytics/README.md)) |
+| `services/analytics/` | The Python analytics service: backtests, profiles, portfolio analysis ([README](services/analytics/README.md)) |
 | `drizzle/` | Migrations |
 | `docs/` | [How it works](docs/how-it-works.md) · [Deploying](docs/deploying.md) |
 
@@ -77,7 +82,7 @@ The mock market is the default and needs no key. Setting `TIINGO_API_KEY` gives 
 
 ## Backtest engines
 
-`BACKTEST_ENGINE=typescript` (the default) runs backtests in the Next.js server. `BACKTEST_ENGINE=python` sends buy-and-hold and moving-average runs to the Python service. Both engines follow the same timing rule:
+`BACKTEST_ENGINE=typescript` (the default) runs backtests in the Next.js server. `BACKTEST_ENGINE=python` sends every strategy to the Python service (parameter sweeps stay in TypeScript). Both engines follow the same timing rule:
 
 1. decide from the previous session's closes;
 2. fill the orders at today's close;

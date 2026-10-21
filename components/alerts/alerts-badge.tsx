@@ -5,6 +5,7 @@ import { useEffect, useRef } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { unseenAlerts } from "@/lib/alerts";
 import { formatCurrency } from "@/lib/format";
+import { describeAlert } from "@/lib/alerts";
 
 /**
  * The header's bell: a count of alerts that triggered since you last looked.
@@ -22,7 +23,7 @@ export function AlertsBadge() {
     for (const a of unseenAlerts(account)) {
       if (notified.current.has(a.id)) continue;
       notified.current.add(a.id);
-      new Notification(`${a.symbol} closed ${a.direction} ${formatCurrency(a.price)}`, {
+      new Notification(`${a.symbol} ${describeAlert(a)}`, {
         body: `It closed at ${formatCurrency(a.triggerPrice ?? a.price)}.`,
         tag: a.id, // the browser shows each alert once, even from two tabs
       });

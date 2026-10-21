@@ -56,4 +56,18 @@ describe("the daily job", () => {
     expect(cutoff).toBeLessThanOrEqual(1_000_010 - GUEST_LIFETIME);
     expect(cutoff).toBeGreaterThan(1_000_000 - GUEST_LIFETIME - 100);
   });
+
+  it("refreshes analytics last, with the time that's left, and survives its failure", async () => {
+    const { deps } = world([]);
+    deps.refreshAnalytics = vi.fn(async (deadline: number) => ({ computed: 5, deadline }));
+    const summary = await runDaily(deps, { budgetMs: 30_000 });
+    const [deadline] = vi.mocked(deps.refreshAnalytics).mock.calls[0];
+    expect(deadline).toBe(1_000_001 + 30_000);
+    expect(summary.analytics).toMatchObject({ computed: 5 });
+
+    deps.refreshAnalytics = vi.fn(async () => {
+      throw new Error("service down");
+    });
+    expect((await runDaily(deps)).analytics).toBe("failed: service down");
+  });
 });

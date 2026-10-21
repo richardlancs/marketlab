@@ -14,6 +14,7 @@ import { runFromSnapshot, runFull, runOnServer, sweepOnServer, type RunResult, t
 import { checksumOf } from "./backtest/snapshot";
 import { compareResults, type Comparison, type StoredResult } from "./backtest/stored";
 import type { Axis } from "./backtest/sweep";
+import { walkForwardOnServer, type WalkForwardResult } from "./analytics/server";
 import { backtests } from "./db";
 import { isSymbolFormat } from "./market/symbols";
 import { allow } from "./rate-limit";
@@ -140,6 +141,32 @@ export async function runSweepAction(base: unknown, axes: unknown): Promise<Swee
   if (!Array.isArray(axes) || axes.length < 1 || axes.length > 2 || !axes.every(isAxis)) return { ok: false, message: "Choose one or two settings to vary." };
   if (!(await allow("sweep", 6, 60))) return { ok: false, message: "You're running a lot of sweeps. Wait a minute and try again." };
   return sweepOnServer(parsed, axes.map(({ param, from, to, step }) => ({ param, from, to, step })));
+}
+
+/**
+ * A walk-forward test of a moving-average crossover (lib/analytics/server.ts):
+ * choose the best short/long pair on each past window, test it on the next.
+ * Counts against the sweep limit, since it's a few hundred backtests.
+ */
+export async function walkForwardAction(
+  base: unknown,
+  fast: unknown,
+  slow: unknown,
+  trainYears: unknown,
+  testMonths: unknown,
+): Promise<{ ok: true; result: WalkForwardResult } | { ok: false; message: string }> {
+  const parsed = parseConfig(base, isSymbolFormat);
+  if (!parsed || parsed.strategy.kind !== "moving-average") return { ok: false, message: INVALID };
+  const range = (v: unknown) => {
+    const r = v as { from?: unknown; to?: unknown; step?: unknown } | null;
+    return r && [r.from, r.to, r.step].every((x) => Number.isInteger(x) && (x as number) >= 1 && (x as number) <= 250) ? { from: r.from as number, to: r.to as number, step: r.step as number } : null;
+  };
+  const f = range(fast);
+  const s = range(slow);
+  if (!f || !s) return { ok: false, message: "Choose ranges for the short and long averages." };
+  if (![1, 2, 3].includes(trainYears as number) || ![3, 6, 12].includes(testMonths as number)) return { ok: false, message: INVALID };
+  if (!(await allow("sweep", 6, 60))) return { ok: false, message: "You're running a lot of tests. Wait a minute and try again." };
+  return walkForwardOnServer(parsed, f, s, trainYears as number, testMonths as number);
 }
 
 export type SavedResult = { ok: true; run: SavedRun; stored: StoredResult | null } | { ok: false; message: string };

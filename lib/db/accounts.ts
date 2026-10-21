@@ -122,7 +122,7 @@ async function persist(ex: Executor, userId: string, before: Account, after: Acc
   };
   // Optional fields default to null, so a field that was cleared is cleared in the row too.
   await sync(pendingOrder, before.orders, after.orders, (o) => ({ closedAt: null, fillPrice: null, note: null, ...o }));
-  await sync(priceAlert, before.alerts, after.alerts, (a) => ({ triggeredAt: null, triggerPrice: null, ...a, seen: a.seen ?? false }));
+  await sync(priceAlert, before.alerts, after.alerts, (a) => ({ triggeredAt: null, triggerPrice: null, condition: null, ...a, seen: a.seen ?? false }));
 }
 
 /** The account tables, keyed by user: the rows `moveAccount` hands from one user to another. */

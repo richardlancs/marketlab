@@ -1,7 +1,7 @@
 "use client";
 
 import { useId } from "react";
-import { OPERATOR_NAMES, RULE_LIMITS, type Condition, type Indicator, type Operator, type RuleSet } from "@/lib/backtest/rules";
+import { OPERATOR_NAMES, RULE_LIMITS, unitOf, type Condition, type Indicator, type Operator, type RuleSet, type Unit } from "@/lib/backtest/rules";
 
 /**
  * The rule builder's own form of a rule set: like RuleSet, but numbers are
@@ -12,7 +12,7 @@ export type IndicatorDraft = { kind: Indicator["kind"]; n: string };
 export type ConditionDraft = { left: IndicatorDraft; op: Operator; right: IndicatorDraft };
 export type RuleSetDraft = { combine: RuleSet["combine"]; conditions: ConditionDraft[] };
 
-const numberOf = (i: Indicator) => (i.kind === "value" ? String(i.value) : i.kind === "price" ? "" : String(i.days));
+const numberOf = (i: Indicator) => (i.kind === "value" ? String(i.value) : "days" in i ? String(i.days) : "");
 const toIndicatorDraft = (i: Indicator): IndicatorDraft => ({ kind: i.kind, n: numberOf(i) });
 
 export const toDraft = (rules: RuleSet): RuleSetDraft => ({
@@ -22,7 +22,7 @@ export const toDraft = (rules: RuleSet): RuleSetDraft => ({
 
 /** Not validated here: the config's parser checks the result (see lib/backtest/rules.ts). */
 function fromIndicatorDraft(d: IndicatorDraft): Indicator {
-  if (d.kind === "price") return { kind: "price" };
+  if (d.kind === "price" || d.kind === "macd" || d.kind === "macd-signal") return { kind: d.kind };
   if (d.kind === "value") return { kind: "value", value: Number(d.n) };
   return { kind: d.kind, days: Number(d.n) };
 }
@@ -35,11 +35,18 @@ const KIND_NAMES: Record<Indicator["kind"], string> = {
   price: "Price",
   sma: "Moving average",
   ema: "Exponential average",
+  "bollinger-upper": "Upper Bollinger band",
+  "bollinger-lower": "Lower Bollinger band",
   rsi: "RSI",
+  macd: "MACD",
+  "macd-signal": "MACD signal line",
   value: "Number",
 };
-const isScore = (kind: Indicator["kind"]) => kind === "rsi" || kind === "value";
-const DEFAULT_N: Record<Indicator["kind"], string> = { price: "", sma: "200", ema: "50", rsi: "14", value: "30" };
+const unit = (kind: Indicator["kind"]) => unitOf({ kind });
+const DEFAULT_N: Record<Indicator["kind"], string> = { price: "", sma: "200", ema: "50", "bollinger-upper": "20", "bollinger-lower": "20", rsi: "14", macd: "", "macd-signal": "", value: "30" };
+/** A sensible partner for the left side, when switching it to another unit. */
+const PARTNER: Record<Unit, IndicatorDraft> = { dollars: { kind: "sma", n: "200" }, score: { kind: "value", n: "30" }, macd: { kind: "macd-signal", n: "" } };
+const HAS_NUMBER = (kind: Indicator["kind"]) => DEFAULT_N[kind] !== "";
 
 const input =
   "h-9 rounded-lg border border-border bg-transparent px-2 text-base tabular-nums outline-none transition-colors focus-visible:border-accent sm:text-sm";
@@ -67,8 +74,8 @@ export function RuleSetEditor({ title, value, onChange }: { title: string; value
               label="Compare"
               value={c.left}
               onChange={(left) =>
-                // Switching between a price-like and an RSI-like value: pick a sensible partner that makes sense with it.
-                setCondition(i, { ...c, left, right: isScore(left.kind) === isScore(c.right.kind) ? c.right : isScore(left.kind) ? { kind: "value", n: "30" } : { kind: "sma", n: "200" } })
+                // Switching to another kind of value (prices, a 0–100 score, MACD): pick a partner that makes sense with it.
+                setCondition(i, { ...c, left, right: unit(left.kind) === unit(c.right.kind) ? c.right : PARTNER[unit(left.kind)] })
               }
               allowValue={false}
             />
@@ -79,7 +86,7 @@ export function RuleSetEditor({ title, value, onChange }: { title: string; value
                 </option>
               ))}
             </select>
-            <IndicatorPicker id={`${id}-${i}-right`} label="With" value={c.right} onChange={(right) => setCondition(i, { ...c, right })} allowValue onlyScore={isScore(c.left.kind)} />
+            <IndicatorPicker id={`${id}-${i}-right`} label="With" value={c.right} onChange={(right) => setCondition(i, { ...c, right })} allowValue only={unit(c.left.kind)} />
             {value.conditions.length > 1 && (
               <button
                 type="button"
@@ -117,19 +124,19 @@ function IndicatorPicker({
   value,
   onChange,
   allowValue,
-  onlyScore,
+  only,
 }: {
   id: string;
   label: string;
   value: IndicatorDraft;
   onChange: (next: IndicatorDraft) => void;
   allowValue: boolean;
-  /** For the right side: true when the left is RSI (so only RSI or a number fit), false when it's a price-like value. */
-  onlyScore?: boolean;
+  /** For the right side: the left side's unit, so only values in the same unit can be picked. */
+  only?: Unit;
 }) {
   const kinds = (Object.keys(KIND_NAMES) as Indicator["kind"][]).filter((k) => allowValue || k !== "value");
-  const fits = (k: Indicator["kind"]) => onlyScore === undefined || isScore(k) === onlyScore;
-  const hasNumber = value.kind !== "price";
+  const fits = (k: Indicator["kind"]) => only === undefined || unit(k) === only;
+  const hasNumber = HAS_NUMBER(value.kind);
   return (
     <span className="flex items-center gap-1.5">
       <select

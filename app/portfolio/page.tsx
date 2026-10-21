@@ -5,6 +5,7 @@ import { LeaderboardCard } from "@/components/portfolio/leaderboard-card";
 import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PerformanceCard } from "@/components/portfolio/performance-card";
 import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
+import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
 import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
 
@@ -32,6 +33,9 @@ export default function PortfolioPage() {
         </div>
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up lg:col-span-12">
           <PerformanceCard />
+        </div>
+        <div style={{ animationDelay: "210ms" }} className="animate-fade-up lg:col-span-12">
+          <RiskAnalysis />
         </div>
         <div style={{ animationDelay: "240ms" }} className="animate-fade-up lg:col-span-12">
           <TradeHistory />

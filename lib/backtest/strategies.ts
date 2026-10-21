@@ -79,3 +79,60 @@ export function rebalancing(weights: Weights, frequency: "monthly" | "quarterly"
     return { type: "target", weights };
   };
 }
+
+/**
+ * Momentum rotation among the chosen stocks: at the start of each month,
+ * hold the `top` stocks with the highest return over the last `lookbackMonths`
+ * (21 trading days a month), 1/top of the money in each; the rest in cash.
+ * With `absolute`, a stock whose return was negative isn't held at all ("dual
+ * momentum": the money waits in cash instead). Waits in cash until every
+ * stock has enough history.
+ */
+export function momentumRotation(weights: Weights, top: number, lookbackMonths: number, absolute: boolean): Strategy {
+  const symbols = Object.keys(weights);
+  const sessions = lookbackMonths * 21;
+  return ({ day, times, closes }) => {
+    if (day !== 0 && !startsMonth(times, day)) return null;
+    if (symbols.some((s) => closes[s].length <= sessions)) return null;
+    const scores = symbols.map((s, i) => {
+      const c = closes[s];
+      return { s, i, score: c[c.length - 1] / c[c.length - 1 - sessions] - 1 };
+    });
+    // Highest first; ties keep the order the stocks were listed in.
+    scores.sort((a, b) => b.score - a.score || a.i - b.i);
+    const picks = scores.slice(0, top).filter((x) => !absolute || x.score > 0);
+    return { type: "target", weights: Object.fromEntries(symbols.map((s) => [s, picks.some((p) => p.s === s) ? 1 / top : 0])) };
+  };
+}
+
+/** Sample standard deviation of the last `count` daily returns, summed left to right (like the Python engine). */
+function returnVolatility(closes: number[], count: number): number {
+  const returns: number[] = [];
+  for (let i = closes.length - count; i < closes.length; i++) returns.push(closes[i] / closes[i - 1] - 1);
+  let sum = 0;
+  for (const r of returns) sum = sum + r;
+  const mean = sum / returns.length;
+  let squares = 0;
+  for (const r of returns) squares = squares + (r - mean) ** 2;
+  return Math.sqrt(squares / (returns.length - 1));
+}
+
+/**
+ * Risk parity among the chosen stocks: weight each by 1 / its volatility
+ * over the last `lookback` daily returns, so each contributes roughly the
+ * same risk, and reset the weights at the start of every month or quarter.
+ * Waits in cash until a scheduled date with enough history.
+ */
+export function riskParity(weights: Weights, frequency: "monthly" | "quarterly", lookback = 63): Strategy {
+  const symbols = Object.keys(weights);
+  const every = frequency === "monthly" ? 1 : 3;
+  return ({ day, times, closes }) => {
+    const due = day === 0 || (startsMonth(times, day) && monthsStarted(times, day) % every === 0);
+    if (!due || symbols.some((s) => closes[s].length <= lookback)) return null;
+    const inverse = symbols.map((s) => 1 / returnVolatility(closes[s], lookback));
+    if (inverse.some((x) => !Number.isFinite(x))) return null; // a flat price: no volatility to divide by
+    let total = 0;
+    for (const x of inverse) total = total + x;
+    return { type: "target", weights: Object.fromEntries(symbols.map((s, i) => [s, inverse[i] / total])) };
+  };
+}

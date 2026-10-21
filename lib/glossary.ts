@@ -62,10 +62,22 @@ export const GLOSSARY = {
     more: "A −30% drawdown means that at the worst moment you'd have watched 30% disappear from the peak. It's a good guide to how painful a strategy is to stick with, which matters as much as its return.",
     group: "Measuring results",
   },
+  valueAtRisk: {
+    title: "Value at Risk",
+    short: "A bad-day loss: the one-day fall that was only exceeded on the worst 5% of days.",
+    more: "A one-day 95% VaR of 2% means that over the past year, only about 1 day in 20 lost more than 2%. Expected shortfall goes further: the average loss on those worst days. Neither is a limit; the worst days can be much worse.",
+    group: "Measuring results",
+  },
   sharpe: {
     title: "Sharpe ratio",
     short: "Return per unit of volatility: how much you were paid for the bumps.",
     more: "Average daily return ÷ its standard deviation, scaled to a year (here with a 0% risk-free rate). Around 1 is good over long periods; two strategies with the same return can have very different Sharpe ratios.",
+    group: "Measuring results",
+  },
+  correlation: {
+    title: "Correlation",
+    short: "How closely two investments' daily returns move together, on a scale from −1 to 1.",
+    more: "1 means they rise and fall in lockstep, 0 means no link, and below 0 means they tend to move opposite ways. The lower the correlation between holdings, the more they smooth each other out, which is what makes diversification work.",
     group: "Measuring results",
   },
   beta: {
@@ -84,6 +96,12 @@ export const GLOSSARY = {
     title: "Time invested",
     short: "The share of days with money in the market rather than all in cash.",
     more: "A strategy that's out of the market half the time can't earn the market's return on those days, but it also avoids its falls.",
+    group: "Measuring results",
+  },
+  monteCarlo: {
+    title: "Monte Carlo simulation",
+    short: "Running thousands of possible futures, built from past returns, to see the range of outcomes.",
+    more: "Instead of one guess, it shows a spread: a middle path, the outcomes most paths land between, and how often money is lost. It's only as good as the past it's built from, so treat it as a picture of uncertainty, not a forecast.",
     group: "Measuring results",
   },
   marketOrder: {
@@ -164,6 +182,18 @@ export const GLOSSARY = {
     more: "Above 70 is often called overbought and below 30 oversold, but a strong trend can stay there a long time. It's a measure of momentum, not a promise of a turn.",
     group: "Indicators",
   },
+  macd: {
+    title: "MACD",
+    short: "Moving Average Convergence Divergence: the gap between a 12-day and a 26-day exponential average, compared with its own 9-day average.",
+    more: "When the gap is above zero, the short-term trend is running ahead of the longer one. Traders watch for the MACD line crossing its signal line as a sign that momentum is turning. Like every trend tool, it lags and gives false signals in choppy markets.",
+    group: "Indicators",
+  },
+  bollingerBands: {
+    title: "Bollinger Bands",
+    short: "Two lines drawn 2 standard deviations above and below a 20-day average, so they widen when prices swing more.",
+    more: "A close near the upper band is high compared with the last month's range, and one near the lower band is low. Narrow bands mean a calm stretch, which often comes before a bigger move, in either direction.",
+    group: "Indicators",
+  },
   buyAndHold: {
     title: "Buy and hold",
     short: "Buy good investments and keep them for years, whatever the market does in between.",
@@ -186,6 +216,18 @@ export const GLOSSARY = {
     title: "Moving-average crossover",
     short: "A trend-following strategy: hold a stock while its short average is above its long one, and step aside when it falls below.",
     more: "It aims to ride long uptrends and dodge long downtrends. The price is lag and whipsaws: it always buys after a rise has started and sells after a fall has begun, and choppy markets trigger false signals.",
+    group: "Strategies",
+  },
+  momentum: {
+    title: "Momentum rotation",
+    short: "Each month, hold the few stocks that have risen the most over the last several months, and switch as the leaders change.",
+    more: "It bets that recent winners keep winning for a while, which has often held on average but fails sharply when the market turns. An \"only hold stocks that rose\" rule, called dual momentum, moves to cash when nothing is rising.",
+    group: "Strategies",
+  },
+  riskParity: {
+    title: "Risk parity",
+    short: "Weighting holdings by how calm they are, so each adds about the same amount of risk.",
+    more: "A stock half as volatile gets twice the weight. Compared with equal weights, it leans toward steadier holdings, so no single wild one dominates the swings. It aims for balanced risk, not the highest return.",
     group: "Strategies",
   },
   overfitting: {

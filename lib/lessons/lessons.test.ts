@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { PRESETS } from "../analytics/screener";
 import { parseShareFragment } from "../backtest/share";
 import { GLOSSARY, GROUPS, TERM_KEYS, type TermKey } from "../glossary";
 import { CATALOG } from "../market/catalog";
@@ -7,7 +8,7 @@ import { linkedKeys, parseRichText, plainText } from "./rich-text";
 import type { Lesson } from "./types";
 
 /** Pages a lesson may link to (besides other lessons and stock pages). */
-const APP_PAGES = ["/", "/stocks", "/watchlist", "/portfolio", "/backtest", "/leaderboard", "/learn"];
+const APP_PAGES = ["/", "/stocks", "/watchlist", "/portfolio", "/backtest", "/screener", "/leaderboard", "/learn"];
 const isKnownSymbol = (symbol: string) => CATALOG.some((s) => s.symbol === symbol);
 
 const lessons = Object.entries(LESSONS) as [TermKey, Lesson][];
@@ -105,6 +106,7 @@ describe.each(lessons)("the %s lesson", (term, lesson) => {
       if (href.startsWith("/backtest#")) expect(parseShareFragment(href.slice("/backtest".length), isKnownSymbol), href).not.toBeNull();
       else if (href.startsWith("/stocks/")) expect(isKnownSymbol(href.slice("/stocks/".length)), href).toBe(true);
       else if (href.startsWith("/learn/")) expect(termForSlug(href.slice("/learn/".length)), href).toBeDefined();
+      else if (href.startsWith("/screener?preset=")) expect(PRESETS.map((p) => p.id), href).toContain(href.slice("/screener?preset=".length));
       else expect(APP_PAGES, href).toContain(href);
     }
   });

@@ -7,6 +7,7 @@ import { PriceChart } from "@/components/charts/price-chart";
 import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PositionCard } from "@/components/stocks/position-card";
 import { RangeBar } from "@/components/stocks/range-bar";
+import { StockAnalysis } from "@/components/stocks/stock-analysis";
 import { StockNews } from "@/components/stocks/stock-news";
 import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
@@ -100,6 +101,12 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
           />
           <StockStats stock={stock} className="mt-6" />
         </Card>
+        {/* Calculated by the analytics service from stored prices; the page doesn't wait for it. */}
+        <div className="mt-4 lg:mt-6">
+          <Suspense fallback={<AnalysisSkeleton />}>
+            <StockAnalysis symbol={stock.symbol} />
+          </Suspense>
+        </div>
         {/* Filings and news come from other sources; the page doesn't wait for them. */}
         <div className="mt-4 lg:mt-6">
           <Suspense fallback={null}>
@@ -179,5 +186,20 @@ function StockDetailsSkeleton() {
         </Card>
       </div>
     </div>
+  );
+}
+
+function AnalysisSkeleton() {
+  const block = "animate-pulse rounded-lg bg-foreground/[0.06]";
+  return (
+    <Card aria-busy>
+      <span className="sr-only">Loading risk and technicals…</span>
+      <div className={`h-6 w-24 ${block}`} />
+      <div className="mt-4 grid grid-cols-2 gap-4 sm:grid-cols-4">
+        {Array.from({ length: 8 }, (_, i) => (
+          <div key={i} className={`h-10 ${block}`} />
+        ))}
+      </div>
+    </Card>
   );
 }
