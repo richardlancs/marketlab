@@ -1,0 +1,73 @@
+# Checks every push and pull request: the same commands as `npm run check`,
+# `npm run test:python` and `npm run test:parity` locally. Deploys still go
+# through Vercel's Git integration; branch protection on main requires these.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Lint, test and build (Next.js)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      # The mock market: no keys, deterministic data.
+      MARKET_DATA_SOURCE: mock
+      NEXT_TELEMETRY_DISABLED: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+
+  python:
+    name: Test (Python analytics)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: services/analytics
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          enable-cache: true
+      # 3.12 is what Vercel runs the service on.
+      - run: uv python install 3.12
+      - run: uv sync --extra dev --locked --python 3.12
+      - run: uv run --extra dev pytest -q
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Production dependencies only; high and critical advisories fail the check.
+      - run: npm audit --omit=dev --audit-level=high
+      - uses: astral-sh/setup-uv@v6
+      - name: pip-audit (Python, locked versions)
+        working-directory: services/analytics
+        run: |
+          uv export --locked --no-dev --no-hashes --format requirements-txt > /tmp/requirements.txt
+          uvx --from pip-audit==2.9.0 pip-audit --strict -r /tmp/requirements.txt

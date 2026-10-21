@@ -21,7 +21,7 @@ dev = [
 [tool.uv]
 package = false
 # Resolve only releases published by this date, so re-locking is reproducible.
-exclude-newer = "2026-10-05T00:00:00Z"
+exclude-newer = "2026-10-21T00:00:00Z"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
