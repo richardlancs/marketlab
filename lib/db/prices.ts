@@ -9,15 +9,14 @@ import { and, eq, gt } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import type { DailyBar } from "../types";
 import * as schema from "./schema";
-import { writeTransaction } from "./transaction";
 
 type Db = LibSQLDatabase<typeof schema>;
 const { analyticsResult, dailyBar, priceSeries } = schema;
 
 export type PriceSource = "mock" | "tiingo";
 
-/** Rows per INSERT: 9 values each, well under SQLite's limit on bound variables. */
-const CHUNK = 500;
+/** Rows per INSERT: 9 values each, 9,000 per statement, under SQLite's 32,766 bound variables. A 5-year series fits in two. */
+const CHUNK = 1000;
 
 /** SHA-256 of the bars, in order: the same bars always give the same checksum. */
 export function barsChecksum(bars: readonly DailyBar[]): string {
@@ -71,12 +70,13 @@ export function createPriceRepository(db: Db) {
       const appendOnly = stored !== undefined && known.length === stored.bars && known[0]?.time === stored.firstTime && barsChecksum(known) === stored.checksum;
       const fresh = appendOnly ? bars.slice(known.length) : bars;
 
-      await writeTransaction(db, async (tx) => {
-        if (!appendOnly) await tx.delete(dailyBar).where(and(eq(dailyBar.source, source), eq(dailyBar.symbol, symbol)));
-        const values = rows(source, symbol, fresh);
-        for (let i = 0; i < values.length; i += CHUNK) await tx.insert(dailyBar).values(values.slice(i, i + CHUNK));
-        await tx.insert(priceSeries).values(meta).onConflictDoUpdate({ target: [priceSeries.source, priceSeries.symbol], set: meta });
-      });
+      // One batch: atomic, and on Turso a single HTTP request instead of a round trip per statement.
+      const values = rows(source, symbol, fresh);
+      const inserts = [];
+      for (let i = 0; i < values.length; i += CHUNK) inserts.push(db.insert(dailyBar).values(values.slice(i, i + CHUNK)));
+      const upsert = db.insert(priceSeries).values(meta).onConflictDoUpdate({ target: [priceSeries.source, priceSeries.symbol], set: meta });
+      if (appendOnly) await db.batch([upsert, ...inserts]);
+      else await db.batch([db.delete(dailyBar).where(and(eq(dailyBar.source, source), eq(dailyBar.symbol, symbol))), ...inserts, upsert]);
       return appendOnly ? "appended" : "rewritten";
     },
 

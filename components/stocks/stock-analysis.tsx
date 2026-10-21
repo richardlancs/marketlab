@@ -1,3 +1,4 @@
+import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
@@ -18,6 +19,9 @@ const money = (v: number | null) => (v === null ? DASH : formatCurrency(v));
  * after the rest of the page.
  */
 export async function StockAnalysis({ symbol }: { symbol: string }) {
+  // Always at request time: at build time the analytics service isn't reachable, and a prerendered
+  // "unavailable" would be baked into the page.
+  await connection();
   const result = await getStockProfile(symbol);
   if (result.status !== "ok") {
     return (

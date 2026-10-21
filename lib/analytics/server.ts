@@ -55,14 +55,20 @@ export async function syncPrices(symbols: readonly string[], deadline = Infinity
   const source = priceSource();
   let changed = 0;
   const failed: string[] = [];
-  for (const [i, symbol] of symbols.entries()) {
+  // A few at a time: each first write is a network round trip of about a second on Turso.
+  const PARALLEL = 6;
+  for (let i = 0; i < symbols.length; i += PARALLEL) {
     if (now() > deadline) return { changed, failed, skipped: symbols.slice(i) };
-    const series = await getBarsForStore(symbol);
-    if (!series) {
-      failed.push(symbol);
-      continue;
-    }
-    if ((await prices.syncSeries(source, symbol, series.bars, { marketCap: series.marketCap, peRatio: series.peRatio, dividendYield: series.dividendYield })) !== "unchanged") changed++;
+    await Promise.all(
+      symbols.slice(i, i + PARALLEL).map(async (symbol) => {
+        const series = await getBarsForStore(symbol);
+        if (!series) {
+          failed.push(symbol);
+          return;
+        }
+        if ((await prices.syncSeries(source, symbol, series.bars, { marketCap: series.marketCap, peRatio: series.peRatio, dividendYield: series.dividendYield })) !== "unchanged") changed++;
+      }),
+    );
   }
   return { changed, failed, skipped: [] };
 }
