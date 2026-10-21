@@ -35,7 +35,12 @@ test.describe("pages", () => {
     const status = page.getByRole("status").filter({ hasText: /of \d+ stocks/ });
     await expect(status).toContainText(/\d+ of \d+ stocks/);
     const all = Number((await status.textContent())!.match(/of (\d+)/)![1]);
+    // A company-numbers preset switches the columns; without stored SEC numbers it simply matches nothing.
+    await page.getByRole("button", { name: "Quality" }).click();
+    await expect(page.getByRole("button", { name: "Company numbers" })).toHaveAttribute("aria-pressed", "true");
+    await expect(page.getByRole("columnheader", { name: /ROE/ })).toBeVisible();
     await page.getByRole("button", { name: "Dividend payers" }).click();
+    await expect(page.getByRole("button", { name: "Price and risk" })).toHaveAttribute("aria-pressed", "true");
     await expect(status).not.toContainText(`${all} of ${all}`);
     await page.getByRole("link", { name: /Backtest the top/ }).click();
     await expect(page).toHaveURL(/\/backtest#run=/);

@@ -48,7 +48,7 @@ export const COMPANY_NUMBERS_LESSONS: Partial<Record<TermKey, Lesson>> = {
     ],
     inMarketLab: [
       { label: "Stocks table", href: "/stocks", text: "Every stock's page shows its market cap. In the mock market it starts from the company's real value on Oct 16, 2026 and moves with the simulated price; with real Tiingo prices it shows \"—\"." },
-      { label: "Apple", href: "/stocks/AAPL", text: "Compare a giant like Apple with a smaller company: the share prices say little, the market caps say a lot." },
+      { label: "Apple", href: "/stocks/AAPL", text: "Compare a giant like Apple with a smaller company: the share prices say little, the market caps say a lot. Its Company numbers card divides the market cap by revenue, profit and free cash flow." },
     ],
     related: ["peRatio", "split", "etf", "diversification"],
     quiz: [
@@ -104,6 +104,7 @@ export const COMPANY_NUMBERS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         "Most quoted P/Es are trailing: they use the last 12 months of actual profit. A forward P/E uses analysts' estimates for the next 12 months instead. Forward P/Es look lower for growing companies, but they rest on forecasts that can be wrong.",
         "Flip the ratio and you get the earnings yield: a P/E of 20 means profits are 1 ÷ 20 = 5% of the price. That makes it easy to compare with interest rates. A company that loses money has no meaningful P/E, and data sites usually show a dash.",
         "The price moves every day while earnings are reported only every quarter, so the P/E rises and falls with the share price between reports.",
+        "Price to sales (P/S) works the same way with [[revenue]] in place of profit: market cap ÷ a year's revenue. It's handy for companies that don't make a profit yet, but a dollar of sales is worth far more to a company with wide [[margins]] than to one with thin ones.",
       ],
       formula: {
         expression: "P/E = share price ÷ earnings per share",
@@ -139,10 +140,11 @@ export const COMPANY_NUMBERS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Ignoring one-off items. A big one-time gain or charge can make a single year's P/E look far lower or higher than normal.",
     ],
     inMarketLab: [
-      { label: "JPMorgan Chase", href: "/stocks/JPM", text: "Each stock page shows its P/E. Compare a bank like JPMorgan Chase with a fast-growing company like NVIDIA." },
-      { label: "NVIDIA", href: "/stocks/NVDA", text: "In the mock market each stock's earnings stay fixed, so its P/E moves only with the simulated price. With real Tiingo prices, P/E shows \"—\"." },
+      { label: "JPMorgan Chase", href: "/stocks/JPM", text: "Each stock page's Company numbers card shows a P/E from the company's reported earnings in its SEC filings, over the last four quarters. Compare a bank like JPMorgan Chase with a fast-growing company like NVIDIA." },
+      { label: "NVIDIA", href: "/stocks/NVDA", text: "The P/E in the key numbers under the chart comes from the price source: in the mock market its earnings stay fixed, so it moves only with the simulated price. The card's P/E uses real reported earnings, but on the public site the price is still simulated, so treat it as illustrative." },
+      { label: "Value screen", href: "/screener?preset=value", text: "The screener's P/E is market value ÷ the last four quarters' reported net income, and a company with a loss has none. The Value preset looks for a P/E of 18 or less with strong free cash flow." },
     ],
-    related: ["marketCap", "dividendYield", "volatility"],
+    related: ["marketCap", "revenue", "dividendYield", "volatility"],
     quiz: [
       {
         kind: "Terminology",
@@ -272,6 +274,385 @@ export const COMPANY_NUMBERS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 1,
         explanation: "Yields often spike because the price has fallen on bad news. If the dividend is then cut, the high yield disappears.",
+      },
+    ],
+  },
+  revenue: {
+    why: [
+      "Every other company number starts here. Revenue is the money a company brings in from selling its products and services, before any costs come out. It tells you how big the business is and, from one year to the next, whether customers are buying more of what it sells.",
+      "Earnings, also called net income or profit, are what's left after every cost: making the products, paying staff, marketing, research, interest on debt and taxes. Revenue shows a company can sell; earnings show it can sell at a profit. A share's value rests on the earnings the company can make over the years, which is why the [[peRatio|P/E ratio]] and most valuations are built on them.",
+    ],
+    how: {
+      paragraphs: [
+        "A company's income statement runs from top to bottom. Revenue is the top line. Take away the cost of making what was sold and you have gross profit. Take away the costs of running the business, like salaries, rent, marketing and research, and you have operating income. Take away interest and taxes and you reach net income, the bottom line.",
+        "Divide net income by the number of shares and you get earnings per share (EPS). Companies report a diluted EPS too, which counts the extra shares that would exist if employees' stock options and similar claims turned into shares. Diluted EPS is the cautious figure, and the one most ratios use.",
+        "US companies report these numbers to the SEC every quarter, in a 10-Q, and every year, in a 10-K. Because a single quarter can be distorted by the seasons, investors often add up the last four quarters, called trailing twelve months, or compare a quarter with the same quarter a year earlier.",
+      ],
+      formula: {
+        expression: "Net income = revenue − costs − interest − taxes; EPS = net income ÷ shares",
+        reading: "What's left of the sales after everything is paid, then divided up per share.",
+      },
+    },
+    example: {
+      setup: "A company sells $10 billion of goods in a year. Making them cost $6 billion, running the business cost $2.5 billion, interest on its debt was $0.2 billion, and it pays 20% tax on its profit. It has 400 million shares.",
+      steps: [
+        "Gross profit: $10 billion − $6 billion = $4 billion.",
+        "Operating income: $4 billion − $2.5 billion = $1.5 billion.",
+        "Profit before tax: $1.5 billion − $0.2 billion = $1.3 billion. Tax at 20% is $0.26 billion, so net income is $1.04 billion.",
+        "Earnings per share: $1.04 billion ÷ 400 million shares = $2.60.",
+      ],
+      result: "Of $10 billion in sales, only $1.04 billion, about a tenth, ended up as earnings. That $2.60 a share is what investors compare with the share price.",
+    },
+    reading: [
+      { label: "Revenue growing, earnings growing faster", meaning: "The business gets more profitable as it grows: often the best sign of all." },
+      { label: "Revenue growing, earnings flat or falling", meaning: "Growth is costing more than it brings in. Fine for a while if it's deliberate investment, a worry if it isn't." },
+      { label: "Revenue shrinking", meaning: "Fewer sales, or lower prices. Cost cuts can hold up earnings for a time, but not forever." },
+      { label: "A loss", meaning: "Earnings below zero. Common for young companies; there's no meaningful P/E, so investors look at revenue and cash instead." },
+    ],
+    realWorld: [
+      "Size and profit are different things. Walmart has had more revenue than any other US company for years, over $600 billion, yet it keeps only a few cents of each dollar. Companies with a small fraction of its sales earn far more.",
+      "Amazon reported little or no profit for much of its first two decades as a public company, while its revenue grew year after year. It spent the money on warehouses, technology and new businesses. Investors who judged it on earnings alone missed what the revenue growth was saying.",
+      "Revenue can be inflated. Enron reported more than $100 billion of revenue in 2000, much of it from counting energy trades at their full value, and went bankrupt in 2001. Accounting rules have tightened since, but reading how a company earns its revenue still matters.",
+    ],
+    mistakes: [
+      "Treating revenue as profit. A company can sell a lot and still lose money.",
+      "Comparing one quarter with the quarter before it in a seasonal business: a retailer's holiday quarter will always beat the spring.",
+      "Ignoring one-off items. A big gain from selling a division, or a large write-off, can make a single year's earnings far higher or lower than the business normally makes.",
+      "Forgetting dilution. If the share count grows, profit per share can fall even while total profit rises.",
+    ],
+    inMarketLab: [
+      { label: "Apple", href: "/stocks/AAPL", text: "The Company numbers card on each stock page shows revenue, net income and diluted EPS from the company's SEC filings, over the last four reported quarters, with five fiscal years of revenue and net income as bars. The numbers are real even though the site's prices are simulated." },
+      { label: "Growth screen", href: "/screener?preset=growth", text: "The screener's Growth preset finds companies whose revenue rose 15% or more in their last fiscal year." },
+    ],
+    related: ["margins", "peRatio", "freeCashFlow", "marketCap"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What's the difference between revenue and net income?",
+        choices: [
+          "Revenue is everything sold; net income is what's left after every cost, interest and tax",
+          "They are two names for the same thing",
+          "Net income is revenue plus interest earned",
+          "Revenue is what's paid to shareholders",
+        ],
+        answer: 0,
+        explanation: "Revenue is the top line of the income statement; net income is the bottom line, after everything has been paid.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company earns $3 billion of net income and has 1.5 billion shares. What's its earnings per share?",
+        choices: ["$4.50", "$0.50", "$2", "$1.50"],
+        answer: 2,
+        explanation: "$3 billion ÷ 1.5 billion shares = $2 a share.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Revenue rose 20%, but net income fell. Which is the most likely explanation?",
+        choices: [
+          "The share price fell",
+          "Costs grew faster than sales",
+          "The company paid a dividend",
+          "The company did a stock split",
+        ],
+        answer: 1,
+        explanation: "Net income is revenue minus costs. If costs rise more than revenue, profit shrinks even as sales grow.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why did some investors value Amazon highly for years even though it reported little profit?",
+        choices: [
+          "Its revenue was growing fast while it reinvested in the business",
+          "It paid large dividends",
+          "Its share count was shrinking quickly",
+          "Profit doesn't affect share prices",
+        ],
+        answer: 0,
+        explanation: "Amazon spent its cash on growth. Investors bet that the fast-growing revenue would eventually turn into large profits.",
+      },
+    ],
+  },
+
+  margins: {
+    why: [
+      "Two companies with the same revenue can be completely different businesses. One might keep 25 cents of every dollar it sells; the other, 2 cents. Margins turn profit into a percentage of sales, so you can see how good a business is, not just how big.",
+      "They also show where the money goes. A company can lose its profit making the product, running the business, or paying interest and taxes, and the three margins point to which. Watching them over time tells you whether a company is gaining pricing power or being squeezed.",
+    ],
+    how: {
+      paragraphs: [
+        "Each margin divides one line of the income statement by [[revenue]]. Gross margin uses gross profit: revenue less the direct cost of what was sold. Operating margin uses operating income, after the costs of running the business too. Net margin uses net income, after interest and taxes as well.",
+        "Gross margin says how much customers pay above what the product costs to make. Software, where one more copy costs almost nothing, often has gross margins above 70%. A supermarket, which buys and resells goods, may have 25%. Operating margin adds in the cost of staff, marketing, offices and research, and is often the best single measure of how efficient the business is.",
+        "Margins move with scale. Many costs, like headquarters and research, don't grow with every sale, so a growing company's operating margin can widen. In a downturn the same fixed costs squeeze it. Some businesses, like banks, don't report a gross profit at all, so only the net margin compares across every company.",
+      ],
+      formula: {
+        expression: "Margin = profit ÷ revenue (gross, operating or net profit)",
+        reading: "How many cents of each dollar of sales are left at that stage of the income statement.",
+      },
+    },
+    example: {
+      setup: "Two companies each have $20 billion of revenue. Software Co.'s products cost $4 billion to deliver; it makes $6 billion of operating income and $5 billion of net income. Grocer Co.'s goods cost $15 billion; it makes $0.8 billion of operating income and $0.5 billion of net income.",
+      steps: [
+        "Gross margin: Software Co. ($20 billion − $4 billion) ÷ $20 billion = 80%; Grocer Co. ($20 billion − $15 billion) ÷ $20 billion = 25%.",
+        "Operating margin: Software Co. $6 billion ÷ $20 billion = 30%; Grocer Co. $0.8 billion ÷ $20 billion = 4%.",
+        "Net margin: Software Co. $5 billion ÷ $20 billion = 25%; Grocer Co. $0.5 billion ÷ $20 billion = 2.5%.",
+        "If Grocer Co.'s net margin slipped from 2.5% to 2% on the same sales, its profit would fall to $0.4 billion, down 20%.",
+      ],
+      result: "The same revenue produces ten times the profit at Software Co. And a thin margin is fragile: half a percentage point cost Grocer Co. a fifth of its earnings.",
+    },
+    reading: [
+      { label: "Net margin above about 20%", meaning: "A very profitable business, often with strong brands, patents or software. Competitors usually want a piece of it." },
+      { label: "About 5% to 20%", meaning: "Typical of many established companies across industries." },
+      { label: "Below about 5%", meaning: "Normal for retailers, grocers and airlines, which sell high volumes at thin margins; small changes in costs move profit a lot." },
+      { label: "Margins widening over time", meaning: "The company is gaining pricing power or scale. Narrowing margins point to rising costs or tougher competition." },
+    ],
+    realWorld: [
+      "Margins differ hugely by industry. Large software companies often keep gross margins of 70% to 80% or more, while US supermarkets typically earn net margins of only a few percent. Comparing a company with its own industry, and with its own history, says far more than comparing it with the whole market.",
+      "Apple's gross margin has been in the 40s, in percent, for years: high for a company that makes physical devices, thanks to its brand and the growing share of services, which cost little to deliver. It's one reason investors pay a high P/E for it.",
+      "In 2022 rising costs for shipping, wages and materials squeezed the margins of many retailers, and some, like Target, saw profits fall sharply even though sales held up. Margins are often where trouble shows first.",
+    ],
+    mistakes: [
+      "Comparing margins across very different industries. A grocer will never have a software company's margins, and doesn't need them.",
+      "Looking only at net margin. A one-off gain or charge can swing it; operating margin is usually steadier.",
+      "Assuming high margins will last. They attract competitors, and keeping them takes something others can't copy.",
+      "Forgetting that a margin is a percentage. A huge company with a thin margin can still earn more dollars than a small one with a wide margin.",
+    ],
+    inMarketLab: [
+      { label: "Apple", href: "/stocks/AAPL", text: "The Company numbers card on each stock page shows gross, operating and net margins over the last four reported quarters, from SEC filings. Banks show no gross or operating margin, because they don't report one." },
+      { label: "Quality screen", href: "/screener?preset=quality", text: "The screener's Quality preset looks for a net margin of 15% or more alongside a high return on equity. Switch the table to Company numbers to compare net margins." },
+    ],
+    related: ["revenue", "returnOnEquity", "peRatio"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does a gross margin measure?",
+        choices: [
+          "Profit after every cost, as a share of revenue",
+          "Revenue less the direct cost of what was sold, as a share of revenue",
+          "The share of profit paid as dividends",
+          "Revenue growth over a year",
+        ],
+        answer: 1,
+        explanation: "Gross margin only takes out the cost of making or buying what was sold. Net margin takes out everything.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company has $50 billion of revenue and $6 billion of net income. What's its net margin?",
+        choices: ["6%", "8.3%", "12%", "50%"],
+        answer: 2,
+        explanation: "$6 billion ÷ $50 billion = 12%: 12 cents of profit on each dollar of sales.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Two companies grow revenue by the same amount. Which one's profit is most sensitive to a small rise in costs?",
+        choices: [
+          "The one with the 3% net margin",
+          "The one with the 30% net margin",
+          "Both equally",
+          "Neither: costs don't affect profit",
+        ],
+        answer: 0,
+        explanation: "With a thin margin, a small rise in costs takes a big share of the profit.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do software companies usually have much higher gross margins than supermarkets?",
+        choices: [
+          "They sell more units",
+          "They pay no taxes",
+          "Supermarkets don't report revenue",
+          "Delivering one more copy of software costs almost nothing, while a supermarket must buy every item it sells",
+        ],
+        answer: 3,
+        explanation: "Gross margin is about the direct cost of each sale. For software it's tiny; for a grocer it's most of the price.",
+      },
+    ],
+  },
+
+  returnOnEquity: {
+    why: [
+      "Profit on its own doesn't tell you how hard a company's money is working. Earning $1 billion is impressive with $5 billion invested and disappointing with $50 billion. Return on equity measures profit against the money that belongs to the shareholders, so you can judge how well a company uses what its owners have put in and left in the business.",
+      "Over long periods, companies that keep earning a high return on their equity, and can reinvest at that rate, tend to grow their earnings fastest. That's why many investors treat a high, steady ROE as a sign of a quality business.",
+    ],
+    how: {
+      paragraphs: [
+        "Shareholders' equity is what would be left for the owners if the company sold everything it owns at the values on its books and paid off everything it owes. It grows when the company keeps its profits and shrinks when it pays dividends, buys back shares or makes losses. ROE divides a year's net income by it.",
+        "Debt changes the picture. A company that borrows to fund its business, or to buy back its own shares, has less equity for the same profit, so its ROE rises. That can be sensible, but it adds risk: the debt has to be repaid in bad years too. Comparing ROE with how much a company owes tells you which kind of high ROE you're looking at.",
+        "When a company has bought back so many shares that its debts exceed the book value of what it owns, equity falls below zero and ROE stops meaning anything. Several well-known, profitable companies are in that position. Then it's better to look at [[margins]], [[freeCashFlow|free cash flow]] and debt instead.",
+      ],
+      formula: {
+        expression: "ROE = net income ÷ shareholders' equity",
+        reading: "A year's profit for every dollar the owners have in the company.",
+      },
+    },
+    example: {
+      setup: "A company earns $2 billion a year and has $10 billion of shareholders' equity. It then borrows $4 billion and uses all of it to buy back its own shares; the interest costs it $0.2 billion a year after tax.",
+      steps: [
+        "ROE before: $2 billion ÷ $10 billion = 20%.",
+        "The buyback pays $4 billion to shareholders who sell, so equity falls to $10 billion − $4 billion = $6 billion.",
+        "Net income falls by the interest: $2 billion − $0.2 billion = $1.8 billion.",
+        "ROE after: $1.8 billion ÷ $6 billion = 30%.",
+      ],
+      result: "ROE rose from 20% to 30% while the business itself didn't change at all and total profit fell. The higher number came from borrowing, and so did the extra risk.",
+    },
+    reading: [
+      { label: "Above about 20%, with little debt", meaning: "A business that earns a lot on its owners' money without leaning on borrowing: often a sign of a lasting edge." },
+      { label: "About 10% to 20%", meaning: "Solid. Many established companies, including large banks, land here in normal years." },
+      { label: "Below about 10%", meaning: "The company earns little on its equity: a tough, capital-hungry industry, or a weak year." },
+      { label: "Very high, or no figure", meaning: "Check the equity. Heavy buybacks or debt can push ROE into the hundreds of percent, and below-zero equity makes it meaningless." },
+    ],
+    realWorld: [
+      "Warren Buffett has long said he looks for businesses that earn a high return on equity without using much debt. A company that can reinvest its profits at a high rate year after year compounds its value, much like money in an account with a high interest rate.",
+      "Some of the best-known US companies, including McDonald's and Starbucks, have reported negative shareholders' equity in recent years after spending heavily on buybacks and dividends, partly funded with debt. They're profitable businesses, but ROE can't describe them.",
+      "Banks are judged closely on ROE because they run on borrowed money by design: deposits and debt fund most of what they lend. Regulators require them to hold minimum levels of equity, which caps how far borrowing can lift their returns.",
+    ],
+    mistakes: [
+      "Taking a high ROE as proof of quality without checking debt. Borrowing raises ROE and risk together.",
+      "Comparing ROE across industries with very different needs for buildings, equipment or capital.",
+      "Reading meaning into a huge or negative ROE when equity is tiny or below zero.",
+      "Judging on one year. A single great or terrible year swings ROE; a steady record says more.",
+    ],
+    inMarketLab: [
+      { label: "Apple", href: "/stocks/AAPL", text: "The Company numbers card shows return on equity for the last fiscal year, from SEC filings. Apple's is well above 100%, largely because years of buybacks have shrunk its equity." },
+      { label: "Quality screen", href: "/screener?preset=quality", text: "The screener's Quality preset asks for an ROE and a net margin of 15% or more, with revenue still growing. Companies with equity below zero have no ROE, so they drop out." },
+    ],
+    related: ["margins", "revenue", "freeCashFlow", "compounding"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does return on equity measure?",
+        choices: [
+          "How much the share price rose in a year",
+          "Revenue as a share of market cap",
+          "A year's net income as a percentage of shareholders' equity",
+          "Dividends as a share of profit",
+        ],
+        answer: 2,
+        explanation: "ROE compares profit with the owners' stake in the company, as recorded on its balance sheet.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company earns $3 billion and has $20 billion of shareholders' equity. What's its ROE?",
+        choices: ["15%", "6.7%", "30%", "23%"],
+        answer: 0,
+        explanation: "$3 billion ÷ $20 billion = 15%.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company borrows money to buy back shares. Its profit barely changes. What usually happens to its ROE?",
+        choices: [
+          "It falls, because it has more debt",
+          "It rises, because equity shrinks",
+          "It stays the same",
+          "It becomes negative straight away",
+        ],
+        answer: 1,
+        explanation: "The buyback reduces equity, the bottom of the fraction, so ROE goes up, along with the risk from the new debt.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do some profitable companies, like McDonald's, have no meaningful ROE?",
+        choices: [
+          "They don't report their profit",
+          "Their profits are too small",
+          "Their shares don't trade",
+          "Buybacks and dividends, partly funded by debt, pushed their equity below zero",
+        ],
+        answer: 3,
+        explanation: "With negative equity, dividing profit by it gives a meaningless number, even though the business makes money.",
+      },
+    ],
+  },
+
+  freeCashFlow: {
+    why: [
+      "Earnings are an accounting measure. They spread the cost of a new factory over many years, count sales before customers have paid, and involve plenty of judgment. Free cash flow is simpler: the cash that actually came in from running the business, less the cash spent keeping it equipped and growing.",
+      "It's the money a company can really use to pay dividends, buy back shares, pay down debt or buy other companies. A company whose profits never turn into cash has a problem, however good its income statement looks. That's why many investors check free cash flow alongside [[revenue|earnings]].",
+    ],
+    how: {
+      paragraphs: [
+        "Start with operating cash flow, from the company's cash flow statement: the cash brought in by its day-to-day business. It begins with net income, adds back costs that didn't use cash, like the yearly wear on equipment, and adjusts for changes such as customers paying late or the company holding more stock.",
+        "Then subtract capital spending: the cash spent on buildings, equipment, data centers and the like. What's left is free cash flow. A company building for growth can have low free cash flow for years while it invests; a mature one often produces more cash than profit.",
+        "Divide free cash flow by the [[marketCap|market cap]] and you get the free cash flow yield, a valuation measure like the earnings yield. A 5% yield means the business produces $5 of free cash a year for every $100 of its market value. For banks and insurers, whose cash flows are mostly lending and deposits, free cash flow doesn't mean much.",
+      ],
+      formula: {
+        expression: "Free cash flow = operating cash flow − capital spending; FCF yield = free cash flow ÷ market cap",
+        reading: "The cash left after keeping the business running and equipped, and that cash as a share of what the company is worth.",
+      },
+    },
+    example: {
+      setup: "A company brings in $8 billion of operating cash flow in a year and spends $3 billion on equipment. It reports $6 billion of net income, and its market cap is $100 billion.",
+      steps: [
+        "Free cash flow: $8 billion − $3 billion = $5 billion.",
+        "Free cash flow yield: $5 billion ÷ $100 billion = 5%.",
+        "It pays $2 billion in dividends and buys back $2 billion of shares, leaving $5 billion − $2 billion − $2 billion = $1 billion of free cash.",
+        "The next year it builds new factories and capital spending rises to $7 billion. Free cash flow falls to $8 billion − $7 billion = $1 billion, a yield of 1%, even if profit stays the same.",
+      ],
+      result: "Earnings of $6 billion looked steady, but the cash free for shareholders fell from $5 billion to $1 billion once spending rose. Whether that's good depends on what the new factories earn.",
+    },
+    reading: [
+      { label: "Free cash flow close to or above net income", meaning: "Profits are turning into cash: a healthy sign, common in mature businesses." },
+      { label: "Free cash flow well below net income", meaning: "Heavy investment, or profits that aren't being collected as cash. Find out which." },
+      { label: "Negative", meaning: "The company spends more than its business brings in and must use savings, borrow or sell shares. Normal for young growth companies; a warning for mature ones." },
+      { label: "FCF yield above about 5%", meaning: "The price is low compared with the cash the business produces, or investors expect that cash to shrink." },
+    ],
+    realWorld: [
+      "In his 2004 letter to shareholders, Jeff Bezos wrote that Amazon's ultimate financial measure was free cash flow per share, not earnings. Amazon reported thin profits for years while generating growing amounts of cash, and many investors followed the cash.",
+      "In 2024 and 2025 the largest technology companies sharply increased their spending on data centers for artificial intelligence. Their profits kept rising, but the extra capital spending took a bigger bite out of free cash flow, which is exactly the gap this measure exists to show.",
+      "Companies sometimes highlight their own adjusted versions of free cash flow, leaving out costs like stock given to employees. The numbers in a company's cash flow statement, filed with the SEC, are the place to check.",
+    ],
+    mistakes: [
+      "Judging one year in isolation. Capital spending comes in waves, so free cash flow swings more than profit.",
+      "Treating negative free cash flow as always bad. A company investing in projects that will earn well later may be doing exactly the right thing.",
+      "Using free cash flow for banks and insurers, whose cash flows are dominated by deposits and loans.",
+      "Trusting a company's adjusted figure without seeing what it leaves out.",
+    ],
+    inMarketLab: [
+      { label: "Alphabet", href: "/stocks/GOOGL", text: "The Company numbers card shows free cash flow for the last fiscal year, from SEC filings, and what share of the market value it is. Prices on the public site are simulated, so the yield is illustrative; the cash flows are real." },
+      { label: "Value screen", href: "/screener?preset=value", text: "The screener's Value preset combines a P/E of 18 or less with a free cash flow yield of 4% or more. Switch the table to Company numbers to see each company's FCF yield." },
+    ],
+    related: ["revenue", "peRatio", "dividendYield", "returnOnEquity"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is free cash flow?",
+        choices: [
+          "Net income plus dividends",
+          "Operating cash flow less capital spending",
+          "The cash a company holds in the bank",
+          "Revenue less the cost of what was sold",
+        ],
+        answer: 1,
+        explanation: "It's the cash the business brought in from operations, after paying for the buildings and equipment it needs.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company has $12 billion of operating cash flow, $4 billion of capital spending and a $160 billion market cap. What's its free cash flow yield?",
+        choices: ["7.5%", "10%", "2.5%", "5%"],
+        answer: 3,
+        explanation: "$12 billion − $4 billion = $8 billion of free cash flow, and $8 billion ÷ $160 billion = 5%.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A company's profit is unchanged, but its free cash flow fell sharply. What's a likely reason?",
+        choices: [
+          "It spent much more on new equipment and buildings",
+          "Its share price fell",
+          "It did a stock split",
+          "It changed its dividend date",
+        ],
+        answer: 0,
+        explanation: "Capital spending comes straight out of free cash flow, while its cost reaches profit only gradually, over the years the equipment is used.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why did Amazon's Jeff Bezos focus on free cash flow per share rather than earnings?",
+        choices: [
+          "Amazon didn't report earnings",
+          "Earnings are always higher than cash flow",
+          "Cash is what a business can actually reinvest or return, and Amazon's cash grew while its profits stayed thin",
+          "Regulators required it",
+        ],
+        answer: 2,
+        explanation: "Amazon reinvested heavily, which kept profits low, but its operations produced growing amounts of cash, the measure Bezos said mattered most.",
       },
     ],
   },

@@ -431,3 +431,18 @@ export const emailPreference = sqliteTable("email_preference", {
   alertEmails: integer("alert_emails", { mode: "boolean" }).notNull().default(false),
   updatedAt: integer("updated_at").notNull(),
 });
+
+/**
+ * Each catalog company's reported numbers from the SEC (lib/market/fundamentals.ts),
+ * refreshed weekly by the daily job. `data` is null for a company with none
+ * to use (not an SEC filer, or reporting in another currency), so it isn't
+ * asked again every day.
+ */
+export const companyFacts = sqliteTable("company_facts", {
+  symbol: text("symbol").primaryKey(),
+  /** CompanyFacts as JSON, or null. */
+  data: text("data"),
+  /** When the newest filing in it was filed (YYYY-MM-DD). */
+  filed: text("filed"),
+  fetchedAt: integer("fetched_at").notNull(),
+});

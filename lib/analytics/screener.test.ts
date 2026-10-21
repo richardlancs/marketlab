@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { parseConfig } from "../backtest/config";
-import { applyScreen, backtestOfScreen, EMPTY_SCREEN, percentiles, PRESETS, type ScreenerRow } from "./screener";
+import type { CompanyFacts } from "../market/fundamentals";
+import type { StockProfile } from "./profile";
+import { applyScreen, backtestOfScreen, buildRows, EMPTY_SCREEN, percentiles, PRESETS, type ScreenerRow } from "./screener";
 
 const row = (symbol: string, over: Partial<ScreenerRow> = {}): ScreenerRow => ({
   symbol,
@@ -10,6 +12,11 @@ const row = (symbol: string, over: Partial<ScreenerRow> = {}): ScreenerRow => ({
   marketCap: 1e9,
   peRatio: 20,
   dividendYield: 0,
+  priceToSales: null,
+  revenueGrowth: null,
+  netMargin: null,
+  returnOnEquity: null,
+  freeCashFlowYield: null,
   r1M: 0,
   r3M: 0,
   r1Y: 0,
@@ -55,11 +62,37 @@ describe("applyScreen", () => {
   });
 
   it("has presets that each select something sensible", () => {
-    const byId = Object.fromEntries(PRESETS.map((p) => [p.id, applyScreen(rows, p.screen).map((r) => r.symbol)]));
+    const reported = [
+      row("DDD", { beta: null, trend: "below", netMargin: 0.25, returnOnEquity: 0.3, revenueGrowth: 0.2, peRatio: 30, freeCashFlowYield: 0.02 }),
+      row("EEE", { beta: null, trend: "below", netMargin: 0.1, returnOnEquity: 0.12, revenueGrowth: 0.02, peRatio: 11, freeCashFlowYield: 0.07 }),
+    ];
+    const byId = Object.fromEntries(PRESETS.map((p) => [p.id, applyScreen([...rows, ...reported], p.screen).map((r) => r.symbol)]));
     expect(byId.momentum).toEqual(["BBB"]);
     expect(byId.dividends).toEqual(["AAA"]);
     expect(byId.defensive).toEqual(["AAA"]);
     expect(byId.oversold).toEqual(["AAA"]);
+    expect(byId.quality).toEqual(["DDD"]);
+    expect(byId.value).toEqual(["EEE"]);
+    expect(byId.growth).toEqual(["DDD"]);
+  });
+});
+
+describe("buildRows", () => {
+  const profile = { price: 50, returns: {}, risk: {}, technicals: { states: {} }, income: { dividendYield: null } } as unknown as StockProfile;
+  const year = (end: string, revenue: number, netIncome: number) => ({ start: "", end, revenue, grossProfit: null, operatingIncome: null, netIncome, eps: null, dilutedShares: null, equity: 400, operatingCashFlow: null, capitalSpending: null, freeCashFlow: null });
+  const facts: CompanyFacts = { cik: 1, name: "X", filed: "", years: [year("2024-12-31", 800, 80), year("2025-12-31", 1000, 100)], trailing: { end: "2025-12-31", revenue: 1000, grossProfit: null, operatingIncome: null, netIncome: 100, eps: null } };
+  const input = { symbol: "X", name: "X", sector: "Tech", profile, marketCap: 2000, peRatio: 99, dividendYield: null };
+
+  it("adds reported numbers, with P/E from earnings rather than the price source's", () => {
+    const [r] = buildRows([{ ...input, facts }]);
+    expect(r).toMatchObject({ peRatio: 20, priceToSales: 2, revenueGrowth: 0.25, netMargin: 0.1, returnOnEquity: 0.25 });
+    // A loss: no P/E, not the source's.
+    const losing = { ...facts, trailing: { ...facts.trailing!, netIncome: -5 } };
+    expect(buildRows([{ ...input, facts: losing }])[0].peRatio).toBeNull();
+  });
+
+  it("keeps the source's numbers without reported ones", () => {
+    expect(buildRows([input])[0]).toMatchObject({ peRatio: 99, netMargin: null, revenueGrowth: null });
   });
 });
 

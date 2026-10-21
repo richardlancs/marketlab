@@ -84,4 +84,21 @@ describe("the daily job", () => {
     });
     expect((await runDaily(deps)).alertEmails).toBe("failed: smtp down");
   });
+
+  it("gives company numbers a short slot before analytics, and survives their failure", async () => {
+    const { deps } = world([]);
+    const order: string[] = [];
+    deps.refreshFundamentals = vi.fn(async () => (order.push("fundamentals"), { updated: 4 }));
+    deps.refreshAnalytics = vi.fn(async () => (order.push("analytics"), {}));
+    const summary = await runDaily(deps, { budgetMs: 50_000 });
+    expect(order).toEqual(["fundamentals", "analytics"]);
+    expect(summary.fundamentals).toEqual({ updated: 4 });
+    const [deadline] = vi.mocked(deps.refreshFundamentals!).mock.calls[0];
+    expect(deadline).toBeLessThan(1_000_000 + 10_100);
+
+    deps.refreshFundamentals = vi.fn(async () => {
+      throw new Error("sec down");
+    });
+    expect((await runDaily(deps)).fundamentals).toBe("failed: sec down");
+  });
 });

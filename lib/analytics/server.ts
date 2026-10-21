@@ -15,8 +15,10 @@ import { cacheLife, cacheTag } from "next/cache";
 import type { BacktestConfig } from "../backtest/config";
 import { post, pythonConfigured } from "../backtest/python-client";
 import { prices } from "../db";
+import { allFundamentals } from "../fundamentals";
 import { getBarsForStore, priceSource } from "../market";
 import { CATALOG } from "../market/catalog";
+import { isCurrent } from "../market/fundamentals";
 import { INDICES } from "../market/universe";
 import { parseStockProfile, type StockProfile } from "./profile";
 import { buildRows, type ScreenerRow } from "./screener";
@@ -175,12 +177,16 @@ export async function getScreenerData(): Promise<ScreenerData> {
       }
       profiles = await prices.results("stock-profile", source, parseStockProfile);
     }
-    const index = await prices.seriesIndex(source);
+    const [index, facts] = await Promise.all([prices.seriesIndex(source), allFundamentals()]);
+    const now = Date.now();
     const rows = buildRows(
       CATALOG.flatMap((s) => {
         const stored = profiles.get(s.symbol);
         const meta = index.get(s.symbol);
-        return stored ? [{ symbol: s.symbol, name: s.name, sector: s.sector, profile: stored.result, marketCap: meta?.marketCap ?? null, peRatio: meta?.peRatio ?? null, dividendYield: meta?.dividendYield ?? null }] : [];
+        const reported = facts.get(s.symbol);
+        return stored
+          ? [{ symbol: s.symbol, name: s.name, sector: s.sector, profile: stored.result, marketCap: meta?.marketCap ?? null, peRatio: meta?.peRatio ?? null, dividendYield: meta?.dividendYield ?? null, facts: reported && isCurrent(reported, now) ? reported : null }]
+          : [];
       }),
     );
     if (rows.length === 0) {

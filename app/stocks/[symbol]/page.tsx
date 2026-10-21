@@ -8,6 +8,7 @@ import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PositionCard } from "@/components/stocks/position-card";
 import { RangeBar } from "@/components/stocks/range-bar";
 import { StockAnalysis } from "@/components/stocks/stock-analysis";
+import { StockFundamentals } from "@/components/stocks/stock-fundamentals";
 import { StockNews } from "@/components/stocks/stock-news";
 import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
@@ -105,6 +106,12 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
         <div className="mt-4 lg:mt-6">
           <Suspense fallback={<AnalysisSkeleton />}>
             <StockAnalysis symbol={stock.symbol} />
+          </Suspense>
+        </div>
+        {/* Reported numbers from SEC filings, stored by the daily job; the page doesn't wait for them. */}
+        <div className="mt-4 lg:mt-6">
+          <Suspense fallback={null}>
+            <StockFundamentals symbol={stock.symbol} price={stock.price} marketCap={stock.marketCap} />
           </Suspense>
         </div>
         {/* Filings and news come from other sources; the page doesn't wait for them. */}

@@ -5,6 +5,7 @@
  * browser, and tests can check every rule.
  */
 import { CONFIG_VERSION, type BacktestConfig } from "../backtest/config";
+import { ratiosOf, type CompanyFacts } from "../market/fundamentals";
 import type { StockProfile } from "./profile";
 
 export interface ScreenerRow {
@@ -13,8 +14,15 @@ export interface ScreenerRow {
   sector: string;
   price: number;
   marketCap: number | null;
+  /** From reported earnings when the SEC has them, otherwise the price source's. */
   peRatio: number | null;
   dividendYield: number | null;
+  /** From the SEC's company facts (lib/market/fundamentals.ts); null without them. */
+  priceToSales: number | null;
+  revenueGrowth: number | null;
+  netMargin: number | null;
+  returnOnEquity: number | null;
+  freeCashFlowYield: number | null;
   r1M: number | null;
   r3M: number | null;
   r1Y: number | null;
@@ -61,31 +69,42 @@ export interface ProfileInput {
   peRatio: number | null;
   /** The source's indicated yield, if it has one; otherwise the trailing yield from the prices is used. */
   dividendYield: number | null;
+  /** Reported numbers, when stored. */
+  facts?: CompanyFacts | null;
 }
 
 export function buildRows(inputs: ProfileInput[]): ScreenerRow[] {
-  const rows: ScreenerRow[] = inputs.map(({ symbol, name, sector, profile: p, marketCap, peRatio, dividendYield }) => ({
-    symbol,
-    name,
-    sector,
-    price: p.price,
-    marketCap,
-    peRatio,
-    dividendYield: dividendYield ?? p.income.dividendYield,
-    r1M: p.returns["1M"],
-    r3M: p.returns["3M"],
-    r1Y: p.returns["1Y"],
-    momentum: p.returns["12-1"],
-    volatility: p.risk.volatility1Y,
-    beta: p.risk.beta1Y,
-    rsi: p.technicals.rsi14,
-    fromHigh: p.risk.drawdownFromHigh,
-    trend: p.technicals.states.trend,
-    cross: p.technicals.states.cross,
-    momentumRank: null,
-    momentumSectorRank: null,
-    volatilityRank: null,
-  }));
+  const rows: ScreenerRow[] = inputs.map(({ symbol, name, sector, profile: p, marketCap, peRatio, dividendYield, facts }) => {
+    const r = facts ? ratiosOf(facts, p.price, marketCap) : null;
+    return {
+      symbol,
+      name,
+      sector,
+      price: p.price,
+      marketCap,
+      // With reported earnings, a loss means no P/E rather than the source's figure.
+      peRatio: r ? r.peRatio : peRatio,
+      dividendYield: dividendYield ?? p.income.dividendYield,
+      priceToSales: r?.priceToSales ?? null,
+      revenueGrowth: r?.revenueGrowth ?? null,
+      netMargin: r?.netMargin ?? null,
+      returnOnEquity: r?.returnOnEquity ?? null,
+      freeCashFlowYield: r?.freeCashFlowYield ?? null,
+      r1M: p.returns["1M"],
+      r3M: p.returns["3M"],
+      r1Y: p.returns["1Y"],
+      momentum: p.returns["12-1"],
+      volatility: p.risk.volatility1Y,
+      beta: p.risk.beta1Y,
+      rsi: p.technicals.rsi14,
+      fromHigh: p.risk.drawdownFromHigh,
+      trend: p.technicals.states.trend,
+      cross: p.technicals.states.cross,
+      momentumRank: null,
+      momentumSectorRank: null,
+      volatilityRank: null,
+    };
+  });
   percentiles(rows.map((r) => r.momentum)).forEach((rank, i) => (rows[i].momentumRank = rank));
   percentiles(rows.map((r) => r.volatility)).forEach((rank, i) => (rows[i].volatilityRank = rank));
   for (const sector of new Set(rows.map((r) => r.sector))) {
@@ -109,6 +128,11 @@ export const METRICS = {
   dividendYield: { label: "Yield", format: "percent" },
   marketCap: { label: "Mkt cap", format: "compact" },
   peRatio: { label: "P/E", format: "number" },
+  priceToSales: { label: "P/S", format: "number" },
+  revenueGrowth: { label: "Revenue growth", format: "signed" },
+  netMargin: { label: "Net margin", format: "percent" },
+  returnOnEquity: { label: "ROE", format: "percent" },
+  freeCashFlowYield: { label: "FCF yield", format: "percent" },
 } as const;
 export type MetricKey = keyof typeof METRICS;
 
@@ -126,7 +150,10 @@ export interface Screen {
 
 export const EMPTY_SCREEN: Screen = { sectors: [], ranges: {}, trend: null, sort: "marketCap", descending: true };
 
-export const PRESETS: { id: string; name: string; description: string; screen: Screen }[] = [
+/** Which columns the table shows: prices and risk, or the companies' reported numbers. */
+export type ScreenerView = "market" | "company";
+
+export const PRESETS: { id: string; name: string; description: string; screen: Screen; view?: ScreenerView }[] = [
   {
     id: "momentum",
     name: "Momentum leaders",
@@ -156,6 +183,27 @@ export const PRESETS: { id: string; name: string; description: string; screen: S
     name: "Defensive",
     description: "Beta under 0.8: they've tended to move less than the market.",
     screen: { ...EMPTY_SCREEN, ranges: { beta: { max: 0.8 } }, sort: "beta", descending: false },
+  },
+  {
+    id: "quality",
+    name: "Quality",
+    description: "Profitable and efficient: a net margin and return on equity of 15% or more, with revenue still growing.",
+    screen: { ...EMPTY_SCREEN, ranges: { netMargin: { min: 0.15 }, returnOnEquity: { min: 0.15 }, revenueGrowth: { min: 0 } }, sort: "returnOnEquity", descending: true },
+    view: "company",
+  },
+  {
+    id: "value",
+    name: "Value",
+    description: "Cheap for their earnings: a P/E of 18 or less, with free cash flow of 4% of the price or more.",
+    screen: { ...EMPTY_SCREEN, ranges: { peRatio: { max: 18 }, freeCashFlowYield: { min: 0.04 } }, sort: "peRatio", descending: false },
+    view: "company",
+  },
+  {
+    id: "growth",
+    name: "Growth",
+    description: "Revenue up 15% or more in the last fiscal year.",
+    screen: { ...EMPTY_SCREEN, ranges: { revenueGrowth: { min: 0.15 } }, sort: "revenueGrowth", descending: true },
+    view: "company",
   },
 ];
 

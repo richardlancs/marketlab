@@ -9,7 +9,9 @@
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
  *    own, and other leftovers (including saved price snapshots no run uses).
  * 3. Emails alert digests to users who asked for them (lib/alert-emails.ts).
- * 4. Stores the latest prices and has the analytics service recalculate
+ * 4. Refreshes a few companies' reported numbers from the SEC
+ *    (lib/fundamentals.ts), each about once a week.
+ * 5. Stores the latest prices and has the analytics service recalculate
  *    what changed (lib/analytics/server.ts), with whatever time is left.
  *
  * Accounts go in batches, within a time budget: whatever doesn't fit waits
@@ -21,6 +23,8 @@
 const DAY = 24 * 60 * 60 * 1000;
 /** How long an unused guest is kept. */
 export const GUEST_LIFETIME = 180 * DAY;
+/** The most time the job spends on company numbers. */
+const FUNDAMENTALS_SLOT = 10_000;
 
 export interface DailyDeps {
   now(): number;
@@ -37,6 +41,8 @@ export interface DailyDeps {
   deleteOrphanSnapshots(limit: number): Promise<number>;
   /** Emails digests of newly triggered alerts, until `deadline` (ms). Optional, so tests can leave it out. */
   sendAlertEmails?(deadline: number): Promise<unknown>;
+  /** Fetches company numbers that are due, until `deadline` (ms). Optional, so tests can leave it out. */
+  refreshFundamentals?(deadline: number): Promise<unknown>;
   /** Stores the latest prices and recalculates stored analytics, until `deadline` (ms). Optional, so tests can leave it out. */
   refreshAnalytics?(deadline: number): Promise<unknown>;
 }
@@ -50,8 +56,9 @@ export interface DailySummary {
   guestsDeleted: number;
   learnersDeleted: number;
   snapshotsDeleted: number;
-  /** What the alert email and analytics steps did, or why they didn't run. */
+  /** What the alert email, fundamentals and analytics steps did, or why they didn't run. */
   alertEmails?: unknown;
+  fundamentals?: unknown;
   analytics?: unknown;
   ms: number;
 }
@@ -107,6 +114,16 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
     }
   }
 
+  // A short slot: a week of runs covers every company, so there's no hurry.
+  let fundamentals: unknown;
+  if (deps.refreshFundamentals) {
+    try {
+      fundamentals = outOfTime() ? "skipped: out of time" : await deps.refreshFundamentals(Math.min(start + budgetMs, deps.now() + FUNDAMENTALS_SLOT));
+    } catch (error) {
+      fundamentals = `failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   // Last, with the time that's left: analytics can always catch up tomorrow, or on a page visit.
   let analytics: unknown;
   if (deps.refreshAnalytics) {
@@ -117,5 +134,5 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
     }
   }
 
-  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, analytics, ms: deps.now() - start };
+  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, fundamentals, analytics, ms: deps.now() - start };
 }

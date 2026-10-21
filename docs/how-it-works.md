@@ -65,6 +65,7 @@ Prices come from one of two sources.
 
 **Filings and news**
 - SEC filings come from EDGAR, and need `SEC_USER_AGENT` to be set.
+- So do company numbers (below).
 - News headlines come from Tiingo, and only show with your own key.
 
 ## Orders, dividends and alerts
@@ -139,10 +140,21 @@ These are calculated by the Python analytics service ([its README](../services/a
   - relative volume;
   - states such as "Golden cross since …".
 
+**Company numbers (SEC filings)**
+- What each company reported in its 10-K and 10-Q filings, from the SEC's free "company facts" API. The data is public, so it shows on the public site even though prices there are simulated.
+- `lib/market/fundamentals.ts` parses it (pure, tested):
+  - five fiscal years of revenue, gross profit, operating income, net income, diluted EPS, equity and free cash flow;
+  - the last four quarters added up, working out quarters reported only year-to-date;
+  - ratios at today's price: P/E (market value ÷ trailing net income), price to sales, margins, revenue growth, return on equity, free-cash-flow yield.
+- Companies tag the same line differently, so each line tries a list of XBRL tags. Only US-dollar figures are used: Spotify (euros) has none. Exxon's ticker now belongs to a new holding company with no reports yet, so its predecessor's filings are used until there are.
+- The facts files are several megabytes each, so the parsed numbers are stored (`company_facts`, `lib/fundamentals.ts`). The daily job refreshes about 30 a run, so each company about weekly. A stock with nothing stored is fetched on its page and cached for a day.
+- Shown in the stock page's "Company numbers" card. On the public site the valuation ratios use the simulated price, and the card says so.
+
 **Screener (`/screener`)**
 - Every catalog stock with momentum 12-1, volatility, beta, RSI, distance from its high, yield, market cap and P/E (`lib/analytics/screener.ts`).
+- A "Company numbers" column view adds P/S, revenue growth, net margin, ROE and free-cash-flow yield. P/E comes from reported earnings when there are any. Figures more than 15 months old are left out.
 - Filtering and sorting happen in the browser, so they're instant.
-- Presets: momentum leaders, low volatility, oversold in an uptrend, dividend payers, defensive.
+- Presets: momentum leaders, low volatility, oversold in an uptrend, dividend payers, defensive, quality, value, growth.
 - "Backtest the top 5" opens buy-and-hold of the results, with a warning about look-ahead.
 
 **Portfolio: Risk analysis** (`app/api/portfolio/analysis`; holdings are read on the server)
@@ -221,6 +233,7 @@ Rules that use a chandelier stop or volume need each day's high, low and volume.
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the New York close. It:
 - loads fresh market data;
 - catches up every account, in batches of about 50 seconds;
+- refreshes company numbers that are a week old, for up to 10 seconds;
 - with the time left, stores the latest prices and recalculates stored analytics (see [Research tools](#research-tools));
 - deletes guests unused for 180 days, old rate-limit counters, and snapshots no saved run uses.
 

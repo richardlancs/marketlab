@@ -28,6 +28,8 @@ Migration 0007 (Phase 12) adds:
 
 The first daily job after deploying fills the store: about 130,000 rows for the mock market, a few seconds of work.
 
+Migration 0011 adds `company_facts`, the stored SEC company numbers. The daily job fills it about 30 companies a run. Without `SEC_USER_AGENT` it stays empty and the Company numbers card is hidden.
+
 The Python service now includes SciPy. Its bundle is about 170 MB, within Vercel's 500 MB limit for Python functions.
 
 ## Environment variables
@@ -43,7 +45,7 @@ Set them in Project → Settings → Environment Variables, separately for Produ
 | `BACKTEST_ENGINE` | `python` or `typescript`. |
 | `ANALYTICS_SERVICE_TOKEN` | A random value per environment. Don't set `ANALYTICS_URL`: the binding provides it. |
 | `CRON_SECRET` | Production only: lets Vercel Cron run the daily job. |
-| `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings. |
+| `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings and company numbers. |
 | `SMTP_USER`, `SMTP_PASS` | Optional: a Gmail address and a Google **app password** for it (Google Account → Security → 2-Step Verification → App passwords). Turns on email verification and alert emails. Without them, email is off. Gmail sends up to about 500 emails a day. |
 | `EMAIL_FROM` | Optional: the sender name and address, e.g. `MarketLab <you@gmail.com>`. Defaults to `SMTP_USER`. |
 | `TIINGO_API_KEY` | **Never on a public deployment** (personal-use licence). |

@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import { StockLogo } from "@/components/stocks/stock-logo";
 import { shareFragment } from "@/lib/backtest/share";
-import { applyScreen, backtestOfScreen, EMPTY_SCREEN, METRICS, PRESETS, type MetricKey, type Screen, type ScreenerRow } from "@/lib/analytics/screener";
+import { applyScreen, backtestOfScreen, EMPTY_SCREEN, METRICS, PRESETS, type MetricKey, type Screen, type ScreenerRow, type ScreenerView } from "@/lib/analytics/screener";
 import { formatCompactCurrency, formatCurrency, formatPercent, formatShare } from "@/lib/format";
 
 const DASH = "—";
@@ -21,7 +21,7 @@ function show(key: MetricKey, value: number | null) {
     case "compact":
       return formatCompactCurrency(value);
     default:
-      return value.toFixed(key === "rsi" ? 0 : key === "peRatio" ? 1 : 2);
+      return value.toFixed(key === "rsi" ? 0 : key === "peRatio" || key === "priceToSales" ? 1 : 2);
   }
 }
 
@@ -35,10 +35,17 @@ const RANGE_FILTERS: { key: MetricKey; unit: "%" | "B" | "" }[] = [
   { key: "dividendYield", unit: "%" },
   { key: "peRatio", unit: "" },
   { key: "marketCap", unit: "B" },
+  { key: "priceToSales", unit: "" },
+  { key: "revenueGrowth", unit: "%" },
+  { key: "netMargin", unit: "%" },
+  { key: "returnOnEquity", unit: "%" },
+  { key: "freeCashFlowYield", unit: "%" },
 ];
 const SCALE = { "%": 100, B: 1e-9, "": 1 } as const;
 
-const COLUMNS: { key: MetricKey; className?: string }[] = [
+type Column = { key: MetricKey; className?: string };
+
+const MARKET_COLUMNS: Column[] = [
   { key: "price" },
   { key: "r1M", className: "hidden md:table-cell" },
   { key: "r1Y" },
@@ -51,10 +58,30 @@ const COLUMNS: { key: MetricKey; className?: string }[] = [
   { key: "marketCap", className: "hidden md:table-cell" },
 ];
 
+/** The companies' reported numbers (SEC filings), valued at today's price. */
+const COMPANY_COLUMNS: Column[] = [
+  { key: "price", className: "hidden sm:table-cell" },
+  { key: "peRatio" },
+  { key: "priceToSales", className: "hidden md:table-cell" },
+  { key: "revenueGrowth" },
+  { key: "netMargin", className: "hidden sm:table-cell" },
+  { key: "returnOnEquity", className: "hidden md:table-cell" },
+  { key: "freeCashFlowYield", className: "hidden lg:table-cell" },
+  { key: "dividendYield", className: "hidden lg:table-cell" },
+  { key: "marketCap", className: "hidden lg:table-cell" },
+];
+
+const VIEWS: { id: ScreenerView; label: string }[] = [
+  { id: "market", label: "Price and risk" },
+  { id: "company", label: "Company numbers" },
+];
+
 export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; asOf: number; initialPreset?: string }) {
   const start = PRESETS.find((p) => p.id === initialPreset);
   const [preset, setPreset] = useState<string | null>(start?.id ?? null);
   const [screen, setScreen] = useState<Screen>(start?.screen ?? EMPTY_SCREEN);
+  const [view, setView] = useState<ScreenerView>(start?.view ?? "market");
+  const columns = view === "company" ? COMPANY_COLUMNS : MARKET_COLUMNS;
   const results = useMemo(() => applyScreen(rows, screen), [rows, screen]);
   const sectors = useMemo(() => [...new Set(rows.map((r) => r.sector))].sort(), [rows]);
   const backtest = backtestOfScreen(results, asOf);
@@ -85,6 +112,7 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
             onClick={() => {
               setPreset(preset === p.id ? null : p.id);
               setScreen(preset === p.id ? EMPTY_SCREEN : p.screen);
+              if (preset !== p.id) setView(p.view ?? "market");
             }}
             className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${preset === p.id ? "bg-accent text-white" : "bg-foreground/[0.06] hover:bg-foreground/[0.1]"}`}
           >
@@ -153,9 +181,24 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
 
       <section aria-label="Results" className="rounded-2xl border border-border bg-surface px-2 py-2 sm:px-4">
         <div className="flex flex-wrap items-center justify-between gap-3 px-2 py-2">
-          <p className="text-sm text-muted" role="status">
-            {results.length} of {rows.length} stocks
-          </p>
+          <div className="flex flex-wrap items-center gap-3">
+            <p className="text-sm text-muted" role="status">
+              {results.length} of {rows.length} stocks
+            </p>
+            <div role="group" aria-label="Columns" className="flex rounded-full bg-foreground/[0.06] p-0.5">
+              {VIEWS.map((v) => (
+                <button
+                  key={v.id}
+                  type="button"
+                  aria-pressed={view === v.id}
+                  onClick={() => setView(v.id)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent ${view === v.id ? "bg-surface text-foreground shadow-sm" : "text-muted hover:text-foreground"}`}
+                >
+                  {v.label}
+                </button>
+              ))}
+            </div>
+          </div>
           {backtest && (
             <Link href={`/backtest#${shareFragment(backtest)}`} className="text-sm font-medium text-accent hover:underline" title="Buy and hold the top five, equally weighted, over the last 3 years">
               Backtest the top {Math.min(5, results.length)} →
@@ -171,7 +214,7 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
                     Stock {screen.sort === "symbol" && (screen.descending ? "▼" : "▲")}
                   </button>
                 </th>
-                {COLUMNS.map(({ key, className = "" }) => (
+                {columns.map(({ key, className = "" }) => (
                   <th key={key} scope="col" aria-sort={screen.sort === key ? (screen.descending ? "descending" : "ascending") : undefined} className={`py-2 pl-3 text-right font-medium whitespace-nowrap ${className}`}>
                     <button type="button" onClick={() => sortBy(key)} className={screen.sort === key ? "text-foreground" : "hover:text-foreground"}>
                       {screen.sort === key && (screen.descending ? "▼ " : "▲ ")}
@@ -197,7 +240,7 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
                       </div>
                     </div>
                   </td>
-                  {COLUMNS.map(({ key, className = "" }) => {
+                  {columns.map(({ key, className = "" }) => {
                     const value = r[key];
                     const tone = METRICS[key].format === "signed" && value !== null ? (value >= 0 ? "text-gain" : "text-loss") : "";
                     return (
@@ -214,8 +257,9 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
         </div>
       </section>
       <p className="text-xs text-muted">
-        Momentum 12-1 is the return from 12 months ago to 1 month ago. Volatility, beta and RSI use the last year, as of the latest close. A screen picks stocks by how they did up to today, so
-        backtesting today&apos;s picks over the past flatters them (look-ahead). Not investment advice.
+        Momentum 12-1 is the return from 12 months ago to 1 month ago. Volatility, beta and RSI use the last year, as of the latest close. Company numbers come from SEC filings: margins and P/E
+        over the last four reported quarters, revenue growth, return on equity and free cash flow over the last fiscal year, valued at today&apos;s price. A screen picks stocks by how they did up
+        to today, so backtesting today&apos;s picks over the past flatters them (look-ahead). Not investment advice.
       </p>
     </div>
   );

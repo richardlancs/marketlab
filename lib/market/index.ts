@@ -18,12 +18,14 @@ import { isTiingoBlocked, marketMode } from "./mode";
 import type { Listing, MarketDataProvider } from "./provider";
 import { isSymbolFormat, normalizeSymbol } from "./symbols";
 import { parseFilings, parseTickerMap, type Filing } from "./filings";
+import { parseCompanyFacts, type CompanyFacts } from "./fundamentals";
 import { createTiingoProvider, fetchTiingoNews, type NewsItem } from "./tiingo";
 import { INDICES, STOCK_SYMBOLS } from "./universe";
 
 export type { Market } from "./build";
 export type { Listing } from "./provider";
 export type { Filing } from "./filings";
+export type { CompanyFacts } from "./fundamentals";
 export type { NewsItem } from "./tiingo";
 export { FEATURED_SYMBOL, STOCK_SYMBOLS } from "./universe";
 
@@ -252,6 +254,51 @@ async function cachedFilings(symbol: string, userAgent: string): Promise<Filing[
     console.error(`[filings] Couldn't load filings for ${symbol}:`, error instanceof Error ? error.message : error);
     cacheLife("minutes");
     return null;
+  }
+}
+
+/**
+ * A company's reported numbers from the SEC (./fundamentals.ts), freshly
+ * fetched: null if it has none to use (not an SEC filer, or not in dollars),
+ * "failed" if they couldn't be fetched now (including without SEC_USER_AGENT).
+ * Not cached: the file is several megabytes, so lib/fundamentals.ts stores the
+ * parsed result instead.
+ */
+export async function fetchCompanyFacts(input: string): Promise<CompanyFacts | null | "failed"> {
+  const userAgent = secUserAgent();
+  const symbol = normalizeSymbol(input);
+  if (!userAgent || !isSymbolFormat(symbol)) return "failed";
+  const map = await cachedTickerMap(userAgent);
+  if (Object.keys(map).length === 0) return "failed";
+  const ciks = [map[symbol], PREDECESSORS[symbol]].filter((cik): cik is number => cik !== undefined);
+  try {
+    for (const cik of ciks) {
+      const facts = await companyFactsOf(cik, userAgent);
+      if (facts) return facts;
+    }
+    return null;
+  } catch (error) {
+    console.error(`[fundamentals] Couldn't load company facts for ${symbol}:`, error instanceof Error ? error.message : error);
+    return "failed";
+  }
+}
+
+/**
+ * Where a ticker now belongs to a new holding company with no reports of its
+ * own yet, the company that reported before it. Used only while the new one
+ * has no numbers.
+ */
+const PREDECESSORS: Record<string, number> = {
+  XOM: 34088, // Exxon Mobil Corporation, before ExxonMobil Holdings Corp (2026)
+};
+
+async function companyFactsOf(cik: number, userAgent: string): Promise<CompanyFacts | null> {
+  try {
+    return parseCompanyFacts(await secJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${String(cik).padStart(10, "0")}.json`, userAgent));
+  } catch (error) {
+    // A company that files nothing in XBRL has no facts file at all.
+    if (error instanceof Error && error.message.endsWith("HTTP 404")) return null;
+    throw error;
   }
 }
 

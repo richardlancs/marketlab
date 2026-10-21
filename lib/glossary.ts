@@ -164,6 +164,30 @@ export const GLOSSARY = {
     more: "A $100 stock paying $3 a year yields 3%. A very high yield can be a warning rather than a bargain: it often means the price fell because investors doubt the dividend will last.",
     group: "Company numbers",
   },
+  revenue: {
+    title: "Revenue and earnings",
+    short: "Revenue is everything a company sells in a period; earnings (net income) are what's left after every cost, interest and tax.",
+    more: "Revenue shows how big the business is and whether it's growing; earnings show whether it makes money. Earnings per share divides the profit by the number of shares, the figure a P/E ratio uses.",
+    group: "Company numbers",
+  },
+  margins: {
+    title: "Profit margins",
+    short: "How much of each dollar of revenue is left as profit: after making the product (gross), after running the business (operating), and after everything (net).",
+    more: "A 25% net margin means 25 cents of profit on every dollar of sales. Margins show how good a business is, not just how big; compare them within an industry, as a grocer and a software company will never look alike.",
+    group: "Company numbers",
+  },
+  returnOnEquity: {
+    title: "Return on equity",
+    short: "A year's profit as a percentage of shareholders' equity: how much the company earns on the money its owners have in it.",
+    more: "An ROE of 20% means $20 of profit a year for every $100 of equity. Debt and share buybacks shrink equity and push ROE up, so a very high ROE can mean a great business, a heavily borrowed one, or both.",
+    group: "Company numbers",
+  },
+  freeCashFlow: {
+    title: "Free cash flow",
+    short: "The cash a business brings in from its operations, less what it spends on buildings and equipment.",
+    more: "It's the cash actually available for dividends, buybacks, paying down debt or acquisitions. Profits can be flattered by accounting choices; cash is harder to fake. Free cash flow over market cap is the free cash flow yield.",
+    group: "Company numbers",
+  },
   sma: {
     title: "Moving average (SMA)",
     short: "The average closing price over the last N days, recalculated each day.",
