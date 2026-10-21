@@ -57,6 +57,25 @@ Better Auth refuses to start in production without a real secret, so a missing s
 - **Backtests:** run one, save it, reopen it, and click "Reproduce from saved inputs". The result names the engine.
 - **Cron:** `/api/cron/daily` answers 401 without the secret, and `vercel crons ls` lists the job.
 
+## Monitoring
+
+- **`/api/health`** reports the database, the analytics service, market data, the last daily job and how current the stored analytics are. It answers 503 when something users would notice is down.
+- **The hourly uptime check** (`.github/workflows/uptime.yml`) reads it. While it fails, an issue labelled `uptime` stays open (GitHub emails you), and it's closed once the site is healthy again. Run it by hand from the Actions tab with "Run workflow".
+- **Vercel Web Analytics and Speed Insights** are in the layout. Enable them once in the Vercel project's Analytics and Speed Insights tabs (free on Hobby).
+- **CI** (`.github/workflows/ci.yml`) runs lint, every test, the build, the Python tests, a dependency audit and the Playwright end-to-end tests. Branch protection requires all of them on `main`.
+
+## Backups and restoring
+
+Turso keeps point-in-time history. To get the production database back as it was at a moment, restore it into a new database, check it, then point the app at it (or copy rows back):
+
+```bash
+turso db create marketlab-restored --from-db marketlab-prod --timestamp 2026-10-21T02:00:00Z
+turso db shell marketlab-restored "select count(*) from user"
+turso db tokens create marketlab-restored     # then set DATABASE_URL / DATABASE_AUTH_TOKEN on Vercel
+```
+
+**Drill, Oct 21, 2026:** production restored as of an hour earlier in about 5 seconds. Every table was present, and its row counts matched that moment: the migration and the portfolio created after it were absent, as expected. The copy was then deleted.
+
 ## Rolling back
 
 - **A bad deploy:** Vercel → Deployments → Instant Rollback.
