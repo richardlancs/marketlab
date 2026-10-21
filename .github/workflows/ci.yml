@@ -21,8 +21,6 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      # The mock market: no keys, deterministic data.
-      MARKET_DATA_SOURCE: mock
       NEXT_TELEMETRY_DISABLED: "1"
     steps:
       - uses: actions/checkout@v4
@@ -34,6 +32,9 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+        env:
+          # Prerender with the mock market: no keys, deterministic data.
+          MARKET_DATA_SOURCE: mock
 
   python:
     name: Test (Python analytics)

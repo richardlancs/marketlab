@@ -11,6 +11,8 @@ const { getMarket } = await import("./index");
 const { clearTiingoMemo } = await import("./tiingo");
 
 beforeEach(() => {
+  // Each test chooses its data source; nothing from the shell (or CI) may decide it for them.
+  for (const name of ["MARKET_DATA_SOURCE", "MARKET_DATA_PRIVATE", "VERCEL_ENV"]) vi.stubEnv(name, undefined);
   cacheLife.mockClear();
   clearTiingoMemo();
   vi.spyOn(console, "error").mockImplementation(() => {});
