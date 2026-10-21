@@ -20,7 +20,7 @@ from . import profiles, store
 from .db import Database
 
 #: Symbols loaded and calculated per database round trip.
-CHUNK = 12
+CHUNK = 8
 
 
 @dataclass
@@ -55,10 +55,13 @@ def run_stock_profiles(db: Database, source: str, symbols: Sequence[str] | None 
             due.append((symbol, checksum))
 
     market_bars = store.load_bars(db, source, [store.MARKET]).get(store.MARKET) if market else None
+    slowest = 0.0  # the longest a chunk has taken so far (ms): don't start one that wouldn't finish in time
     for i in range(0, len(due), CHUNK):
-        if (time.monotonic() - start) * 1000 > budget_ms:
+        elapsed = (time.monotonic() - start) * 1000
+        if elapsed + slowest > budget_ms:
             summary.remaining = [s for s, _ in due[i:]]
             break
+        chunk_start = time.monotonic()
         chunk = due[i : i + CHUNK]
         bars = store.load_bars(db, source, [s for s, _ in chunk])
         rows = []
@@ -70,5 +73,6 @@ def run_stock_profiles(db: Database, source: str, symbols: Sequence[str] | None 
                 summary.failed[symbol] = str(error) or "no prices"
         store.save_results(db, "stock-profile", source, rows)
         summary.computed += [r[0] for r in rows]
+        slowest = max(slowest, (time.monotonic() - chunk_start) * 1000)
     summary.ms = int((time.monotonic() - start) * 1000)
     return summary

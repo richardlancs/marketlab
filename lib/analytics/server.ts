@@ -75,7 +75,8 @@ export async function syncPrices(symbols: readonly string[], deadline = Infinity
 
 /** Asks the analytics service to recalculate stock profiles (all stored ones, or these), within `budgetMs`. */
 export async function runStockProfiles(symbols: string[] | null, budgetMs = 8000): Promise<JobResult> {
-  const data = await post("/v1/analytics/stock-profiles", { source: priceSource(), symbols: symbols ?? undefined, budgetMs }, "Stock profiles");
+  // The service stops within its budget; allow for a slow last step and the network on top.
+  const data = await post("/v1/analytics/stock-profiles", { source: priceSource(), symbols: symbols ?? undefined, budgetMs }, "Stock profiles", budgetMs + 8000);
   return parseJob(data);
 }
 
@@ -91,18 +92,19 @@ export interface RefreshSummary {
 /** The daily job's analytics step: store the latest prices, then recalculate what changed, until `deadline` (ms). */
 export async function refreshAnalytics(deadline: number, now: () => number = Date.now): Promise<RefreshSummary> {
   const symbols = [...INDICES.map((i) => i.symbol), ...CATALOG.map((s) => s.symbol)];
-  // Leave time for at least one calculation call after storing prices.
-  const synced = await syncPrices(symbols, deadline - 9000, now);
+  // Leave time for at least one calculation call after storing prices (an unchanged pass takes a few seconds).
+  const synced = await syncPrices(symbols, deadline - 6000, now);
   const summary: RefreshSummary = { pricesChanged: synced.changed, priceFailures: synced.failed, computed: 0, unchanged: 0, unfinished: synced.skipped.length > 0 };
   if (!pythonConfigured()) return { ...summary, skipped: "The analytics service isn't configured (ANALYTICS_URL, ANALYTICS_SERVICE_TOKEN)." };
   let pending: string[] | null = null;
   for (;;) {
     const left = deadline - now();
-    if (left < 1500) {
+    if (left < 4000) {
       summary.unfinished = true;
       break;
     }
-    const job: JobResult = await runStockProfiles(pending, Math.min(8000, left - 1000));
+    // The call can overrun its budget by up to one batch (a few seconds), so keep that much in hand.
+    const job: JobResult = await runStockProfiles(pending, Math.min(8000, left - 3000));
     summary.computed += job.computed;
     summary.unchanged += job.unchanged;
     if (job.remaining.length === 0) break;
@@ -154,7 +156,7 @@ export type ScreenerData = { status: "ok"; rows: ScreenerRow[]; asOf: number } |
 /**
  * Every catalog stock's screener row. If profiles are missing or behind the
  * latest close (the daily job hasn't run yet), they're brought up to date
- * first, within about 9 seconds. Cached for an hour.
+ * first, within about 20 seconds. Cached for an hour.
  */
 export async function getScreenerData(): Promise<ScreenerData> {
   "use cache";
@@ -165,7 +167,12 @@ export async function getScreenerData(): Promise<ScreenerData> {
     const latest = (await getBarsForStore(MARKET))?.bars.at(-1)?.time ?? 0;
     const behind = CATALOG.filter((s) => (profiles.get(s.symbol)?.asOf ?? 0) < latest);
     if (behind.length > 0 && pythonConfigured()) {
-      await refreshAnalytics(Date.now() + 9000);
+      try {
+        await refreshAnalytics(Date.now() + 20_000);
+      } catch (error) {
+        // Show what's already calculated; the rest follows on a later visit or the daily job.
+        console.error("[analytics] Screener refresh failed:", error instanceof Error ? error.message : error);
+      }
       profiles = await prices.results("stock-profile", source, parseStockProfile);
     }
     const index = await prices.seriesIndex(source);

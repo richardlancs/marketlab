@@ -130,10 +130,10 @@ export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapsho
 }
 
 /** POSTs JSON to the service with its token; returns the parsed body, or throws a PythonEngineError with a message fit to show. */
-export async function post(path: string, body: unknown, what: string): Promise<Record<string, unknown>> {
+export async function post(path: string, body: unknown, what: string, timeoutMs?: number): Promise<Record<string, unknown>> {
   const token = process.env.ANALYTICS_SERVICE_TOKEN;
   if (!pythonConfigured() || !token) throw new PythonEngineError("The Python engine is selected but not set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
-  const timeout = Number(process.env.ANALYTICS_TIMEOUT_MS) || 10_000;
+  const timeout = timeoutMs ?? (Number(process.env.ANALYTICS_TIMEOUT_MS) || 10_000);
   let response: Response;
   try {
     response = await fetch(serviceUrl(path), {
