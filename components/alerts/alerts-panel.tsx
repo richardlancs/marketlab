@@ -5,6 +5,7 @@ import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { unseenAlerts } from "@/lib/alerts";
 import { AlertList } from "./alert-card";
+import { AlertEmailsToggle } from "./alert-emails-toggle";
 
 const noSubscribe = () => () => {};
 /** The browser's notification permission, or null where notifications aren't supported (and on the server). */
@@ -64,6 +65,7 @@ export function AlertsPanel() {
       ) : (
         <p className="mt-3 text-sm text-muted">No alerts yet. Set one on any stock&apos;s page.</p>
       )}
+      <AlertEmailsToggle />
     </Card>
   );
 }

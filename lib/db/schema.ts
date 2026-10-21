@@ -274,6 +274,8 @@ export const priceAlert = sqliteTable(
     triggeredAt: integer("triggered_at"),
     triggerPrice: real("trigger_price"),
     seen: integer("seen", { mode: "boolean" }).notNull().default(false),
+    /** When it went out in an alert email (lib/alert-emails.ts); null if it hasn't (or won't). */
+    emailedAt: integer("emailed_at"),
   },
   (table) => [index("price_alert_user_idx").on(table.userId, table.createdAt)],
 );
@@ -420,3 +422,12 @@ export const jobRun = sqliteTable(
   },
   (table) => [index("job_run_name_idx").on(table.name, table.startedAt)],
 );
+
+/** What email a user has asked for. Alert emails are opt-in: no row, or alertEmails false, means none. */
+export const emailPreference = sqliteTable("email_preference", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  alertEmails: integer("alert_emails", { mode: "boolean" }).notNull().default(false),
+  updatedAt: integer("updated_at").notNull(),
+});

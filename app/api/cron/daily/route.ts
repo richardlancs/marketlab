@@ -1,4 +1,5 @@
 import { revalidateTag } from "next/cache";
+import { sendAlertDigests } from "@/lib/alert-emails";
 import { refreshAnalytics } from "@/lib/analytics/server";
 import { accounts, backtests, guests, jobs, learning } from "@/lib/db";
 import { getMarket, getProcessingData } from "@/lib/market";
@@ -43,6 +44,7 @@ export async function GET(request: Request) {
       deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
       pruneRateLimits,
       deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
+      sendAlertEmails: (deadline) => sendAlertDigests(deadline),
       refreshAnalytics: (deadline) => refreshAnalytics(deadline),
     });
   } catch (error) {

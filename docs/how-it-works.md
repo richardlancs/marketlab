@@ -9,7 +9,7 @@ The details behind each feature. For setup, see the [README](../README.md).
 - [Research tools](#research-tools)
 - [Backtests](#backtests)
 - [The daily job](#the-daily-job)
-- [Email verification](#email-verification)
+- [Email](#email)
 
 ## Market data
 
@@ -231,9 +231,18 @@ CRON_SECRET=test npm run dev
 curl -H 'authorization: Bearer test' localhost:3000/api/cron/daily
 ```
 
-## Email verification
+## Email
 
-- **What happens:** signing up sends a 24-hour link that confirms the address. It doesn't block signing in.
-- **How it's sent:** through Resend (`lib/email.ts`), which needs `RESEND_API_KEY` and `EMAIL_FROM`.
-- **Without them:** production offers no verification at all, and development prints each email to the console.
-- **Guests' placeholder addresses** are never mailed.
+**Sending** (`lib/email.ts`)
+- Through Gmail's SMTP server: set `SMTP_USER` and `SMTP_PASS` (a Google app password).
+- Resend's API still works as an alternative: `RESEND_API_KEY` and `EMAIL_FROM`.
+- Without either, production sends nothing and offers nothing that needs email. In development each email is printed to the server console.
+- Guests' placeholder addresses are never mailed.
+
+**Verification:** signing up sends a 24-hour link that confirms the address. It doesn't block signing in.
+
+**Alert emails** (`lib/alert-emails.ts`)
+- **Opt-in:** a signed-in user with a confirmed address turns them on under the alerts on the watchlist page.
+- **The digest:** after catching up accounts, the daily job sends each of them one email listing the alerts that triggered. It skips alerts they've already seen in the app, and alerts more than a week old.
+- **Once only:** each alert is emailed once (`price_alert.emailed_at`).
+- **Unsubscribing:** every email has a signed unsubscribe link. Opening it asks for confirmation, so link scanners can't unsubscribe anyone, and mail apps' one-click unsubscribe works too (RFC 8058).

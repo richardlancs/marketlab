@@ -60,7 +60,14 @@ async function read(ex: Executor, userId: string): Promise<Account | null> {
     // Phase 7 fields, only when there's something in them (as guest accounts store them).
     ...(events.length && { events: events.map(defined) }),
     ...(orders.length && { orders: openFirst.map(defined) }),
-    ...(alerts.length && { alerts: alerts.map(({ seen, ...a }) => ({ ...defined(a), ...(seen && { seen }) })) }),
+    // emailedAt is the alert emails' bookkeeping (lib/alert-emails.ts), not part of the account.
+    ...(alerts.length && {
+      alerts: alerts.map(({ seen, ...a }) => {
+        const { emailedAt, ...rest } = defined(a);
+        void emailedAt;
+        return { ...rest, ...(seen && { seen }) };
+      }),
+    }),
     ...(row.processedThrough !== null && { processedThrough: row.processedThrough }),
   };
 }

@@ -44,7 +44,8 @@ Set them in Project → Settings → Environment Variables, separately for Produ
 | `ANALYTICS_SERVICE_TOKEN` | A random value per environment. Don't set `ANALYTICS_URL`: the binding provides it. |
 | `CRON_SECRET` | Production only: lets Vercel Cron run the daily job. |
 | `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings. |
-| `RESEND_API_KEY`, `EMAIL_FROM` | Optional. Without them, email verification is off. |
+| `SMTP_USER`, `SMTP_PASS` | Optional: a Gmail address and a Google **app password** for it (Google Account → Security → 2-Step Verification → App passwords). Turns on email verification and alert emails. Without them, email is off. Gmail sends up to about 500 emails a day. |
+| `EMAIL_FROM` | Optional: the sender name and address, e.g. `MarketLab <you@gmail.com>`. Defaults to `SMTP_USER`. |
 | `TIINGO_API_KEY` | **Never on a public deployment** (personal-use licence). |
 
 Better Auth refuses to start in production without a real secret, so a missing secret shows up as an error rather than as an insecure site.
