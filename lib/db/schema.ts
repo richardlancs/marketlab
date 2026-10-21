@@ -198,6 +198,13 @@ export const backtestRun = sqliteTable(
     dataSource: text("data_source"),
     simulated: integer("simulated", { mode: "boolean" }),
     datasetVersion: text("dataset_version"),
+    /**
+     * What kind of run (migration 0012): a backtest of chosen stocks, or a
+     * historical screen (services/analytics/analytics/screens.py), whose
+     * config, result and snapshot have their own shapes. Both count towards
+     * MAX_SAVED_RUNS.
+     */
+    kind: text("kind", { enum: ["backtest", "historical-screen"] }).notNull().default("backtest"),
   },
   (table) => [
     index("backtest_run_user_idx").on(table.userId, table.createdAt),

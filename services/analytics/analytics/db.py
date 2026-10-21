@@ -160,7 +160,7 @@ def from_environment() -> Database:
 def load_saved_run(db: Database, owner_id: str, run_id: str) -> dict[str, Any] | None:
     """One of the owner's saved runs with its stored result and snapshot (JSON text), or None (missing, or someone else's)."""
     rows = db.query(
-        "SELECT r.id, r.name, r.config, r.result, r.engine, r.engine_version, p.data AS snapshot "
+        "SELECT r.id, r.name, r.kind, r.config, r.result, r.engine, r.engine_version, p.data AS snapshot "
         "FROM backtest_run r LEFT JOIN price_snapshot p ON p.checksum = r.snapshot_checksum "
         "WHERE r.id = ? AND r.user_id = ?",
         [run_id, owner_id],
@@ -186,20 +186,22 @@ def save_run(
     engine: str,
     engine_version: str,
     dataset_version: str,
+    kind: str = "backtest",
 ) -> bool:
     """
-    Saves a run with its result and its snapshot. The snapshot is stored
-    once per checksum. Returns False (saving nothing) if the owner doesn't
-    exist or already has MAX_SAVED_RUNS runs.
+    Saves a run (a backtest, or a historical screen) with its result and its
+    snapshot. The snapshot is stored once per checksum. Returns False (saving
+    nothing) if the owner doesn't exist or already has MAX_SAVED_RUNS runs
+    of either kind.
     """
     db.execute(
         "INSERT INTO price_snapshot (checksum, data, source, simulated, as_of, created_at) VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(checksum) DO NOTHING",
         [checksum, snapshot_json, source, 1 if simulated else 0, as_of, created_at],
     )
     inserted = db.execute(
-        "INSERT INTO backtest_run (id, user_id, name, config, summary, created_at, result, snapshot_checksum, engine, engine_version, data_source, simulated, dataset_version) "
-        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? "
+        "INSERT INTO backtest_run (id, user_id, name, config, summary, created_at, result, snapshot_checksum, engine, engine_version, data_source, simulated, dataset_version, kind) "
+        "SELECT ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ? "
         "WHERE EXISTS (SELECT 1 FROM user WHERE id = ?) AND (SELECT count(*) FROM backtest_run WHERE user_id = ?) < ?",
-        [run_id, owner_id, name, config_json, summary_json, created_at, result_json, checksum, engine, engine_version, source, 1 if simulated else 0, dataset_version, owner_id, owner_id, MAX_SAVED_RUNS],
+        [run_id, owner_id, name, config_json, summary_json, created_at, result_json, checksum, engine, engine_version, source, 1 if simulated else 0, dataset_version, kind, owner_id, owner_id, MAX_SAVED_RUNS],
     )
     return inserted == 1

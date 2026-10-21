@@ -199,11 +199,22 @@ export function Screener({ rows, asOf, initialPreset }: { rows: ScreenerRow[]; a
               ))}
             </div>
           </div>
-          {backtest && (
-            <Link href={`/backtest#${shareFragment(backtest)}`} className="text-sm font-medium text-accent hover:underline" title="Buy and hold the top five, equally weighted, over the last 3 years">
-              Backtest the top {Math.min(5, results.length)} →
-            </Link>
-          )}
+          <div className="flex flex-wrap items-center gap-x-4 gap-y-1">
+            {preset === "momentum" && (
+              <Link href="/screener/history" className="text-sm font-medium text-accent hover:underline" title="Apply this screen at the start of every month, using only the prices known then">
+                Test this screen over time →
+              </Link>
+            )}
+            {backtest && (
+              <Link
+                href={`/backtest#${shareFragment(backtest)}`}
+                className="text-sm font-medium text-accent hover:underline"
+                title="Buy and hold today's top five, equally weighted, over the last 3 years. They were picked with today's numbers, so this looks back with hindsight."
+              >
+                Backtest today&apos;s top {Math.min(5, results.length)} →
+              </Link>
+            )}
+          </div>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">

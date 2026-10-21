@@ -12,7 +12,8 @@
  */
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
-import type { BacktestConfig } from "../backtest/config";
+import type { BacktestConfig, RunSummary } from "../backtest/config";
+import type { Comparison } from "../backtest/stored";
 import { post, pythonConfigured } from "../backtest/python-client";
 import { prices } from "../db";
 import { allFundamentals } from "../fundamentals";
@@ -20,6 +21,7 @@ import { getBarsForStore, priceSource } from "../market";
 import { CATALOG } from "../market/catalog";
 import { isCurrent } from "../market/fundamentals";
 import { INDICES } from "../market/universe";
+import { parseScreenResult, summarizeScreen, type ScreenConfig, type ScreenResult, type ScreenSettings } from "./history";
 import { parseStockProfile, type StockProfile } from "./profile";
 import { buildRows, type ScreenerRow } from "./screener";
 
@@ -257,5 +259,63 @@ export async function walkForwardOnServer(
     return { ok: true, result: r };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "The walk-forward test failed. Try again in a minute." };
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Historical screening (lib/analytics/history.ts; services/analytics/analytics/screens.py)
+// ---------------------------------------------------------------------------
+
+/** A screen reads every catalog stock's stored prices: a few seconds over Turso's HTTP API. */
+const SCREEN_TIMEOUT_MS = 30_000;
+
+/** What's run: the user's settings, on every catalog stock. The universe is the server's, never the browser's. */
+export const screenConfigOf = (settings: ScreenSettings): ScreenConfig => ({ version: 1, ...settings, universe: CATALOG.map((s) => s.symbol).sort() });
+
+const UNREADABLE = "The historical screen came back in a form MarketLab couldn't read.";
+const NO_SERVICE = "Historical screening needs the analytics service, which isn't running.";
+
+/** Runs a historical screen on the stored prices. Nothing is saved. */
+export async function screenHistoryOnServer(settings: ScreenSettings): Promise<{ ok: true; result: ScreenResult } | { ok: false; message: string }> {
+  if (!pythonConfigured()) return { ok: false, message: NO_SERVICE };
+  try {
+    const data = await post("/v1/screens/history", { source: priceSource(), config: screenConfigOf(settings) }, "Historical screen", SCREEN_TIMEOUT_MS);
+    const result = parseScreenResult(data.result);
+    return result ? { ok: true, result } : { ok: false, message: UNREADABLE };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "The historical screen failed. Try again in a minute." };
+  }
+}
+
+/**
+ * Has the service calculate a historical screen and save it, with every
+ * candidate's prices, for `ownerId` (already verified by the caller).
+ */
+export async function saveScreenOnServer(
+  ownerId: string,
+  run: { id: string; name: string; createdAt: number },
+  config: ScreenConfig,
+): Promise<{ ok: true; summary: RunSummary; result: ScreenResult } | { ok: false; message: string }> {
+  if (!pythonConfigured()) return { ok: false, message: NO_SERVICE };
+  try {
+    const data = await post("/v1/saved-screens", { ownerId, run, source: priceSource(), config }, "Save screen", SCREEN_TIMEOUT_MS);
+    const result = parseScreenResult(data.result);
+    return result ? { ok: true, summary: summarizeScreen(result), result } : { ok: false, message: UNREADABLE };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Couldn't save the run. Try again in a minute." };
+  }
+}
+
+/** Has the service recalculate one of the owner's saved screens from its saved prices alone, and compare. */
+export async function reproduceScreenOnServer(runId: string, ownerId: string): Promise<{ ok: true; reproduced: ScreenResult; comparison: Comparison } | { ok: false; message: string }> {
+  if (!pythonConfigured()) return { ok: false, message: NO_SERVICE };
+  try {
+    const data = await post(`/v1/saved-screens/${encodeURIComponent(runId)}/reproduce`, { ownerId }, "Reproduce screen", SCREEN_TIMEOUT_MS);
+    const reproduced = parseScreenResult(data.reproduced);
+    const c = data.comparison as Partial<Comparison> | undefined;
+    if (!reproduced || typeof c?.matches !== "boolean" || typeof c.largestDifference !== "number" || !Array.isArray(c.differences)) return { ok: false, message: UNREADABLE };
+    return { ok: true, reproduced, comparison: { matches: c.matches, largestDifference: c.largestDifference, differences: c.differences.filter((d): d is string => typeof d === "string") } };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Couldn't reproduce the run. Try again in a minute." };
   }
 }

@@ -4,6 +4,7 @@
  */
 import { and, count, desc, eq, inArray, notExists, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
+import { parseSavedScreen, parseScreenResult, type SavedScreen, type ScreenResult } from "../analytics/history";
 import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun, type StoredInfo } from "../backtest/config";
 import { parseSnapshot, type PriceSnapshot } from "../backtest/snapshot";
 import { parseStoredResult, type StoredResult } from "../backtest/stored";
@@ -46,10 +47,12 @@ const listColumns = {
   datasetVersion: backtestRun.datasetVersion,
 };
 
-function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }): SavedRun | null {
-  let run: SavedRun | null;
+function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }): SavedRun | null;
+function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }, parse: typeof parseSavedScreen): SavedScreen | null;
+function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }, parse: (value: unknown, isKnown: (symbol: string) => boolean) => SavedRun | SavedScreen | null = parseSavedRun) {
+  let run: SavedRun | SavedScreen | null;
   try {
-    run = parseSavedRun({ ...row, config: JSON.parse(row.config as string), summary: JSON.parse(row.summary as string) }, isSymbolFormat);
+    run = parse({ ...row, config: JSON.parse(row.config as string), summary: JSON.parse(row.summary as string) }, isSymbolFormat);
   } catch {
     return null;
   }
@@ -70,8 +73,43 @@ export function createBacktestRepository(db: Db) {
      * rows that are malformed are skipped.
      */
     async list(userId: string): Promise<SavedRun[]> {
-      const rows = await db.select(listColumns).from(backtestRun).where(eq(backtestRun.userId, userId)).orderBy(desc(backtestRun.createdAt));
-      return rows.map(toSavedRun).filter((run): run is SavedRun => run !== null);
+      const rows = await db
+        .select(listColumns)
+        .from(backtestRun)
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.kind, "backtest")))
+        .orderBy(desc(backtestRun.createdAt));
+      return rows.map((row) => toSavedRun(row)).filter((run): run is SavedRun => run !== null);
+    },
+
+    /** The user's saved historical screens (lib/analytics/history.ts), newest first, without their results. */
+    async listScreens(userId: string): Promise<SavedScreen[]> {
+      const rows = await db
+        .select(listColumns)
+        .from(backtestRun)
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.kind, "historical-screen")))
+        .orderBy(desc(backtestRun.createdAt));
+      return rows.map((row) => toSavedRun(row, parseSavedScreen)).filter((run): run is SavedScreen => run !== null);
+    },
+
+    /**
+     * One of the user's saved historical screens with its stored result.
+     * Its input prices stay in the database: only the analytics service
+     * reads them, to reproduce it.
+     */
+    async getScreen(userId: string, id: string): Promise<{ run: SavedScreen; result: ScreenResult | null } | null> {
+      const [row] = await db
+        .select({ ...listColumns, result: backtestRun.result })
+        .from(backtestRun)
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id), eq(backtestRun.kind, "historical-screen")));
+      const run = row ? toSavedRun(row, parseSavedScreen) : null;
+      if (!run) return null;
+      let result: ScreenResult | null = null;
+      try {
+        result = row.result ? parseScreenResult(JSON.parse(row.result)) : null;
+      } catch {
+        result = null;
+      }
+      return { run, result };
     },
 
     /**
@@ -84,7 +122,7 @@ export function createBacktestRepository(db: Db) {
         .select({ ...listColumns, result: backtestRun.result, snapshot: priceSnapshot.data })
         .from(backtestRun)
         .leftJoin(priceSnapshot, eq(priceSnapshot.checksum, backtestRun.snapshotChecksum))
-        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id)));
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id), eq(backtestRun.kind, "backtest")));
       if (!row) return null;
       const run = toSavedRun(row);
       if (!run) return null;

@@ -13,6 +13,9 @@ Next.js server's own market data, never from a browser.
     POST /v1/analytics/stock-profiles        Recalculates stored stock profiles that are missing or stale (database).
     POST /v1/analytics/portfolio             Risk, stress tests, Monte Carlo and optimisation for a set of holdings (stored prices).
     POST /v1/backtests/walk-forward          Walk-forward test of a moving-average crossover (stored prices).
+    POST /v1/screens/history                 A stock screen applied every month over the past (stored prices).
+    POST /v1/saved-screens                   Calculates a historical screen and saves it with its input prices (database).
+    POST /v1/saved-screens/{id}/reproduce    Recalculates a saved historical screen from its saved prices, compares.
 """
 
 from __future__ import annotations
@@ -32,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import engine, jobs, portfolio, saved, store, walkforward
+from . import engine, jobs, portfolio, saved, screens, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -633,3 +636,101 @@ def walk_forward(body: WalkForwardRequest, db: Annotated[database.Database, Depe
         raise HTTPException(status_code=422, detail=str(error)) from error
     index = store.series_index(db, body.source, symbols)
     return {"result": result, "inputChecksum": store.input_checksum(index), "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION}}
+
+
+# --- Historical screens (analytics/screens.py) -------------------------------------
+
+
+class ScreenConfigModel(Model):
+    """A historical screen's settings, as MarketLab saves them (lib/screens/config.ts)."""
+
+    version: Literal[1]
+    preset: Literal["momentum"]
+    start: int
+    end: int
+    initial_cash: Annotated[float, Field(ge=100, le=10_000_000, allow_inf_nan=False)]
+    costs: CostsModel
+    universe: Annotated[list[Symbol], Field(min_length=1, max_length=screens.MAX_UNIVERSE)]
+
+    @model_validator(mode="after")
+    def check(self):
+        if self.start >= self.end:
+            raise ValueError("the start must be before the end")
+        if len(set(self.universe)) != len(self.universe):
+            raise ValueError("each candidate may appear once")
+        return self
+
+    def settings(self) -> screens.Settings:
+        return screens.Settings(self.start, self.end, self.initial_cash, engine.Costs(self.costs.commission, self.costs.slippage_bps))
+
+
+class ScreenRequest(Model):
+    source: Source
+    config: ScreenConfigModel
+
+
+class SaveScreenRequest(Model):
+    owner_id: OwnerId
+    run: SavedRunInfo
+    source: Source
+    config: ScreenConfigModel
+
+
+def _screen(db: database.Database, source: str, config: ScreenConfigModel) -> tuple[dict, dict]:
+    try:
+        snapshot = saved.screen_snapshot(db, source, config.universe, config.settings())
+        return snapshot, saved.screen_result(snapshot, config.settings())
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+@app.post("/v1/screens/history", dependencies=[Depends(require_token)])
+def screen_history(body: ScreenRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Applies the screen at the start of every month from the stored prices, using only what was known then. Nothing is saved."""
+    _snapshot, result = _screen(db, body.source, body.config)
+    return {"result": result}
+
+
+@app.post("/v1/saved-screens", dependencies=[Depends(require_token)])
+def save_screen(body: SaveScreenRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Calculates a historical screen from the stored prices and saves it, with its snapshot, for `ownerId`."""
+    snapshot, result = _screen(db, body.source, body.config)
+    dataset = result["provenance"]["dataset"]
+    summary = screens.summary_of(result)
+    ok = database.save_run(
+        db,
+        body.owner_id,
+        run_id=body.run.id,
+        name=body.run.name,
+        created_at=body.run.created_at,
+        config_json=json.dumps(body.config.model_dump(by_alias=True)),
+        summary_json=json.dumps(summary),
+        result_json=json.dumps(result, allow_nan=False),
+        snapshot_json=json.dumps(snapshot, allow_nan=False),
+        checksum=dataset["checksum"],
+        source=body.source,
+        simulated=dataset["simulated"],
+        as_of=dataset["asOf"],
+        engine=engine.ENGINE_NAME,
+        engine_version=engine.ENGINE_VERSION,
+        dataset_version=dataset["datasetVersion"],
+        kind="historical-screen",
+    )
+    if not ok:
+        if not db.query("SELECT 1 FROM user WHERE id = ?", [body.owner_id]):
+            raise HTTPException(status_code=404, detail="That account doesn't exist.")
+        raise HTTPException(status_code=409, detail=f"You can save up to {database.MAX_SAVED_RUNS} runs. Delete one to make room.")
+    return {"summary": summary, "result": result}
+
+
+@app.post("/v1/saved-screens/{run_id}/reproduce", dependencies=[Depends(require_token)])
+def reproduce_screen(run_id: Annotated[str, Path(min_length=1, max_length=64)], body: OwnerRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Reads one of the owner's saved historical screens, calculates it again from its saved prices alone, and compares."""
+    try:
+        return saved.reproduce_screen(db, body.owner_id, run_id, lambda config: ScreenConfigModel.model_validate(config).settings())
+    except saved.NotFound as error:
+        raise HTTPException(status_code=404, detail=str(error)) from error
+    except saved.NotReproducible as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error

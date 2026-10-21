@@ -7,6 +7,7 @@ import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/libsql";
 import { migrate } from "drizzle-orm/libsql/migrator";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import screenResult from "../analytics/fixtures/screen-result.json";
 import { MAX_SAVED_RUNS, type SavedRun } from "../backtest/config";
 import { createAccountRepository } from "./accounts";
 import { createBacktestRepository } from "./backtests";
@@ -149,6 +150,66 @@ describe("stored results (reproducibility)", () => {
     await repo.remove(userId, `${userId}-b`);
     await repo.deleteOrphanSnapshots(100);
     expect(await count()).toBe(0);
+  });
+});
+
+describe("saved historical screens", () => {
+  /** A screen saved as the analytics service saves one (services/analytics/analytics/api.py save_screen). */
+  async function saveScreen(id: string, result: unknown = screenResult) {
+    await db.insert(schema.backtestRun).values({
+      id,
+      userId,
+      name: "Leaders",
+      kind: "historical-screen",
+      config: JSON.stringify({ version: 1, preset: "momentum", start: 1, end: 2, initialCash: 10_000, costs: { commission: 1, slippageBps: 5 }, universe: ["AAPL", "MSFT"] }),
+      summary: JSON.stringify({ finalValue: 11_000, totalReturn: 0.1, cagr: 0.05, maxDrawdown: 0.1, benchmarkTotalReturn: 0.08 }),
+      createdAt: 5,
+      result: JSON.stringify(result),
+      snapshotChecksum: "c".repeat(64),
+      engine: "python",
+      engineVersion: "1.3.0",
+      dataSource: "mock",
+      simulated: true,
+      datasetVersion: "mock:cccccccccccc",
+    });
+  }
+
+  it("lists screens apart from backtests", async () => {
+    await repo.save(userId, run("a backtest", 1));
+    await saveScreen(`${userId}-screen`);
+    expect((await repo.list(userId)).map((r) => r.name)).toEqual(["a backtest"]);
+    const [screen] = await repo.listScreens(userId);
+    expect(screen).toMatchObject({ id: `${userId}-screen`, config: { universe: ["AAPL", "MSFT"] }, stored: { simulated: true, dataSource: "mock" } });
+  });
+
+  it("opens a screen with its stored result, for its owner only", async () => {
+    await saveScreen(`${userId}-screen`);
+    const found = await repo.getScreen(userId, `${userId}-screen`);
+    expect(found?.result?.months).toHaveLength(3);
+    expect(await repo.getScreen("someone-else", `${userId}-screen`)).toBeNull();
+    // A backtest's ID isn't a screen, and a screen's isn't a backtest.
+    await repo.save(userId, run("bt", 1));
+    expect(await repo.getScreen(userId, `${userId}-bt`)).toBeNull();
+    expect(await repo.get(userId, `${userId}-screen`)).toBeNull();
+  });
+
+  it("shares the saved-run limit with backtests", async () => {
+    await saveScreen(`${userId}-screen`);
+    for (let i = 0; i < MAX_SAVED_RUNS - 1; i++) expect(await repo.save(userId, run(`r${i}`, i))).toBe(true);
+    expect(await repo.save(userId, run("one too many", 999))).toBe(false);
+  });
+
+  it("deletes a screen like any run, and only the owner's", async () => {
+    await saveScreen(`${userId}-screen`);
+    await repo.remove("someone-else", `${userId}-screen`);
+    expect(await repo.listScreens(userId)).toHaveLength(1);
+    await repo.remove(userId, `${userId}-screen`);
+    expect(await repo.listScreens(userId)).toHaveLength(0);
+  });
+
+  it("opens a screen whose stored result no longer reads, without its result", async () => {
+    await saveScreen(`${userId}-screen`, { kind: "something else" });
+    expect(await repo.getScreen(userId, `${userId}-screen`)).toMatchObject({ result: null });
   });
 });
 

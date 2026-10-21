@@ -42,8 +42,29 @@ test.describe("pages", () => {
     await page.getByRole("button", { name: "Dividend payers" }).click();
     await expect(page.getByRole("button", { name: "Price and risk" })).toHaveAttribute("aria-pressed", "true");
     await expect(status).not.toContainText(`${all} of ${all}`);
-    await page.getByRole("link", { name: /Backtest the top/ }).click();
+    await page.getByRole("link", { name: /Backtest today's top/ }).click();
     await expect(page).toHaveURL(/\/backtest#run=/);
+  });
+
+  test("a screen tested over time shows its monthly picks, saves and reproduces", async ({ page }) => {
+    await page.goto("/screener?preset=momentum");
+    await page.getByRole("link", { name: /Test this screen over time/ }).click();
+    await expect(page).toHaveURL(/\/screener\/history/);
+    await page.getByRole("button", { name: "Test this screen over time" }).click();
+    await expect(page.getByText("These results use MarketLab's simulated market")).toBeVisible();
+    await expect(page.getByText("survivorship bias", { exact: true })).toBeVisible();
+    const history = page.locator("section", { has: page.getByRole("heading", { name: "Monthly selections" }) });
+    const month = history.locator("details").first();
+    await month.locator("summary").first().click();
+    await expect(month.getByText(/using prices through/)).toBeVisible();
+    await expect(month.getByRole("table", { name: /Stocks selected on/ })).toBeVisible();
+    await expect(month.getByText(/qualifying stock/).first()).toBeVisible();
+
+    await page.getByRole("button", { name: "Save run" }).click();
+    await expect(page.getByRole("button", { name: "Reproduce from saved inputs" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Saved screen runs" }).getByText(/Momentum leaders, \d{4}/)).toBeVisible();
+    await page.getByRole("button", { name: "Reproduce from saved inputs" }).click();
+    await expect(page.getByRole("status").filter({ hasText: /every selection, trade and value is the same/ })).toBeVisible();
   });
 
   test("a lesson's quiz marks an answer", async ({ page }) => {

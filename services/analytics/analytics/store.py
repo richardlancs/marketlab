@@ -78,6 +78,24 @@ def load_bars(db: Database, source: str, symbols: Sequence[str], since: int | No
     return out
 
 
+def load_closes(db: Database, source: str, symbols: Sequence[str], since: int, until: int) -> dict[str, pd.Series]:
+    """Stored adjusted closes for these symbols from `since` to `until` (ms, inclusive), oldest first; a symbol with none is left out."""
+    if not symbols:
+        return {}
+    marks = ",".join("?" for _ in symbols)
+    rows = db.query(
+        f"SELECT symbol, time, adj_close FROM daily_bar WHERE source = ? AND symbol IN ({marks}) AND time >= ? AND time <= ? ORDER BY symbol, time",
+        [source, *symbols, since, until],
+    )
+    out: dict[str, pd.Series] = {}
+    if not rows:
+        return out
+    frame = pd.DataFrame(rows)
+    for symbol, group in frame.groupby("symbol", sort=False):
+        out[str(symbol)] = pd.Series(group["adj_close"].to_numpy(dtype=np.float64), index=pd.Index(group["time"].to_numpy(dtype=np.int64)), name=str(symbol))
+    return out
+
+
 def stored_versions(db: Database, kind: str, source: str) -> dict[str, tuple[str, str]]:
     """(version, input checksum) of each stored result of this kind."""
     rows = db.query("SELECT subject, version, input_checksum FROM analytics_result WHERE kind = ? AND source = ?", [kind, source])

@@ -21,7 +21,8 @@ A FastAPI service that does MarketLab's numerical work. Only the Next.js server 
   - `analytics/profiles.py`: a stock's risk and technical profile;
   - `analytics/jobs.py`: recalculates stale profiles in time-boxed batches;
   - `analytics/portfolio.py`: portfolio risk, stress tests, Monte Carlo and optimisation;
-  - `analytics/walkforward.py`: walk-forward testing.
+  - `analytics/walkforward.py`: walk-forward testing;
+  - `analytics/screens.py`: historical screening, a stock screen applied every month from the prices known then (see [Historical screening](#historical-screening)).
 - `analytics/api.py`: the HTTP layer: Pydantic models, authentication and limits.
 - `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing Python-engine runs (see [Database access](#database-access)).
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
@@ -31,7 +32,8 @@ A FastAPI service that does MarketLab's numerical work. Only the Next.js server 
   - `test_api.py`: authentication, validation and limits;
   - `test_parity.py`: results compared with the TypeScript engine on fixed datasets;
   - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client;
-  - `test_analytics.py`: indicators, profiles, the stored-analytics job, portfolio analysis and walk-forward tests.
+  - `test_analytics.py`: indicators, profiles, the stored-analytics job, portfolio analysis and walk-forward tests;
+  - `test_screens.py`: historical screening (no look-ahead, scheduling, warm-up, ties, missing prices, the books, and saving and reproducing).
 
 ## Setup
 
@@ -178,6 +180,38 @@ It analyses today's weights using stored prices: risk, each holding's share of t
 **Body:** `{ source, config, fast: { from, to, step }, slow: { from, to, step }, trainYears: 1–3, testMonths: 3 | 6 | 12 }`.
 
 For a moving-average `config`, it tests up to 100 (short, long) pairs. On each training window it picks the pair with the best Sharpe ratio, then runs it on the next test window. Results include each fold and the chained out-of-sample curve, next to the fixed settings and buy and hold.
+
+### `POST /v1/screens/history`
+
+**Body:** `{ source, config }`. The `config` is `{ version: 1, preset: "momentum", start, end, initialCash, costs, universe }`, where `universe` holds 1 to 200 symbols (MarketLab sends its catalog).
+
+It builds a universe snapshot from the stored prices and runs the screen on it. Nothing is saved.
+
+**Returns:** `{ result }`, with:
+- `run` and `benchmark` (the same shapes as a backtest's), plus the benchmark's `dividends`;
+- `period`, `warnings`, `costs`, `turnover` and `months` (each month's picks, explanations, trades and every candidate's numbers);
+- `universe` and `provenance`.
+
+Returns 422 when no stock can be ranked in the period.
+
+### `POST /v1/saved-screens` and `POST /v1/saved-screens/{id}/reproduce`
+
+These save and reproduce historical screens, as `/v1/saved-runs` does for backtests:
+- **Saving:** `{ ownerId, run, source, config }`. It recalculates the screen from the store, then saves the result and its snapshot with `kind = 'historical-screen'`.
+- **Reproducing:** `{ ownerId }`. It recalculates from the saved snapshot only, then compares the curves, trades, metrics and every month's picks.
+
+**Errors:**
+- 404 for someone else's run, or for a backtest's ID;
+- 409 when the 50-run limit is full.
+
+## Historical screening
+
+`analytics/screens.py`. Its module docstring states every rule. In short:
+- **Inputs:** a *universe snapshot*, built from the store and saved with a run. It holds the market's trading days from 274 sessions before the start, and each candidate's adjusted close on each day, with `None` where it has none. Live runs and reproductions both calculate from a snapshot, so they share one code path.
+- **Decisions:** on session D, `rank()` gets `closes[:D]`, so D's own close and anything later are out of reach. Tests check that changing later prices, or D's own close, leaves earlier decisions unchanged.
+- **Measures:** 12-1 momentum and the 200-day average use `profiles.py`'s definitions, and percentiles use `screener.ts`'s. A stock qualifies with the top fifth of momentum and above its average. Picks are the top five by momentum, ties broken alphabetically, at 20% each.
+- **Execution:** `execution.buy`/`sell` (the backtests' costs and rules). The benchmark is `engine.BuyAndHold` on the index, and the metrics are `metrics.compute_metrics`.
+- **Versions:** `SCREEN_VERSION` is recorded as the run's `method`. A reproduction made with another version says so.
 
 ## Stored analytics
 

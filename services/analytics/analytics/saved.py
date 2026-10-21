@@ -147,7 +147,7 @@ def reproduce(db: database.Database, owner_id: str, run_id: str, to_config) -> d
     turns the stored settings into an engine.Config (validating them).
     """
     row = database.load_saved_run(db, owner_id, run_id)
-    if row is None:
+    if row is None or row["kind"] != "backtest":
         raise NotFound("That saved run doesn't exist.")
     if not row["result"] or not row["snapshot"]:
         raise NotReproducible("This run was saved before MarketLab kept results and their input prices, so it can't be reproduced.")
@@ -159,3 +159,54 @@ def reproduce(db: database.Database, owner_id: str, run_id: str, to_config) -> d
     reproduced = stored_result(outcome, note=None, dataset=stored["provenance"]["dataset"], assumptions=stored["provenance"]["assumptions"])
     reproduced["note"] = stored.get("note")
     return {"reproduced": reproduced, "comparison": compare(stored["outcome"], reproduced["outcome"])}
+
+
+# --- Historical screens (screens.py) --------------------------------------------
+
+DAY_MS = 86_400_000
+
+
+def screen_snapshot(db: database.Database, source: str, universe: list[str], settings) -> dict[str, Any]:
+    """
+    A universe snapshot from the stored prices: the market's sessions from
+    about WARMUP_SESSIONS before the start (trading days are about 5/7 of
+    calendar days; the margin covers holidays) through the end.
+    """
+    from . import screens, store
+
+    index = store.series_index(db, source, [store.MARKET])
+    if store.MARKET not in index:
+        raise screens.ScreenError("The stored prices don't include the market index yet. Try again after the daily update.")
+    since = settings.start - int((screens.WARMUP_SESSIONS * 1.6 + 30) * DAY_MS)
+    closes = store.load_closes(db, source, [*universe, store.MARKET], since, settings.end)
+    market = closes.pop(store.MARKET, None)
+    if market is None or market.empty:
+        raise screens.ScreenError("There are no stored prices in that date range.")
+    return screens.build_snapshot(universe=universe, market=market, closes=closes, settings=settings, source=source, as_of=index[store.MARKET].last_time)
+
+
+def screen_result(snapshot: Mapping[str, Any], settings) -> dict[str, Any]:
+    """A historical screen calculated from its snapshot, with where it came from."""
+    from . import screens
+
+    result = screens.run_screen(snapshot, settings)
+    result["provenance"] = screens.provenance(snapshot)
+    return result
+
+
+def reproduce_screen(db: database.Database, owner_id: str, run_id: str, to_settings) -> dict[str, Any]:
+    """Reads one of the owner's saved historical screens and its snapshot, calculates it again from the snapshot alone, and compares."""
+    from . import screens
+
+    row = database.load_saved_run(db, owner_id, run_id)
+    if row is None or row["kind"] != "historical-screen":
+        raise NotFound("That saved run doesn't exist.")
+    if not row["result"] or not row["snapshot"]:
+        raise NotReproducible("This run's saved inputs are missing, so it can't be reproduced.")
+    stored = json.loads(row["result"])
+    reproduced = screen_result(json.loads(row["snapshot"]), to_settings(json.loads(row["config"])))
+    comparison = screens.compare(stored, reproduced)
+    was, now = stored["provenance"]["method"]["version"], reproduced["provenance"]["method"]["version"]
+    if was != now:
+        comparison["differences"] = [f"Calculated by screen version {was}; reproduced with {now}.", *comparison["differences"]][:5]
+    return {"reproduced": reproduced, "comparison": comparison}

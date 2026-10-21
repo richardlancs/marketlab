@@ -1,0 +1,1 @@
+ALTER TABLE `backtest_run` ADD `kind` text DEFAULT 'backtest' NOT NULL;

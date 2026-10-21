@@ -155,7 +155,34 @@ These are calculated by the Python analytics service ([its README](../services/a
 - A "Company numbers" column view adds P/S, revenue growth, net margin, ROE and free-cash-flow yield. P/E comes from reported earnings when there are any. Figures more than 15 months old are left out.
 - Filtering and sorting happen in the browser, so they're instant.
 - Presets: momentum leaders, low volatility, oversold in an uptrend, dividend payers, defensive, quality, value, growth.
-- "Backtest the top 5" opens buy-and-hold of the results, with a warning about look-ahead.
+- "Backtest today's top 5" opens buy-and-hold of today's results. They were picked with today's numbers, so it looks back with hindsight.
+
+**Testing a screen over time (`/screener/history`)**
+- "Test this screen over time" (shown with the Momentum leaders preset) answers: if I had run this screen at the start of every month, using only what was known then, which stocks would I have owned, and how would they have done?
+- The analytics service does the work (`services/analytics/analytics/screens.py`). Next.js validates the settings and the visitor, and sends the catalog as the candidates (`lib/screen-actions.ts`, `lib/analytics/history.ts`).
+- **The schedule:** a selection on the first measured trading day, then on the first trading day of every month (the market index's days, so weekends and holidays are skipped).
+- **Data used:** each selection uses closes through the previous session only, and trades at that day's close with the usual commission and slippage. The ranking function is only ever given closes before the decision day.
+- **The rules** are the Screener's Momentum leaders, with the stock profiles' definitions:
+  - 12-1 momentum = close[-22] ÷ close[-253] − 1, in the stock's own closes, where close[-1] is the previous session's: the return from 252 to 21 trading days back;
+  - the 200-day average is the mean of the last 200 closes, the latest included, and "above" is strictly above;
+  - percentiles are taken among every stock that could be ranked that day, ties sharing the average rank;
+  - a stock qualifies at the 80th percentile or higher *and* above its average.
+- **The portfolio:**
+  - up to five qualifiers, highest momentum first, ties broken alphabetically;
+  - 20% each, with empty slots in cash;
+  - every pick is reset to 20% each month.
+- **Missing prices are never filled in:**
+  - a stock without a close on the previous session isn't ranked;
+  - a pick without a price on the trading day isn't bought, and its slot stays in cash;
+  - a stock due to be sold without a price is sold on its next day with one;
+  - a held stock is valued at its latest close.
+- **Warm-up:** about 13 months of earlier prices are loaded. If no stock can be ranked on the start date, results begin on the first day one can, and a warning says so.
+- **Results:** value against the S&P 500 over the same days, with the benchmark's dividend treatment stated (the mock index excludes dividends). Also return, drawdown, Sharpe, turnover (value sold per year ÷ average value), trading costs, and a month-by-month history: the date and the data date, picks with their rank, momentum and a sentence of reasoning, entries and exits, trades and costs, cash left, and every candidate's numbers.
+- **Saving:** saved like backtests, in `backtest_run` with `kind = 'historical-screen'`, and they count towards the same 50-run limit. The snapshot holds every candidate's closes on every day, whether picked or not (about 1 MB), so reproducing a run recalculates it from those saved prices, never fresh ones.
+- **Limitations, shown with the results:**
+  - the prices are simulated on the public site;
+  - the candidates are today's catalog, so delisted companies are missing (survivorship bias);
+  - only prices are used.
 
 **Portfolio: Risk analysis** (`app/api/portfolio/analysis`; holdings are read on the server)
 - **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation heatmap and sector exposure.
