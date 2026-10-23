@@ -20,7 +20,7 @@ export default async function SeasonsPage() {
       </div>
       <Card aria-label="Seasons" className="mt-6 animate-fade-up py-2">
         {list.length === 0 ? (
-          <p className="py-10 text-center text-sm text-muted">No seasons yet. The first one opens this month.</p>
+          <p className="py-10 text-center text-sm text-muted">No seasons have been played yet. Each one opens on the 1st of the month.</p>
         ) : (
           <ul className="divide-y divide-border">
             {list.map((s) => (

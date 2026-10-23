@@ -78,7 +78,7 @@ async function Season({ params }: { params: PageProps<"/leaderboard/season/[id]"
             Standings
           </h2>
           {board.rows.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted">{board.status === "open" ? "Nobody has joined yet. Be the first." : "Nobody played this season."}</p>
+            <p className="py-10 text-center text-sm text-muted">{board.status === "open" ? "Nobody has joined yet. Be the first." : board.status === "closed" ? "Nobody played this season." : "Nobody joined this season. The next one opens on the 1st."}</p>
           ) : (
             <ol className="mt-2 divide-y divide-border">
               {board.rows.map((row) => (
