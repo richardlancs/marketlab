@@ -59,7 +59,9 @@ export function ThemeMenu() {
   }
 
   function apply(theme: Theme, undertone: Undertone) {
-    setTheme(theme, undertone);
+    // A soft crossfade from the old colours to the new (globals.css times it), where the browser can and motion is welcome.
+    if (document.startViewTransition && !matchMedia("(prefers-reduced-motion: reduce)").matches) document.startViewTransition(() => setTheme(theme, undertone));
+    else setTheme(theme, undertone);
     setCurrent({ theme, undertone });
   }
 

@@ -57,6 +57,8 @@ describe.each(Object.entries(themes))("the %s theme", (_, t) => {
     // Pills, segmented controls and table hovers: bg-foreground/5 or /[0.06] on a card or the page.
     "a grey fill on a card": over(c("foreground"), 0.06, c("surface")),
     "a grey fill on the page": over(c("foreground"), 0.06, c("background")),
+    // The page at the centre of each background wash (body::before), where it's strongest. The washes sit far enough apart not to overlap there.
+    ...Object.fromEntries(["wash-1", "wash-2", "wash-3"].map((w) => [`the page under ${w}`, over(c(w), parseFloat(t["wash-strength"]) / 100, c("background"))])),
   };
 
   it.each(["foreground", "muted", "accent", "gain", "loss"])("%s text is readable on every background", (text) => {

@@ -72,6 +72,8 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
       data-theme="dark"
+      // Smooth scrolling (globals.css) is for in-page jumps; this tells Next.js to switch it off while it changes pages.
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >

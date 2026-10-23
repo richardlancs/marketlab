@@ -30,6 +30,15 @@
   --loss: #bc2d24;
   --glow: rgb(0 113 227 / 0.08);
   /*
+   * The page's background washes (body::before): three soft blobs of colour
+   * that drift very slowly. Each is this strong at its centre and fades to
+   * nothing; lib/theme-contrast.test.ts checks text on the strongest spot.
+   */
+  --wash-1: var(--accent);
+  --wash-2: var(--series-5);
+  --wash-3: var(--series-3);
+  --wash-strength: 6%;
+  /*
    * Categorical colors for charts that compare things (e.g. portfolio
    * allocation). Always assigned in this order, and checked for colorblind
    * separation against each theme's card color. Dark mode uses its own steps.
@@ -57,6 +66,7 @@
   --gain: #30d158;
   --loss: #ff4c42;
   --glow: rgb(41 151 255 / 0.12);
+  --wash-strength: 8%;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
@@ -84,6 +94,11 @@
   --brand-mid: var(--accent);
   --brand-end: color-mix(in oklab, var(--accent) 80%, black);
   --brand-glow: color-mix(in oklab, var(--accent) 30%, transparent);
+  /* Stronger washes in the undertone's own chart colours: its hue first, then two companions. */
+  --wash-1: var(--series-1);
+  --wash-2: var(--series-2);
+  --wash-3: var(--series-3);
+  --wash-strength: 9%;
 }
 
 [data-theme="pastel"] {
@@ -200,19 +215,40 @@
   --font-sans: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
-  --animate-fade-up: fade-up 0.6s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-fade-up: fade-up 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-reveal: reveal 0.8s cubic-bezier(0.22, 1, 0.36, 1) both;
   --animate-pop-in: pop-in 0.18s cubic-bezier(0.22, 1, 0.36, 1) both;
-  --animate-slide-up: slide-up 0.25s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-slide-up: slide-up 0.3s cubic-bezier(0.22, 1, 0.36, 1) both;
+  --animate-drift: drift 60s ease-in-out infinite alternate;
 
+  /* The background washes' slow wander. */
+  @keyframes drift {
+    from {
+      transform: translate3d(0, 0, 0) scale(1);
+    }
+    50% {
+      transform: translate3d(3%, -2%, 0) scale(1.06);
+    }
+    to {
+      transform: translate3d(-2%, 3%, 0) scale(1.02);
+    }
+  }
+
+  /*
+   * Content arriving: rises a little and comes into focus, a hint of motion
+   * blur. Ends on `filter: none`, not blur(0), because any filter would make
+   * the element a containing block for fixed-position children.
+   */
   @keyframes fade-up {
     from {
       opacity: 0;
-      transform: translateY(8px);
+      transform: translateY(10px);
+      filter: blur(4px);
     }
     to {
       opacity: 1;
       transform: translateY(0);
+      filter: none;
     }
   }
 
@@ -221,10 +257,12 @@
     from {
       opacity: 0;
       transform: scale(0.97);
+      filter: blur(4px);
     }
     to {
       opacity: 1;
       transform: scale(1);
+      filter: none;
     }
   }
 
@@ -232,9 +270,11 @@
   @keyframes slide-up {
     from {
       transform: translateY(100%);
+      filter: blur(3px);
     }
     to {
       transform: translateY(0);
+      filter: none;
     }
   }
 
@@ -261,6 +301,51 @@ body {
     color 0.3s ease;
 }
 
+/*
+ * The washes: fixed behind everything, larger than the screen so their drift
+ * never shows an edge. Only transform animates, so it stays on the GPU.
+ */
+body::before {
+  content: "";
+  position: fixed;
+  inset: -20%;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(38% 32% at 18% 18%, color-mix(in oklab, var(--wash-1) var(--wash-strength), transparent), transparent),
+    radial-gradient(34% 38% at 84% 30%, color-mix(in oklab, var(--wash-2) var(--wash-strength), transparent), transparent),
+    radial-gradient(42% 34% at 55% 88%, color-mix(in oklab, var(--wash-3) var(--wash-strength), transparent), transparent);
+  animation: var(--animate-drift);
+  will-change: transform;
+}
+
+/* In-page jumps (section chips, "Skip to content") glide; Next.js turns this off while it changes pages. */
+html {
+  scroll-behavior: smooth;
+}
+
+/* Controls ease between states, and give a little under a press. Utilities (transition-colors etc.) still win. */
+@layer base {
+  a,
+  button,
+  summary,
+  [role="tab"] {
+    transition-property: color, background-color, border-color, box-shadow, opacity, scale;
+    transition-duration: 0.2s;
+    transition-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  button:not(:disabled):active {
+    scale: 0.97;
+  }
+}
+
+/* Switching themes (theme-menu.tsx): the old colours melt into the new. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 0.45s;
+  animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1);
+}
+
 /* While a modal dialog is open, the page behind it shouldn't scroll. */
 html:has(dialog[open]) {
   overflow: hidden;
@@ -274,6 +359,16 @@ html:has(dialog[open]) {
     /* Without this, staggered cards would still sit invisible for their delay. */
     animation-delay: 0s !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Not just shortened: a near-zero endless animation would flicker. */
+  body::before {
+    animation: none;
+  }
+  html {
+    scroll-behavior: auto;
+  }
+  button:not(:disabled):active {
+    scale: none;
   }
 }
 
