@@ -54,10 +54,10 @@ export function createLeaderboardRepository(db: Db) {
      * what it cost if there's none, plus cash; best return since joining
      * first, ties to whoever joined first.
      */
-    async standings(source: string, now: number): Promise<Standing[]> {
+    async standings(source: string, now: number): Promise<(Standing & { userId: string })[]> {
       const result = await db.run(sql`
         with valued as (
-          select e.joined_at, e.display_name, e.start_value,
+          select e.user_id, e.joined_at, e.display_name, e.start_value,
                  coalesce(p.cash, 0) + coalesce((
                    select sum(h.shares * coalesce((
                      -- This stock's latest stored close: price_series knows its last day, so it's two primary-key lookups.
@@ -76,12 +76,13 @@ export function createLeaderboardRepository(db: Db) {
           select *, case when start_value > 0 then value / start_value - 1 else 0 end as return_since_joining from valued
         )
         select row_number() over (order by return_since_joining desc, joined_at) as rank,
-               display_name, value, return_since_joining,
+               user_id, display_name, value, return_since_joining,
                max(0, (${now} - joined_at) / ${DAY}) as days_on_board
         from ranked
         order by rank`);
       return result.rows.map((r) => ({
         rank: Number(r.rank),
+        userId: String(r.user_id),
         displayName: String(r.display_name),
         value: Number(r.value),
         returnSinceJoining: Number(r.return_since_joining),

@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { LeaderboardTabs } from "@/components/leaderboard/leaderboard-tabs";
 import { Card } from "@/components/ui/card";
+import { BADGES } from "@/lib/badges";
 import { formatCurrency, formatPercent } from "@/lib/format";
 import { getStandings } from "@/lib/leaderboard-data";
 
@@ -22,6 +24,7 @@ export default async function LeaderboardPage() {
           Simulated portfolios, ranked by their return since joining, so a $10,000 start and a $100,000 one compete fairly. Members choose a display name;
           nothing else about them is shown. Prices are simulated.
         </p>
+        <LeaderboardTabs current="all" />
       </div>
 
       <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
@@ -56,6 +59,12 @@ export default async function LeaderboardPage() {
                     <td className="py-2.5 pr-3 text-muted">{row.rank}</td>
                     <th scope="row" className="py-2.5 text-left font-medium">
                       {row.displayName}
+                      {row.badges?.slice(0, 4).map((b) => (
+                        <span key={b.kind} title={BADGES[b.kind].label} className="ml-1.5 text-xs">
+                          <span aria-hidden>{BADGES[b.kind].icon}</span>
+                          <span className="sr-only">{BADGES[b.kind].label}</span>
+                        </span>
+                      ))}
                     </th>
                     <td className={`py-2.5 pl-4 text-right font-semibold ${row.returnSinceJoining > 0.00005 ? "text-gain" : row.returnSinceJoining < -0.00005 ? "text-loss" : ""}`}>
                       {formatPercent(row.returnSinceJoining)}

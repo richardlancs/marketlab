@@ -10,6 +10,7 @@
  * choice was picked, so a request can't claim a pass.
  */
 import { learning } from "./db";
+import { checkBadgesLater } from "./badge-check";
 import { currentOwner } from "./owner";
 import { getLesson } from "./lessons";
 import { answerQuestion, current, isTermKey, retry, type LessonProgress } from "./lessons/progress";
@@ -24,6 +25,7 @@ async function save(term: Parameters<typeof learning.change>[1], apply: Paramete
   const owner = await currentOwner({ create: true });
   if (!owner) return { ok: false, message: "Couldn't save your progress. Reload the page and try again." };
   const result = await learning.change(owner.id, term, apply, Date.now());
+  if (result.ok && result.progress.passedAt != null && owner.kind === "user") checkBadgesLater(owner.id); // a pass can earn a lesson or streak badge
   return result.ok ? { ...result, storage: owner.kind === "user" ? "account" : "guest" } : result;
 }
 

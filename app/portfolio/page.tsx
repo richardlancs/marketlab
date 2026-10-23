@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { BookSwitcher } from "@/components/account/book-switcher";
 import { StorageLabel } from "@/components/account/storage-label";
 import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
 import { LeaderboardCard } from "@/components/portfolio/leaderboard-card";
@@ -6,6 +7,7 @@ import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PerformanceCard } from "@/components/portfolio/performance-card";
 import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
 import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
+import { SeasonCard } from "@/components/portfolio/season-card";
 import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
 import { SectionNav } from "@/components/ui/section-nav";
@@ -20,6 +22,7 @@ export default function PortfolioPage() {
         <StorageLabel prefix="Simulated" />
         <h1 className="mt-1 text-3xl font-semibold tracking-tight sm:text-4xl">Portfolio</h1>
         <p className="mt-2 text-muted">Your holdings at today&apos;s prices, and every trade you&apos;ve made.</p>
+        <BookSwitcher className="mt-4" />
       </div>
 
       <SectionNav
@@ -42,6 +45,7 @@ export default function PortfolioPage() {
           <PortfolioStats />
           <OpenOrders />
           <SectorCard />
+          <SeasonCard />
           <LeaderboardCard />
         </div>
         <div style={{ animationDelay: "180ms" }} className="animate-fade-up lg:col-span-12">

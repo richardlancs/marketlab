@@ -1,6 +1,8 @@
 import { revalidateTag } from "next/cache";
 import { sendAlertDigests } from "@/lib/alert-emails";
 import { sendAlertPushes } from "@/lib/alert-pushes";
+import { SEASON_TAG } from "@/lib/season-data";
+import { runSeasons } from "@/lib/season-job";
 import { refreshAnalytics } from "@/lib/analytics/server";
 import { refreshFundamentals } from "@/lib/fundamentals";
 import { accounts, backtests, guests, jobs, learning } from "@/lib/db";
@@ -48,6 +50,11 @@ export async function GET(request: Request) {
       deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
       sendAlertEmails: (deadline) => sendAlertDigests(deadline),
       sendAlertPushes: (deadline) => sendAlertPushes(deadline),
+      async runSeasons(latest, deadline) {
+        const summary = await runSeasons(latest, deadline);
+        revalidateTag(SEASON_TAG, { expire: 0 }); // new standings show at once
+        return summary;
+      },
       refreshFundamentals: (deadline) => refreshFundamentals(deadline),
       refreshAnalytics: (deadline) => refreshAnalytics(deadline),
     });

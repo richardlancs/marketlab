@@ -12,6 +12,7 @@ The details behind each feature. For setup, see the [README](../README.md).
 - [Email](#email)
 - [Installing and push notifications](#installing-and-push-notifications)
 - [Phones and accessibility](#phones-and-accessibility)
+- [Competitions and badges](#competitions-and-badges)
 
 ## Market data
 
@@ -262,6 +263,7 @@ Rules that use a chandelier stop or volume need each day's high, low and volume.
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the New York close. It:
 - loads fresh market data;
 - catches up every account, in batches of about 50 seconds;
+- runs the monthly competitions (see [Competitions and badges](#competitions-and-badges));
 - sends alert emails and push notifications (see [Email](#email) and [Installing and push notifications](#installing-and-push-notifications));
 - refreshes company numbers that are a week old, for up to 10 seconds;
 - with the time left, stores the latest prices and recalculates stored analytics (see [Research tools](#research-tools));
@@ -320,4 +322,41 @@ curl -H 'authorization: Bearer test' localhost:3000/api/cron/daily
 - **Zooming** is never blocked.
 
 **Checks:** the "phone" Playwright project (`e2e/mobile.spec.ts`) opens every main page at iPhone size in light and dark. On each, it runs axe (WCAG 2.2 AA; serious or critical problems fail) and checks for sideways scrolling, small tap targets and small text. It also tests the tab bar, the screener sheet, the backtest reveal and the section chips.
+
+## Competitions and badges
+
+**Seasons** (`lib/seasons.ts` rules, `lib/db/seasons.ts` storage)
+- **The calendar:** each calendar month (UTC) is a season, named like `2026-11`.
+- **Joining:** signed-in users can join during its first 7 days, under a display name. Each entrant gets a separate portfolio with $100,000 in cash.
+- **Ranking:** everyone starts with the same money, so the highest value wins; a tie goes to whoever joined first.
+- **Rules:** no resets, one entry each, and the same market and trading rules as everywhere else.
+
+**Season portfolios** (`lib/books.ts`)
+- **How it's stored:** a season portfolio is a hidden user row (`user.season_of` = its owner), the same trick guests use. So trading, orders, dividends and the daily catch-up work on it unchanged.
+- **Switching:** the person stays `currentOwner` for everything else (saved runs, lessons, notifications, the all-time board). Only trading and the portfolio views follow the chosen "book", which is held in the `marketlab_book` cookie. The cookie is honoured only for a season entry the signed-in user owns.
+- **What stays personal:** a season book is shown with the owner's own watchlist and alerts.
+- **After the season:** a finished season's portfolio is read-only, and the daily job stops processing it.
+
+**The daily job** (`lib/season-job.ts`), after accounts are caught up:
+- opens this month's season;
+- records every entry's value at the close (`season_standing`, for the race chart);
+- once the latest close is in a later month, freezes the final values and ranks at each entry's last recorded value, and awards the season badges.
+
+**Notifications:** push notifications, to devices people turned on: the new season to last season's players, a "3 days left" reminder with your place, and the final result. The final result also goes by email to players with alert emails on. Each kind goes out once per season.
+
+**Pages**
+- `/leaderboard` has three tabs: This season (`/leaderboard/season`, which redirects to this month), Past seasons (`/leaderboard/seasons`) and All time.
+- A season's page shows your entry (join, your place, sharing), the race (the top ten and you) and the standings. Its board is cached for minutes and refreshed when someone joins or the job records a close.
+- Each player has a page to share (`/leaderboard/season/[id]/[name]`), with a generated preview image (`opengraph-image.tsx`). It's read fresh, since it's opened right after joining.
+- `proxy.ts` gives months that don't exist, or haven't started, a real 404.
+
+**Badges** (`lib/badges.ts`)
+- **Lessons:** first, ten, and all of them.
+- **Streaks:** a lesson passed or a trade on 7 days in a row.
+- **Seasons:** finished; top 10% (with 10 or more players); podium (3 or more); winner (2 or more).
+- **Storage:** badges are kept once earned (`badge`).
+- **When they're checked:** lesson and streak badges are checked after a pass or a trade, and whenever the badges are shown (`lib/badge-check.ts`). Season badges are checked when the season closes.
+- **Where they show:** next to display names on both boards, and on the portfolio page's Competitions card.
+
+**Testing:** `SEASON_JOIN_ANY_DAY=1` lets the end-to-end tests join on any day of the month. Never set it on a real deployment.
 

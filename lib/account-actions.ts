@@ -18,6 +18,8 @@ import { getListing, getProcessingData, getStockDetail } from "./market";
 import { isSymbolFormat, normalizeSymbol } from "./market/symbols";
 import { cancelPendingOrder, placePendingOrder, type NewOrder } from "./orders";
 import { symbolsToProcess } from "./processing";
+import { checkBadgesLater } from "./badge-check";
+import { bookView, currentBook } from "./books";
 import { clearGuestCookie, currentOwner } from "./owner";
 import { isStartingPreset } from "./starting-account";
 import { MAX_HOLDINGS, MAX_WATCHLIST, parseAccount, type Account } from "./trading";
@@ -39,20 +41,31 @@ async function realSymbol(value: unknown): Promise<string | null> {
 /** The most different stocks an import may name, so it can't trigger unbounded lookups. */
 const MAX_IMPORT_SYMBOLS = MAX_HOLDINGS + MAX_WATCHLIST;
 
-/** Runs `change` for this request's owner (creating a guest if needed), then returns their account as it now is. */
-async function forCurrentUser(change: (userId: string) => Promise<ActionResult | void>): Promise<ActionResult> {
+/**
+ * Runs `change` for this request's owner (creating a guest if needed), then
+ * returns their account as it now is: for `"own"`, on their own account (the
+ * watchlist, alerts and imports, which are personal); for `"book"`, on the
+ * portfolio they're trading in (lib/books.ts: practice, or a season's).
+ * Either way the answer is the chosen book's view.
+ */
+async function forCurrentUser(target: "own" | "book", change: (userId: string) => Promise<ActionResult | void>): Promise<ActionResult> {
   const owner = await currentOwner({ create: true });
   if (!owner) return NO_OWNER;
-  const result = await change(owner.id);
-  if (result) return result;
-  return { ok: true, account: await accounts.ensure(owner.id) };
+  const book = await currentBook(owner);
+  if (target === "book" && book && book.closedAt !== null) return SEASON_OVER;
+  const id = target === "book" && book ? book.accountId : owner.id;
+  const result = await change(id);
+  if (result && !result.ok) return result;
+  return { ok: true, account: await bookView(owner.id, book, result ? { id, account: result.account } : undefined) };
 }
+
+const SEASON_OVER: ActionResult = { ok: false, message: "That season is over, so its portfolio can't trade any more. Switch back to your practice portfolio to trade." };
 
 export async function toggleWatchlistAction(input: unknown): Promise<ActionResult> {
   // Removing needs no lookup: a stock that has since disappeared can still be unwatched.
   const symbol = isSymbolFormat(input) ? input : null;
   if (!symbol) return UNKNOWN;
-  return forCurrentUser(async (userId) => {
+  return forCurrentUser("own", async (userId) => {
     const watched = (await accounts.load(userId))?.watchlist.includes(symbol) ?? false;
     if (!watched && !(await realSymbol(symbol))) return UNKNOWN;
     if ((await accounts.toggleWatchlist(userId, symbol)) === "full") {
@@ -71,7 +84,12 @@ async function processingDataFor(userId: string, extra: string[] = []) {
 export async function processAccountAction(): Promise<ActionResult> {
   // Nothing saved yet: nothing to catch up, and no reason to create a guest.
   if (!(await currentOwner({ create: false }))) return { ok: true, account: await visitorAccount() };
-  return forCurrentUser(async (userId) => {
+  // Both: the own account carries the alerts, the book the trades and orders.
+  await forCurrentUser("own", async (userId) => {
+    const result = await accounts.update(userId, await processingDataFor(userId), (account) => ({ ok: true, account }));
+    return result.ok ? { ok: true, account: result.account } : result;
+  });
+  return forCurrentUser("book", async (userId) => {
     const result = await accounts.update(userId, await processingDataFor(userId), (account) => ({ ok: true, account }));
     return result.ok ? { ok: true, account: result.account } : result;
   });
@@ -81,7 +99,8 @@ export async function placeOrderAction(input: unknown, side: unknown, shares: un
   if (typeof input !== "string" || (side !== "buy" && side !== "sell") || typeof shares !== "number") {
     return { ok: false, message: "That order isn't valid." };
   }
-  return forCurrentUser(async (userId) => {
+  const owner = await currentOwner({ create: false });
+  return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(input);
     if (!detail) return UNKNOWN;
     if (detail.status === "unavailable") return { ok: false, message: `Prices for ${detail.listing.symbol} are unavailable right now. Try again in a minute.` };
@@ -96,13 +115,16 @@ export async function placeOrderAction(input: unknown, side: unknown, shares: un
       id: crypto.randomUUID(),
       time: Date.now(),
     }, await processingDataFor(userId, [stock.symbol]));
+    if (result.ok && owner?.kind === "user") checkBadgesLater(owner.id); // a trade counts towards a streak
     return result.ok ? { ok: true, account: result.account } : { ok: false, message: result.message };
   });
 }
 
 export async function resetAccountAction(preset: unknown = "starter"): Promise<ActionResult> {
   if (!isStartingPreset(preset)) return { ok: false, message: "Choose one of the starting options." };
-  return forCurrentUser((userId) => accounts.reset(userId, preset));
+  const owner = await currentOwner({ create: false });
+  if (await currentBook(owner)) return { ok: false, message: "A season portfolio can't be reset. Switch to your practice portfolio to start over." };
+  return forCurrentUser("book", (userId) => accounts.reset(userId, preset));
 }
 
 /** Runs `change` on the up-to-date account in one transaction, and returns the account or the refusal. */
@@ -115,7 +137,7 @@ export async function placePendingOrderAction(input: unknown): Promise<ActionRes
   if (typeof input !== "object" || input === null) return { ok: false, message: "That order isn't valid." };
   const { symbol, side, type, shares, price, duration } = input as Record<string, unknown>;
   if (typeof symbol !== "string" || typeof shares !== "number" || typeof price !== "number") return { ok: false, message: "That order isn't valid." };
-  return forCurrentUser(async (userId) => {
+  return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(symbol);
     if (!detail) return UNKNOWN;
     const listing = detail.status === "ok" ? detail.stock : detail.listing;
@@ -126,14 +148,14 @@ export async function placePendingOrderAction(input: unknown): Promise<ActionRes
 
 export async function cancelOrderAction(id: unknown): Promise<ActionResult> {
   if (typeof id !== "string") return { ok: false, message: "That order isn't valid." };
-  return forCurrentUser((userId) => change(userId, [], (account) => ({ ok: true, account: cancelPendingOrder(account, id, Date.now()) })));
+  return forCurrentUser("book", (userId) => change(userId, [], (account) => ({ ok: true, account: cancelPendingOrder(account, id, Date.now()) })));
 }
 
 export async function addAlertAction(input: unknown): Promise<ActionResult> {
   if (typeof input !== "object" || input === null) return { ok: false, message: "That alert isn't valid." };
   const { symbol, direction, price, condition } = input as Record<string, unknown>;
   if (typeof price !== "number" || (direction !== "above" && direction !== "below")) return { ok: false, message: "That alert isn't valid." };
-  return forCurrentUser(async (userId) => {
+  return forCurrentUser("own", async (userId) => {
     const real = await realSymbol(symbol);
     if (!real) return UNKNOWN;
     return change(userId, [real], (account) => addAlert(account, { symbol: real, direction, price, ...(condition !== undefined && { condition }) }, crypto.randomUUID(), Date.now()));
@@ -142,11 +164,11 @@ export async function addAlertAction(input: unknown): Promise<ActionResult> {
 
 export async function removeAlertAction(id: unknown): Promise<ActionResult> {
   if (typeof id !== "string") return { ok: false, message: "That alert isn't valid." };
-  return forCurrentUser((userId) => change(userId, [], (account) => ({ ok: true, account: removeAlert(account, id) })));
+  return forCurrentUser("own", (userId) => change(userId, [], (account) => ({ ok: true, account: removeAlert(account, id) })));
 }
 
 export async function markAlertsSeenAction(): Promise<ActionResult> {
-  return forCurrentUser((userId) => change(userId, [], (account) => ({ ok: true, account: markAlertsSeen(account) })));
+  return forCurrentUser("own", (userId) => change(userId, [], (account) => ({ ok: true, account: markAlertsSeen(account) })));
 }
 
 /**
@@ -171,7 +193,7 @@ export async function importBrowserAccountAction(browser: unknown): Promise<Acti
   if (symbols.length > MAX_IMPORT_SYMBOLS) return unreadable;
   const real = await Promise.all(symbols.map(realSymbol));
   if (real.some((s) => s === null)) return { ok: false, message: "Your browser data names a stock that doesn't exist, so it couldn't be imported." };
-  return forCurrentUser(async (userId) => {
+  return forCurrentUser("own", async (userId) => {
     // Fresh trade, order and alert IDs: they're unique across all users, and these came from the browser.
     const fresh = <T extends { id: string }>(items: T[] | undefined) => items?.map((x) => ({ ...x, id: crypto.randomUUID() }));
     const imported = await accounts.replaceIfUntouched(userId, { ...account, trades: fresh(account.trades) ?? [], orders: fresh(account.orders), alerts: fresh(account.alerts) });

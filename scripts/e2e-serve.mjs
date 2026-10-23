@@ -21,6 +21,8 @@ const env = {
   BETTER_AUTH_SECRET: "e2e-only-not-a-real-secret-0123456789abcdef",
   BETTER_AUTH_URL: "http://localhost:3010",
   CRON_SECRET: "e2e-cron",
+  // The tests join this month's season whatever day they run on.
+  SEASON_JOIN_ANY_DAY: "1",
   VAPID_PUBLIC_KEY: vapid.publicKey,
   VAPID_PRIVATE_KEY: vapid.privateKey,
   // The ⌘K search and similar use no external services; keep the app's telemetry quiet.

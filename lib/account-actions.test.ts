@@ -16,6 +16,17 @@ const accounts = vi.hoisted(() => ({
   replaceIfUntouched: vi.fn(),
 }));
 const guests = vi.hoisted(() => ({ resolve: vi.fn() }));
+// Season portfolios (lib/books.ts runs for real): the book cookie, and who owns which season portfolio.
+const seasonState = vi.hoisted(() => ({ cookie: undefined as string | undefined, entries: new Map<string, { owner: string; closedAt: number | null }>() }));
+const seasons = vi.hoisted(() => ({
+  entryByAccount: vi.fn(async (ownerId: string, accountId: string) => {
+    const e = seasonState.entries.get(accountId);
+    return e && e.owner === ownerId ? { seasonId: "2026-11", userId: ownerId, accountId, displayName: "Me", joinedAt: 0, startValue: 100_000, finalValue: null, finalRank: null, closedAt: e.closedAt } : null;
+  }),
+}));
+vi.mock("server-only", () => ({}));
+vi.mock("next/headers", () => ({ cookies: async () => ({ get: (name: string) => (name === "marketlab_book" && seasonState.cookie ? { value: seasonState.cookie } : undefined) }) }));
+vi.mock("./badge-check", () => ({ checkBadgesLater: vi.fn() }));
 vi.mock("./owner", () => ({
   // Without `create`, a visitor who has saved nothing has no owner yet.
   currentOwner: async ({ create }: { create: boolean }) => (create || owner.saved ? owner.current : null),
@@ -23,7 +34,7 @@ vi.mock("./owner", () => ({
     owner.cleared++;
   },
 }));
-vi.mock("./db", () => ({ accounts, guests }));
+vi.mock("./db", () => ({ accounts, guests, seasons }));
 vi.mock("./visitor-account", async () => ({ visitorAccount: async () => ({ ...(await import("./starting-account")).startingAccount(), processedThrough: 42 }) }));
 // A fixed market, so prices don't depend on the date (or on Next's cache).
 // AAPL and KO exist; KO's prices are unavailable right now.
@@ -40,6 +51,8 @@ const { importBrowserAccountAction, placeOrderAction, processAccountAction, rese
 
 beforeEach(() => {
   vi.clearAllMocks();
+  seasonState.cookie = undefined;
+  seasonState.entries.clear();
   owner.current = { id: "user-1", kind: "user", pendingGuest: null };
   owner.saved = true;
   owner.cleared = 0;
@@ -154,3 +167,39 @@ describe("account actions", () => {
     expect(owner.cleared).toBe(1);
   });
 });
+
+describe("trading in a season portfolio", () => {
+  const SEASON = "11111111-1111-4111-8111-111111111111";
+  beforeEach(() => {
+    seasonState.entries.set(SEASON, { owner: "user-1", closedAt: null });
+    seasonState.cookie = SEASON;
+    accounts.load.mockResolvedValue({ cash: 100_000, holdings: [], watchlist: [], trades: [] });
+    accounts.placeOrder.mockResolvedValue({ ok: true, account: { cash: 99_751.7, holdings: [{ symbol: "AAPL", shares: 1, averageCost: 248.3 }], watchlist: [], trades: [] } });
+  });
+
+  it("trades go to the season portfolio, shown with the user's own watchlist and alerts", async () => {
+    const result = await placeOrderAction("AAPL", "buy", 1);
+    expect(accounts.placeOrder.mock.calls[0][0]).toBe(SEASON);
+    expect(result).toMatchObject({ ok: true, account: { cash: 99_751.7, watchlist: startingAccount().watchlist } });
+  });
+
+  it("the watchlist stays the user's own", async () => {
+    await toggleWatchlistAction("AAPL");
+    expect(accounts.toggleWatchlist).toHaveBeenCalledWith("user-1", "AAPL");
+  });
+
+  it("a season portfolio can't be reset, and a finished season's can't trade", async () => {
+    expect(await resetAccountAction("cash100k")).toMatchObject({ ok: false, message: expect.stringContaining("can't be reset") });
+    expect(accounts.reset).not.toHaveBeenCalled();
+    seasonState.entries.set(SEASON, { owner: "user-1", closedAt: 1 });
+    expect(await placeOrderAction("AAPL", "buy", 1)).toMatchObject({ ok: false, message: expect.stringContaining("season is over") });
+    expect(accounts.placeOrder).not.toHaveBeenCalled();
+  });
+
+  it("a cookie naming someone else's season portfolio is ignored", async () => {
+    seasonState.entries.set(SEASON, { owner: "user-2", closedAt: null });
+    await placeOrderAction("AAPL", "buy", 1);
+    expect(accounts.placeOrder.mock.calls[0][0]).toBe("user-1");
+  });
+});
+

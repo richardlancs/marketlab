@@ -13,7 +13,7 @@ import { joinLeaderboardAction, leaveLeaderboardAction, myLeaderboardEntryAction
  * signed-in users only, under a display name (never the email).
  */
 export function LeaderboardCard() {
-  const { mode } = useAccount();
+  const { mode, book } = useAccount();
   // undefined: still loading; null: not on the board.
   const [entry, setEntry] = useState<Entry | null | undefined>(undefined);
   const [name, setName] = useState("");
@@ -40,6 +40,9 @@ export function LeaderboardCard() {
     if (result.ok) setEntry(result.entry);
     setMessage(result.ok ? null : result.message);
   }
+
+  // The all-time board ranks the practice portfolio; a season's has its own standings.
+  if (book.seasonId) return null;
 
   return (
     <Card aria-labelledby="leaderboard">

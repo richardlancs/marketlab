@@ -8,7 +8,7 @@
  * float JavaScript uses, and lib/trading.ts rounds cash to cents.
  */
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, real, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { AlertCondition } from "../trading";
 
 // ---------------------------------------------------------------------------
@@ -44,7 +44,14 @@ export const user = sqliteTable("user", {
    * not Better Auth, which leaves it at its default.
    */
   isGuest: integer("is_guest", { mode: "boolean" }).default(false).notNull(),
-}, (table) => [index("user_is_guest_idx").on(table.isGuest, table.updatedAt)]);
+  /**
+   * A season portfolio's account (lib/seasons.ts): a hidden user row owned
+   * by this user, holding one season's $100,000 portfolio, so trading,
+   * orders and dividends work on it unchanged. Like a guest, it has a
+   * placeholder email and can never sign in. Null for everyone else.
+   */
+  seasonOf: text("season_of").references((): AnySQLiteColumn => user.id, { onDelete: "cascade" }),
+}, (table) => [index("user_is_guest_idx").on(table.isGuest, table.updatedAt), index("user_season_of_idx").on(table.seasonOf)]);
 
 export const session = sqliteTable(
   "session",
@@ -476,3 +483,78 @@ export const companyFacts = sqliteTable("company_facts", {
   filed: text("filed"),
   fetchedAt: integer("fetched_at").notNull(),
 });
+
+/**
+ * Monthly competitions (lib/seasons.ts). A season is a calendar month, by id
+ * ("2026-11"). The row appears when the first person joins or the daily job
+ * opens it; the job closes it once the market's latest close is in a later
+ * month. The *_at columns record which notifications have gone out.
+ */
+export const season = sqliteTable("season", {
+  id: text("id").primaryKey(),
+  createdAt: integer("created_at").notNull(),
+  /** When the daily job froze the final standings; null while it runs. */
+  closedAt: integer("closed_at"),
+  announcedAt: integer("announced_at"),
+  remindedAt: integer("reminded_at"),
+});
+
+/**
+ * One person's entry in a season: the hidden account (user.season_of) that
+ * holds its portfolio, the public display name, and, once closed, the final
+ * value and rank.
+ */
+export const seasonEntry = sqliteTable(
+  "season_entry",
+  {
+    seasonId: text("season_id")
+      .notNull()
+      .references(() => season.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    accountId: text("account_id")
+      .notNull()
+      .unique()
+      .references(() => user.id, { onDelete: "cascade" }),
+    displayName: text("display_name").notNull(),
+    nameKey: text("name_key").notNull(),
+    joinedAt: integer("joined_at").notNull(),
+    startValue: real("start_value").notNull(),
+    finalValue: real("final_value"),
+    finalRank: integer("final_rank"),
+  },
+  (table) => [primaryKey({ columns: [table.seasonId, table.userId] }), uniqueIndex("season_entry_name_idx").on(table.seasonId, table.nameKey)],
+);
+
+/** Each entry's portfolio value at each close of its season, for the race chart. */
+export const seasonStanding = sqliteTable(
+  "season_standing",
+  {
+    accountId: text("account_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    time: integer("time").notNull(),
+    value: real("value").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.accountId, table.time] })],
+);
+
+/**
+ * Badges a user has earned (lib/badges.ts), kept once earned. `scope` tells
+ * repeatable ones apart (the season id for season placings) and is "" for
+ * one-off ones.
+ */
+export const badge = sqliteTable(
+  "badge",
+  {
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    kind: text("kind").notNull(),
+    scope: text("scope").notNull().default(""),
+    earnedAt: integer("earned_at").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.kind, table.scope] })],
+);
+

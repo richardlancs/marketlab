@@ -40,6 +40,8 @@ export const viewport: Viewport = {
 };
 
 export const metadata: Metadata = {
+  // Where shared links' preview images live: the site's own address (BETTER_AUTH_URL is set to it online).
+  metadataBase: new URL(process.env.BETTER_AUTH_URL ?? "http://localhost:3000"),
   title: "MarketLab",
   description: "Stock analysis and portfolio simulator",
   // The name under the icon when it's added to an iPhone's home screen (app/manifest.ts covers other browsers).

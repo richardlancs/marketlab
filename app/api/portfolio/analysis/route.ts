@@ -4,6 +4,7 @@ import { parsePortfolioAnalysis } from "@/lib/analytics/portfolio";
 import { accounts } from "@/lib/db";
 import { getStockDetail, priceSource } from "@/lib/market";
 import { catalogEntry } from "@/lib/market/catalog";
+import { currentBook } from "@/lib/books";
 import { currentOwner } from "@/lib/owner";
 import { allow } from "@/lib/rate-limit";
 import { visitorAccount } from "@/lib/visitor-account";
@@ -22,7 +23,9 @@ export async function GET() {
   if (!(await allow("portfolio-analysis", 20, 60))) return json({ error: "You're refreshing the analysis a lot. Wait a minute and try again." }, 429);
 
   const owner = await currentOwner({ create: false });
-  const account = (owner && (await accounts.load(owner.id))) || (await visitorAccount());
+  // The portfolio being traded in: practice, or a season's (lib/books.ts).
+  const book = await currentBook(owner);
+  const account = (owner && (await accounts.load(book?.accountId ?? owner.id))) || (await visitorAccount());
   const held = account.holdings.filter((h) => h.shares > 0);
   if (held.length === 0) return json({ empty: true });
 

@@ -7,7 +7,8 @@
 import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { syncPrices } from "./analytics/server";
-import { leaderboard } from "./db";
+import { badgeIcons } from "./badges";
+import { leaderboard, seasons } from "./db";
 import type { Standing } from "./leaderboard";
 import { priceSource } from "./market";
 
@@ -21,5 +22,8 @@ export async function getStandings(): Promise<Standing[]> {
   // The daily job stores every catalog stock; a member may also hold another ticker (real data), so store it first.
   const missing = await leaderboard.unpricedSymbols(source);
   if (missing.length) await syncPrices(missing);
-  return leaderboard.standings(source, Date.now());
+  const rows = await leaderboard.standings(source, Date.now());
+  const badges = await seasons.badgesFor(rows.map((r) => r.userId));
+  // The user's id stays on the server; the page gets their badges instead.
+  return rows.map(({ userId, ...row }) => ({ ...row, badges: badgeIcons(badges.get(userId) ?? []) }));
 }

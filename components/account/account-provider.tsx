@@ -25,6 +25,8 @@ import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
 import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert, type AlertCondition } from "@/lib/trading";
 import type { StockQuote } from "@/lib/types";
+import type { BookInfo } from "@/lib/books";
+import { chooseBookAction } from "@/lib/season-actions";
 
 /** What every action resolves to: success, or a message to show. */
 export type Outcome = { ok: true } | { ok: false; message: string };
@@ -71,16 +73,25 @@ interface AccountContextValue {
   reset(preset?: StartingPreset): Promise<Outcome>;
   /** For pendingGuest: keep the account's portfolio, or replace it with the guest's. */
   resolvePendingGuest(choice: "keep-account" | "use-guest"): Promise<Outcome>;
+  /** The portfolio being traded in (lib/books.ts): practice, or a season's. */
+  book: BookInfo;
+  /** The portfolios this person can switch between (just practice, unless they've joined a season). */
+  books: BookInfo[];
+  /** Switches to another portfolio: null for practice, or a season portfolio's id. */
+  chooseBook(id: string | null): Promise<Outcome>;
 }
 
 const AccountContext = createContext<AccountContextValue | null>(null);
+
+/** Matches lib/books.ts PRACTICE (that module is server-only). */
+const PRACTICE_BOOK: BookInfo = { id: null, label: "Practice portfolio", seasonId: null, readOnly: false };
 
 type Failure = Extract<Outcome, { ok: false }>;
 
 const OFFLINE: Failure = { ok: false, message: "Couldn't reach the server. Check your connection and try again." };
 
 /** Server data is tagged with whose it is, so one person's account is never shown after switching to another. */
-type Remote = { owner: string; account: Account; pending: Account | null };
+type Remote = { owner: string; account: Account; pending: Account | null; book: BookInfo; books: BookInfo[] };
 
 /**
  * Gives every component below it the account and the actions that change it.
@@ -131,8 +142,8 @@ export function AccountProvider({
         await importFromBrowser();
         const response = await fetch("/api/account", { cache: "no-store" });
         if (!response.ok) throw new Error(String(response.status));
-        const data: { account: Account; pending: Account | null } = await response.json();
-        if (!cancelled) setRemote({ owner: key, account: data.account, pending: data.pending });
+        const data: { account: Account; pending: Account | null; book?: BookInfo; books?: BookInfo[] } = await response.json();
+        if (!cancelled) setRemote({ owner: key, account: data.account, pending: data.pending, book: data.book ?? PRACTICE_BOOK, books: data.books ?? [PRACTICE_BOOK] });
       } catch {
         if (!cancelled) setError("Couldn't load your account. Reload the page to try again.");
       }
@@ -170,7 +181,9 @@ export function AccountProvider({
           const account = result.account;
           // State set after an `await` needs its own transition, or React would
           // show it separately from the optimistic value it replaces.
-          startTransition(() => setRemote((r) => ({ owner: key, account, pending: r?.owner === key ? r.pending : null })));
+          startTransition(() =>
+            setRemote((r) => ({ owner: key, account, pending: r?.owner === key ? r.pending : null, book: r?.owner === key ? r.book : PRACTICE_BOOK, books: r?.owner === key ? r.books : [PRACTICE_BOOK] })),
+          );
           setError(null);
           resolve({ ok: true });
         } else {
@@ -299,6 +312,22 @@ export function AccountProvider({
       const outcome = await runRemote(null, () => resolveGuestPortfolioAction(choice), { quiet: true }); // the prompt shows its own errors
       if (outcome.ok) setRemote((r) => (r ? { ...r, pending: null } : r));
       return outcome;
+    },
+
+    book: remote && remote.owner === ownerKey ? remote.book : PRACTICE_BOOK,
+    books: remote && remote.owner === ownerKey ? remote.books : [PRACTICE_BOOK],
+
+    async chooseBook(id) {
+      const key = ownerKey;
+      if (!key) return { ok: false, message: "Your account is still loading. Try again in a moment." };
+      try {
+        const result = await chooseBookAction(id);
+        if (!result.ok) return result;
+        startTransition(() => setRemote((r) => ({ owner: key, account: result.account, pending: r?.owner === key ? r.pending : null, book: result.book, books: result.books })));
+        return { ok: true };
+      } catch {
+        return OFFLINE;
+      }
     },
   };
 

@@ -10,9 +10,11 @@
  *    own, and other leftovers (including saved price snapshots no run uses).
  * 3. Emails alert digests to users who asked for them (lib/alert-emails.ts),
  *    and sends push notifications to devices signed up for them (lib/alert-pushes.ts).
- * 4. Refreshes a few companies' reported numbers from the SEC
+ * 4. Runs the monthly competitions (lib/season-job.ts): records standings,
+ *    closes a finished season, sends season notifications.
+ * 5. Refreshes a few companies' reported numbers from the SEC
  *    (lib/fundamentals.ts), each about once a week.
- * 5. Stores the latest prices and has the analytics service recalculate
+ * 6. Stores the latest prices and has the analytics service recalculate
  *    what changed (lib/analytics/server.ts), with whatever time is left.
  *
  * Accounts go in batches, within a time budget: whatever doesn't fit waits
@@ -44,6 +46,8 @@ export interface DailyDeps {
   sendAlertEmails?(deadline: number): Promise<unknown>;
   /** Pushes newly triggered alerts to people's devices, until `deadline` (ms). Optional, so tests can leave it out. */
   sendAlertPushes?(deadline: number): Promise<unknown>;
+  /** Records season standings at `latest` and closes finished seasons, until `deadline` (ms). Optional, so tests can leave it out. */
+  runSeasons?(latest: number, deadline: number): Promise<unknown>;
   /** Fetches company numbers that are due, until `deadline` (ms). Optional, so tests can leave it out. */
   refreshFundamentals?(deadline: number): Promise<unknown>;
   /** Stores the latest prices and recalculates stored analytics, until `deadline` (ms). Optional, so tests can leave it out. */
@@ -62,6 +66,7 @@ export interface DailySummary {
   /** What the alert email, push, fundamentals and analytics steps did, or why they didn't run. */
   alertEmails?: unknown;
   alertPushes?: unknown;
+  seasons?: unknown;
   fundamentals?: unknown;
   analytics?: unknown;
   ms: number;
@@ -127,6 +132,16 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
     }
   }
 
+  // After catching up, so season portfolios are valued at today's close.
+  let seasons: unknown;
+  if (deps.runSeasons) {
+    try {
+      seasons = outOfTime() ? "skipped: out of time" : await deps.runSeasons(latest, start + budgetMs);
+    } catch (error) {
+      seasons = `failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
   // A short slot: a week of runs covers every company, so there's no hurry.
   let fundamentals: unknown;
   if (deps.refreshFundamentals) {
@@ -147,5 +162,5 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
     }
   }
 
-  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, alertPushes, fundamentals, analytics, ms: deps.now() - start };
+  return { latestClose: latest, caughtUp, failed, unfinished, guestsDeleted, learnersDeleted, snapshotsDeleted, alertEmails, alertPushes, seasons, fundamentals, analytics, ms: deps.now() - start };
 }

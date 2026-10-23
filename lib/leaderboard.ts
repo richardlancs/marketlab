@@ -9,6 +9,8 @@
  * and ranking itself is one SQL query (lib/db/leaderboard.ts standings).
  */
 
+import type { BadgeKind } from "./badges";
+
 export const NAME_LIMITS = { min: 3, max: 24 };
 
 /** Letters, numbers, spaces, - and _: nothing that could pass for a link or markup. */
@@ -33,4 +35,6 @@ export interface Standing {
   /** Fraction: 0.12 = +12% since joining. */
   returnSinceJoining: number;
   daysOnBoard: number;
+  /** Badges earned (lib/badges.ts), one entry per kind. */
+  badges?: { kind: BadgeKind; count: number }[];
 }

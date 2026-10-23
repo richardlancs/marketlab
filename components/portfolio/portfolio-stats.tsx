@@ -12,7 +12,7 @@ import { totalRealizedGain } from "@/lib/trading";
 
 /** Where the money is (cash vs invested), gains so far, and the reset button. */
 export function PortfolioStats() {
-  const { account, quotes, reset } = useAccount();
+  const { account, book, quotes, reset } = useAccount();
   const [confirming, setConfirming] = useState(false);
   const [preset, setPreset] = useState<StartingPreset>("starter");
 
@@ -63,6 +63,8 @@ export function PortfolioStats() {
         </div>
       </dl>
 
+      {/* A season portfolio can't start over: everyone keeps the same $100,000 start. */}
+      {!book.seasonId && (
       <div className="mt-5 border-t border-border pt-4">
         {confirming ? (
           // An inline "are you sure?" instead of a pop-up. role="alert" announces it.
@@ -108,6 +110,7 @@ export function PortfolioStats() {
           </button>
         )}
       </div>
+      )}
     </Card>
   );
 }

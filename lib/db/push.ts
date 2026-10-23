@@ -108,6 +108,13 @@ export function createPushRepository(db: Db) {
       return [...byUser.values()];
     },
 
+    /** Every device of these users, by user. */
+    async devicesOf(userIds: string[]): Promise<Map<string, DeviceSubscription[]>> {
+      if (userIds.length === 0) return new Map();
+      const rows = await db.select().from(pushSubscription).where(inArray(pushSubscription.userId, userIds));
+      return new Map([...Map.groupBy(rows, (r) => r.userId)].map(([id, list]) => [id, list.map(({ endpoint, p256dh, auth }) => ({ endpoint, p256dh, auth }))]));
+    },
+
     async markPushed(userId: string, alertIds: string[], at = Date.now()): Promise<void> {
       if (alertIds.length) await db.update(priceAlert).set({ pushedAt: at }).where(and(eq(priceAlert.userId, userId), inArray(priceAlert.id, alertIds)));
     },

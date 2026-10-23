@@ -152,7 +152,7 @@ export async function moveAccount(ex: Executor, fromUserId: string, toUserId: st
   for (const table of ACCOUNT_TABLES) await ex.update(table).set({ userId: toUserId }).where(eq(table.userId, fromUserId));
 }
 
-export { read as readAccount, remove as removeAccount };
+export { read as readAccount, remove as removeAccount, write as writeAccount };
 
 /** Loads the account, creating it from the starting account if this user has none yet. */
 async function ensure(ex: Executor, userId: string): Promise<Account> {
@@ -194,7 +194,11 @@ export function createAccountRepository(db: Db) {
       const rows = await db
         .select({ userId: portfolio.userId })
         .from(portfolio)
-        .where(sql`${portfolio.processedThrough} is null or ${portfolio.processedThrough} < ${latest}`)
+        .where(
+          sql`(${portfolio.processedThrough} is null or ${portfolio.processedThrough} < ${latest})
+              -- A finished season's portfolio is frozen: nothing more to process.
+              and ${portfolio.userId} not in (select e.account_id from season_entry e join season s on s.id = e.season_id where s.closed_at is not null)`,
+        )
         // SQLite sorts NULL (never processed) first, then oldest: the index's own order, so no sort step and it stops at `limit`.
         .orderBy(portfolio.processedThrough)
         .limit(limit);

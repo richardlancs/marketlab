@@ -2,6 +2,7 @@
 
 import { useId, useState, type FormEvent } from "react";
 import { useAccount } from "@/components/account/account-provider";
+import { BookSwitcher } from "@/components/account/book-switcher";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -32,7 +33,7 @@ const field =
  * ones whose prices the whole app already has.
  */
 export function TradeCard({ quote }: { quote: StockQuote }) {
-  const { account, placeOrder, placePendingOrder } = useAccount();
+  const { account, book, placeOrder, placePendingOrder } = useAccount();
   const [side, setSide] = useState<Order["side"]>("buy");
   const [kind, setKind] = useState<Kind>("market");
   const [sharesText, setSharesText] = useState("");
@@ -97,7 +98,11 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
       <h2 id="trade" className="text-lg font-semibold tracking-tight">
         Trade
       </h2>
+      <BookSwitcher className="mt-3" />
 
+      {book.readOnly ? (
+        <p className="mt-3 text-sm text-muted">This season is over, so its portfolio can&apos;t trade. Switch to your practice portfolio to trade.</p>
+      ) : (
       <form onSubmit={submit} className="mt-3 space-y-4" noValidate>
         {/* Real radio buttons, styled as a segmented control: arrow keys and screen readers work as expected. */}
         <fieldset className="grid grid-cols-2 gap-1 rounded-full bg-foreground/5 p-1 text-sm font-medium">
@@ -270,6 +275,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
           {status?.text}
         </p>
       </form>
+      )}
     </Card>
   );
 }

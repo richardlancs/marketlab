@@ -12,7 +12,7 @@ import { expect, test } from "./fixtures";
  * - show no text under 12px, and no form text under 16px (smaller makes
  *   iPhone Safari zoom in when a field is tapped).
  */
-const PAGES = ["/", "/stocks", "/stocks/AAPL", "/screener", "/screener/history", "/watchlist", "/portfolio", "/backtest", "/leaderboard", "/learn", "/learn/sharpe-ratio", "/sign-in"];
+const PAGES = ["/", "/stocks", "/stocks/AAPL", "/screener", "/screener/history", "/watchlist", "/portfolio", "/backtest", "/leaderboard", "/leaderboard/season", "/leaderboard/seasons", "/learn", "/learn/sharpe-ratio", "/sign-in"];
 
 interface LayoutProblems {
   overflow: boolean;

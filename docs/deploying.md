@@ -28,6 +28,8 @@ Migration 0007 (Phase 12) adds:
 
 The first daily job after deploying fills the store: about 130,000 rows for the mock market, a few seconds of work.
 
+Migration 0014 adds the competitions: `season`, `season_entry`, `season_standing`, `badge`, and `user.season_of` (season portfolios are hidden user rows). Apply it before deploying code that reads them: the portfolio page and the daily job do.
+
 Migration 0013 adds `push_subscription` (each device that gets push notifications) and `price_alert.pushed_at`. Apply it before deploying code that sends pushes: the daily job reads both.
 
 Migration 0012 adds `backtest_run.kind` (`backtest` by default, or `historical-screen`), so saved historical screens share the saved-runs table and its limit. Apply it before deploying code that saves screens: the new code filters on the column.

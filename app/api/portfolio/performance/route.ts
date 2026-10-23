@@ -1,5 +1,6 @@
 import { accounts } from "@/lib/db";
 import { getMarket, getStockDetail } from "@/lib/market";
+import { currentBook } from "@/lib/books";
 import { currentOwner } from "@/lib/owner";
 import { relevantSymbols } from "@/lib/portfolio-history";
 import { performance } from "@/lib/portfolio-performance";
@@ -21,7 +22,9 @@ export async function GET(request: Request) {
   const range = (TIMEFRAMES as readonly string[]).includes(params.get("range") ?? "") ? (params.get("range") as Timeframe) : "1Y";
   const [owner, market] = await Promise.all([currentOwner({ create: false }), getMarket()]);
   const index = market.indices.find((i) => i.symbol === params.get("index")) ?? market.indices[0];
-  const account = (owner && (await accounts.load(owner.id))) || (await visitorAccount());
+  // The portfolio being traded in: practice, or a season's (lib/books.ts).
+  const book = await currentBook(owner);
+  const account = (owner && (await accounts.load(book?.accountId ?? owner.id))) || (await visitorAccount());
 
   const symbols = relevantSymbols(account);
   const details = await Promise.all(symbols.map(getStockDetail));
