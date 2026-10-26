@@ -21,14 +21,14 @@
   --foreground: #1d1d1f;
   --muted: #66666b;
   --border: rgb(0 0 0 / 0.08);
-  --accent: #0063c8;
+  --accent: #036e52;
   /* Filled buttons, under white text. The same as the accent, except in dark mode, where the accent is too bright for white text. */
   --accent-fill: var(--accent);
   /* Filled red buttons and badges, under white text; deeper than the loss colour in dark mode for the same reason. */
   --loss-fill: var(--loss);
   --gain: #17743f;
   --loss: #bc2d24;
-  --glow: rgb(0 113 227 / 0.08);
+  --glow: rgb(16 163 122 / 0.08);
   /*
    * The page's background washes (body::before): three soft blobs of colour
    * that drift very slowly. Each is this strong at its centre and fades to
@@ -48,11 +48,11 @@
   --series-3: #1baf7a;
   --series-4: #eda100;
   --series-5: #e87ba4;
-  /* The logo and avatar gradient. */
-  --brand-start: #38bdf8;
-  --brand-mid: #3b82f6;
-  --brand-end: #4f46e5;
-  --brand-glow: rgb(59 130 246 / 0.3);
+  /* The logo and avatar gradient: the logo's greens. */
+  --brand-start: #3cc79c;
+  --brand-mid: #0aa478;
+  --brand-end: #067a55;
+  --brand-glow: rgb(10 164 120 / 0.3);
 }
 
 [data-theme="dark"] {
@@ -62,17 +62,21 @@
   --foreground: #f5f5f7;
   --muted: #909095;
   --border: rgb(255 255 255 / 0.08);
-  --accent: #2997ff;
+  --accent: #34d399;
   --gain: #30d158;
   --loss: #ff4c42;
-  --glow: rgb(41 151 255 / 0.12);
+  --glow: rgb(52 211 153 / 0.12);
   --wash-strength: 8%;
   --series-1: #3987e5;
   --series-2: #d95926;
   --series-3: #199e70;
   --series-4: #c98500;
   --series-5: #d55181;
-  --accent-fill: #0071e3;
+  --accent-fill: #047857;
+  --brand-start: #5eddb2;
+  --brand-mid: #22c28f;
+  --brand-end: #0b9468;
+  --brand-glow: rgb(34 194 143 / 0.3);
   --loss-fill: #d70015;
 }
 

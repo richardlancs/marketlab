@@ -19,11 +19,14 @@ test("a crossover runs on the Python engine, saves, reopens and reproduces ident
 
   await page.locator("#run-name").fill("E2E crossover");
   await page.locator("form:has(#run-name) button").click();
+  const savedTab = page.getByRole("tab", { name: /^Saved/ });
+  await savedTab.click();
   const saved = page.locator('section[aria-labelledby="saved-runs"]');
   const savedRun = saved.getByRole("button", { name: "E2E crossover", exact: true }).first();
   await expect(savedRun).toBeVisible();
 
   await page.reload();
+  await savedTab.click();
   await savedRun.click();
   await expect(results).toContainText("not re-run");
   await page.getByRole("button", { name: "Reproduce from saved inputs" }).click();
@@ -49,6 +52,7 @@ test("momentum rotation and risk parity run", async ({ page }) => {
 test("a two-setting sweep warns about luck, and a walk-forward test runs", async ({ page }) => {
   await page.goto(backtestLink(config({ kind: "moving-average", fast: 20, slow: 100 })));
   await waitForResults(page);
+  await page.getByRole("tab", { name: "Sweep" }).click();
   await page.getByRole("button", { name: "+ Vary a second setting" }).click();
   await page.getByRole("button", { name: "Run sweep" }).click();
   await expect(page.getByText("deflated Sharpe ratio")).toBeVisible({ timeout: 90_000 });

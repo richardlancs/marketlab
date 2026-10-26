@@ -10,7 +10,7 @@ import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
 import { SeasonCard } from "@/components/portfolio/season-card";
 import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
-import { SectionNav } from "@/components/ui/section-nav";
+import { Tabs } from "@/components/ui/tabs";
 
 export const metadata: Metadata = { title: "Portfolio — MarketLab" };
 
@@ -25,39 +25,42 @@ export default function PortfolioPage() {
         <BookSwitcher className="mt-4" />
       </div>
 
-      <SectionNav
-          className="mt-6"
-          label="Sections"
-          sections={[
-            { id: "portfolio", label: "Holdings" },
-            { id: "stats", label: "Summary" },
-            { id: "orders", label: "Orders" },
-            { id: "performance", label: "Performance" },
-            { id: "risk-analysis", label: "Risk" },
-            { id: "history", label: "Activity" },
-          ]}
-        />
-      <div className="mt-2 grid grid-cols-1 gap-4 md:mt-8 lg:grid-cols-12 lg:gap-6">
-        <div style={{ animationDelay: "60ms" }} className="animate-fade-up lg:col-span-8">
-          <PortfolioSummary showDetailsLink={false} />
-        </div>
-        <div style={{ animationDelay: "120ms" }} className="flex flex-col gap-4 animate-fade-up lg:col-span-4 lg:gap-6">
-          <PortfolioStats />
-          <OpenOrders />
-          <SectorCard />
-          <SeasonCard />
-          <LeaderboardCard />
-        </div>
-        <div style={{ animationDelay: "180ms" }} className="animate-fade-up lg:col-span-12">
-          <PerformanceCard />
-        </div>
-        <div style={{ animationDelay: "210ms" }} className="animate-fade-up lg:col-span-12">
-          <RiskAnalysis />
-        </div>
-        <div style={{ animationDelay: "240ms" }} className="animate-fade-up lg:col-span-12">
-          <TradeHistory />
-        </div>
-      </div>
+      <Tabs
+        className="mt-6"
+        label="Portfolio sections"
+        tabs={[
+          {
+            id: "holdings",
+            label: "Holdings",
+            content: (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+                <div className="lg:col-span-8">
+                  <PortfolioSummary showDetailsLink={false} />
+                </div>
+                <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
+                  <PortfolioStats />
+                  <SectorCard />
+                </div>
+              </div>
+            ),
+          },
+          { id: "orders", label: "Orders", content: <OpenOrders />, empty: "No orders yet. Place a limit or stop order from any stock's page." },
+          { id: "performance", label: "Performance", content: <PerformanceCard /> },
+          { id: "risk", label: "Risk", content: <RiskAnalysis /> },
+          { id: "activity", label: "Activity", content: <TradeHistory /> },
+          {
+            id: "compete",
+            label: "Compete",
+            content: (
+              <>
+                <SeasonCard />
+                <LeaderboardCard />
+              </>
+            ),
+            empty: "No competitions to show for this portfolio right now.",
+          },
+        ]}
+      />
     </main>
   );
 }

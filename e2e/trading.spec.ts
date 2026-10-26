@@ -1,11 +1,11 @@
 import { expect, test } from "./fixtures";
 
 test("a guest buys shares, sets an indicator alert, and both survive a reload", async ({ page }) => {
-  await page.goto("/stocks/KO");
+  await page.goto("/stocks/KO#trade");
   const trade = page.locator("section[aria-labelledby=trade]");
   await trade.getByLabel("Shares").fill("3");
   await trade.getByRole("button", { name: /^Buy 3 KO/ }).click();
-  await expect(page.getByText(/You own 3 shares|3 shares/).first()).toBeVisible();
+  await expect(page.getByText(/You own 3 shares|3 shares/).filter({ visible: true }).first()).toBeVisible();
 
   await page.getByRole("radio", { name: "Big move" }).click();
   await page.getByRole("button", { name: "Set alert" }).click();
@@ -18,7 +18,7 @@ test("a guest buys shares, sets an indicator alert, and both survive a reload", 
 });
 
 test("the portfolio's risk analysis loads every view", async ({ page }) => {
-  await page.goto("/portfolio");
+  await page.goto("/portfolio#risk");
   const card = page.locator("section[aria-labelledby=risk-analysis]");
   await expect(card.getByRole("tab", { name: "Risk" })).toBeVisible({ timeout: 60_000 });
   for (const [tab, text] of [
@@ -32,11 +32,11 @@ test("the portfolio's risk analysis loads every view", async ({ page }) => {
 });
 
 test("signing up keeps the guest's portfolio", async ({ page }) => {
-  await page.goto("/stocks/JPM");
+  await page.goto("/stocks/JPM#trade");
   const trade = page.locator("section[aria-labelledby=trade]");
   await trade.getByLabel("Shares").fill("2");
   await trade.getByRole("button", { name: /^Buy 2 JPM/ }).click();
-  await expect(page.getByText(/2 shares/).first()).toBeVisible();
+  await expect(page.getByText(/2 shares/).filter({ visible: true }).first()).toBeVisible();
 
   await page.goto("/sign-up");
   await page.getByLabel("Name").fill("E2E Tester");

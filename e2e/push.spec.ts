@@ -13,7 +13,7 @@ test.describe("installing and notifications", () => {
   });
 
   test("the alerts panel offers notifications on this device", async ({ page }) => {
-    await page.goto("/watchlist");
+    await page.goto("/watchlist#alerts");
     const panel = page.getByRole("region", { name: "Price alerts" });
     const toggle = panel.getByRole("checkbox", { name: /Get alerts on this device/ });
     await expect(toggle).toBeVisible();

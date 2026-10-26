@@ -14,7 +14,7 @@ import { StockStats } from "@/components/stocks/stock-stats";
 import { TradeCard } from "@/components/stocks/trade-card";
 import { WatchToggle } from "@/components/stocks/watch-toggle";
 import { Card } from "@/components/ui/card";
-import { SectionNav } from "@/components/ui/section-nav";
+import { Tabs } from "@/components/ui/tabs";
 import { sliceTimeframe } from "@/lib/chart";
 import { getListing, getStockDetail, STOCK_SYMBOLS } from "@/lib/market";
 import type { Listing } from "@/lib/market";
@@ -80,93 +80,103 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
 
   return (
     <>
-    <SectionNav
-      label="Sections"
-      sections={[
-        { id: "stock-title", label: "Price" },
-        { id: "trade", label: "Trade" },
-        { id: "risk", label: "Risk" },
-        { id: "technicals", label: "Technicals" },
-        { id: "fundamentals", label: "Company" },
-        { id: "filings", label: "Filings" },
-        { id: "news", label: "News" },
-      ]}
-    />
-    {/*
-     * Phones get one column in reading order: the price, then trading (the
-     * side column), then the analysis. From lg, the side column sits on the
-     * right next to both (row-span-2), as two columns.
-     */}
-    <div className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
-      <div style={{ animationDelay: "60ms" }} className="animate-fade-up lg:col-span-8">
-        <Card aria-labelledby="stock-title">
-          <PriceChart
-            history={stock.history}
-            intraday={stock.intraday}
-            today={{ change: stock.change, percent: stock.changePercent }}
-            title={
-              <div className="flex min-w-0 items-center gap-3.5">
-                <StockLogo symbol={stock.symbol} size={48} />
-                <div className="min-w-0">
-                <h1 id="stock-title" className="text-2xl font-semibold tracking-tight">
-                  {stock.symbol} <span className="font-normal text-muted">{stock.name}</span>
-                </h1>
-                <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
-                  {stock.sector ?? "Sector not available"}
-                  <WatchToggle symbol={stock.symbol} />
-                </p>
+      {/* Above the tabs, so the stock's name stays in view whichever tab is open. */}
+      <div className="mt-4 flex min-w-0 animate-fade-up items-center gap-3.5">
+        <StockLogo symbol={stock.symbol} size={48} />
+        <div className="min-w-0">
+          <h1 id="stock-title" className="text-2xl font-semibold tracking-tight sm:text-3xl">
+            {stock.symbol} <span className="font-normal text-muted">{stock.name}</span>
+          </h1>
+          <p className="mt-0.5 flex flex-wrap items-center gap-x-2 text-xs text-muted">
+            {stock.sector ?? "Sector not available"}
+            <WatchToggle symbol={stock.symbol} />
+          </p>
+        </div>
+      </div>
+
+      <Tabs
+        className="mt-4"
+        label={`${stock.symbol} sections`}
+        tabs={[
+          {
+            id: "overview",
+            label: "Overview",
+            content: (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+                <Card aria-labelledby="price" className="lg:col-span-8">
+                  <PriceChart
+                    history={stock.history}
+                    intraday={stock.intraday}
+                    today={{ change: stock.change, percent: stock.changePercent }}
+                    title={
+                      <h2 id="price" className="text-lg font-semibold tracking-tight">
+                        Price
+                      </h2>
+                    }
+                  />
+                  <StockStats stock={stock} className="mt-6" />
+                </Card>
+                <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
+                  <Card aria-labelledby="range">
+                    <h2 id="range" className="text-lg font-semibold tracking-tight">
+                      52-week range
+                    </h2>
+                    <div className="mt-4">
+                      <RangeBar low={yearLow} high={yearHigh} current={stock.price} />
+                    </div>
+                  </Card>
+                  <PositionCard quote={quote} />
                 </div>
               </div>
-            }
-          />
-          <StockStats stock={stock} className="mt-6" />
-        </Card>
-      </div>
-
-      <div className="flex flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1 lg:gap-6">
-        <div style={{ animationDelay: "120ms" }} className="animate-fade-up">
-          <Card aria-labelledby="range">
-            <h2 id="range" className="text-lg font-semibold tracking-tight">
-              52-week range
-            </h2>
-            <div className="mt-4">
-              <RangeBar low={yearLow} high={yearHigh} current={stock.price} />
-            </div>
-          </Card>
-        </div>
-
-        <div style={{ animationDelay: "180ms" }} className="animate-fade-up">
-          <TradeCard quote={quote} />
-        </div>
-
-        <div style={{ animationDelay: "240ms" }} className="flex flex-col gap-4 animate-fade-up lg:gap-6">
-          <OpenOrders symbol={stock.symbol} />
-          <PositionCard quote={quote} />
-          <AlertCard symbol={stock.symbol} price={stock.price} />
-        </div>
-      </div>
-
-      <div className="flex flex-col gap-4 lg:col-span-8 lg:col-start-1 lg:gap-6">
-        {/* Calculated by the analytics service from stored prices; the page doesn't wait for it. */}
-        <div>
-          <Suspense fallback={<AnalysisSkeleton />}>
-            <StockAnalysis symbol={stock.symbol} />
-          </Suspense>
-        </div>
-        {/* Reported numbers from SEC filings, stored by the daily job; the page doesn't wait for them. */}
-        <div>
-          <Suspense fallback={null}>
-            <StockFundamentals symbol={stock.symbol} price={stock.price} marketCap={stock.marketCap} />
-          </Suspense>
-        </div>
-        {/* Filings and news come from other sources; the page doesn't wait for them. */}
-        <div>
-          <Suspense fallback={null}>
-            <StockNews symbol={stock.symbol} />
-          </Suspense>
-        </div>
-      </div>
-    </div>
+            ),
+          },
+          {
+            id: "trade",
+            label: "Trade",
+            content: (
+              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2 lg:gap-6">
+                <TradeCard quote={quote} />
+                <div className="flex flex-col gap-4 lg:gap-6">
+                  <OpenOrders symbol={stock.symbol} />
+                  <AlertCard symbol={stock.symbol} price={stock.price} />
+                </div>
+              </div>
+            ),
+          },
+          {
+            id: "analysis",
+            label: "Risk & technicals",
+            // Calculated by the analytics service from stored prices; the page doesn't wait for it.
+            content: (
+              <Suspense fallback={<AnalysisSkeleton />}>
+                <StockAnalysis symbol={stock.symbol} />
+              </Suspense>
+            ),
+          },
+          {
+            id: "company",
+            label: "Company",
+            // Reported numbers from SEC filings, stored by the daily job; the page doesn't wait for them.
+            content: (
+              <Suspense fallback={null}>
+                <StockFundamentals symbol={stock.symbol} price={stock.price} marketCap={stock.marketCap} />
+              </Suspense>
+            ),
+            empty: `No reported company numbers for ${stock.symbol}.`,
+          },
+          {
+            id: "news",
+            label: "News & filings",
+            // Filings and news come from other sources; the page doesn't wait for them.
+            content: (
+              <Suspense fallback={null}>
+                <StockNews symbol={stock.symbol} />
+              </Suspense>
+            ),
+            empty: `No recent filings or news for ${stock.symbol}.`,
+          },
+        ]}
+      />
     </>
   );
 }
@@ -189,31 +199,31 @@ function PricesUnavailable({ listing }: { listing: Listing }) {
   );
 }
 
-/** Grey blocks in the shape of the page, shown while <StockDetails> loads. */
+/** Grey blocks in the shape of the page (title, tabs, overview), shown while <StockDetails> loads. */
 function StockDetailsSkeleton() {
   const block = "animate-pulse rounded-lg bg-foreground/[0.06]";
   return (
-    <div aria-busy className="mt-4 grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
+    <div aria-busy className="mt-4">
       <span className="sr-only">Loading stock…</span>
-      <Card className="lg:col-span-8">
-        <div className={`h-8 w-56 ${block}`} />
-        <div className={`mt-6 h-12 w-40 ${block}`} />
-        <div className={`mt-6 h-56 sm:h-72 ${block}`} />
-        <div className={`mt-6 h-10 ${block}`} />
-      </Card>
-      <div className="flex flex-col gap-4 lg:col-span-4 lg:col-start-9 lg:row-span-2 lg:row-start-1 lg:gap-6">
-        <Card>
-          <div className={`h-6 w-32 ${block}`} />
-          <div className={`mt-4 h-14 ${block}`} />
+      <div className={`h-12 w-72 max-w-full ${block}`} />
+      <div className={`mt-6 h-11 w-full max-w-xl rounded-full ${block}`} />
+      <div className="mt-4 grid grid-cols-1 gap-4 lg:mt-6 lg:grid-cols-12 lg:gap-6">
+        <Card className="lg:col-span-8">
+          <div className={`h-8 w-32 ${block}`} />
+          <div className={`mt-6 h-12 w-40 ${block}`} />
+          <div className={`mt-6 h-56 sm:h-72 ${block}`} />
+          <div className={`mt-6 h-10 ${block}`} />
         </Card>
-        <Card>
-          <div className={`h-6 w-32 ${block}`} />
-          <div className={`mt-4 h-56 ${block}`} />
-        </Card>
-        <Card>
-          <div className={`h-6 w-32 ${block}`} />
-          <div className={`mt-4 h-32 ${block}`} />
-        </Card>
+        <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
+          <Card>
+            <div className={`h-6 w-32 ${block}`} />
+            <div className={`mt-4 h-14 ${block}`} />
+          </Card>
+          <Card>
+            <div className={`h-6 w-32 ${block}`} />
+            <div className={`mt-4 h-32 ${block}`} />
+          </Card>
+        </div>
       </div>
     </div>
   );

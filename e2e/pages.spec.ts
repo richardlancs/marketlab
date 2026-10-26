@@ -22,7 +22,7 @@ test.describe("pages", () => {
   });
 
   test("a stock page shows risk and technicals from the analytics service", async ({ page }) => {
-    await page.goto("/stocks/NVDA");
+    await page.goto("/stocks/NVDA#analysis");
     // Role queries skip React's hidden copy while a streamed section swaps in.
     const risk = page.getByRole("region", { name: "Risk", exact: true });
     await expect(risk).toBeVisible();

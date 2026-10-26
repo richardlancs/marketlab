@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { DataSource } from "@/components/market/data-source";
 import { ScreenHistory } from "@/components/screener/screen-history";
+import { ScreenerTabs } from "@/components/screener/screener-tabs";
 import { getMarket } from "@/lib/market";
 
 export const metadata: Metadata = { title: "Test a screen over time — MarketLab" };
@@ -28,6 +29,7 @@ export default async function ScreenHistoryPage() {
           </Link>{" "}
           screen at the start of every month, using only what was known at the time, which stocks would you have owned, and how would they have done?
         </p>
+        <ScreenerTabs current="/screener/history" />
       </div>
       <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
         <ScreenHistory firstDate={firstDate} lastDate={lastDate} />

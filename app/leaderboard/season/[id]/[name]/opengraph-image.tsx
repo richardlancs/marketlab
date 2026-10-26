@@ -1,4 +1,5 @@
 import { ImageResponse } from "next/og";
+import { MARK_BRAND, MARK_DARK, MARK_DOT, MARK_VIEWBOX } from "@/components/layout/logo";
 import { formatPercent } from "@/lib/format";
 import { seasonLabel } from "@/lib/seasons";
 import { findEntry } from "./entry";
@@ -19,13 +20,18 @@ export default async function Image(props: { params: Promise<{ id: string; name:
   const tone = r > 0.00005 ? "#4ade80" : r < -0.00005 ? "#f87171" : "#e5e7eb";
   return new ImageResponse(
     (
-      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 72, background: "linear-gradient(135deg, #0b1220, #111827 60%, #1e1b4b)", color: "white", fontFamily: "sans-serif" }}>
+      <div style={{ width: "100%", height: "100%", display: "flex", flexDirection: "column", justifyContent: "space-between", padding: 72, background: "linear-gradient(135deg, #0b1220, #111827 60%, #06332a)", color: "white", fontFamily: "sans-serif" }}>
         <div style={{ display: "flex", alignItems: "center", gap: 20, fontSize: 36, fontWeight: 600 }}>
-          <div style={{ width: 64, height: 64, borderRadius: 16, background: "linear-gradient(135deg, #38bdf8, #3b82f6, #4f46e5)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-            <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 17l6-6 4 4 8-8" />
-            </svg>
-          </div>
+          {/* The logo mark, in the dark theme's colours. */}
+          <svg width="66" height="64" viewBox={MARK_VIEWBOX}>
+            {MARK_DARK.map((d) => (
+              <path key={d} d={d} fill="#f5f5f7" />
+            ))}
+            {MARK_BRAND.map((d) => (
+              <path key={d} d={d} fill="#22c28f" />
+            ))}
+            <circle {...MARK_DOT} fill="#22c28f" />
+          </svg>
           {`MarketLab · ${seasonLabel(id)} season`}
         </div>
         {found ? (

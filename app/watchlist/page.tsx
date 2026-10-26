@@ -5,6 +5,7 @@ import { AlertsPanel } from "@/components/alerts/alerts-panel";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { WatchlistTable } from "@/components/stocks/watchlist-table";
 import { Card } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { getStocks } from "@/lib/market";
 
 export const metadata: Metadata = { title: "Watchlist — MarketLab" };
@@ -29,15 +30,22 @@ export default async function WatchlistPage() {
         <p className="mt-2 text-muted">The stocks you follow. Use the star to add or remove one.</p>
       </div>
 
-      <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
-        <Card aria-label="Your watchlist" className="overflow-x-auto py-2">
-          <WatchlistTable rows={rows} />
-        </Card>
-      </div>
-
-      <div style={{ animationDelay: "120ms" }} className="mt-4 animate-fade-up lg:mt-6">
-        <AlertsPanel />
-      </div>
+      <Tabs
+        className="mt-6"
+        label="Watchlist sections"
+        tabs={[
+          {
+            id: "stocks",
+            label: "Stocks",
+            content: (
+              <Card aria-label="Your watchlist" className="overflow-x-auto py-2">
+                <WatchlistTable rows={rows} />
+              </Card>
+            ),
+          },
+          { id: "alerts", label: "Price alerts", content: <AlertsPanel /> },
+        ]}
+      />
     </main>
   );
 }

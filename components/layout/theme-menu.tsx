@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState } from "react";
+import { useEffect, useId, useState } from "react";
 
 const THEMES = [
   { id: "light", label: "Light" },
@@ -35,6 +35,17 @@ function setTheme(theme: Theme, undertone: Undertone) {
   } catch {
     // Storage can be unavailable (private mode); the switch still works for this visit.
   }
+  syncBrowserColor();
+}
+
+/**
+ * Colours the browser's own toolbar (and the installed app's title bar) to
+ * match the page. layout.tsx sets light and dark defaults for the OS setting;
+ * this replaces both with the chosen theme's page colour.
+ */
+function syncBrowserColor() {
+  const color = getComputedStyle(document.documentElement).getPropertyValue("--background").trim();
+  if (color) for (const meta of document.querySelectorAll('meta[name="theme-color"]')) meta.setAttribute("content", color);
 }
 
 /**
@@ -49,6 +60,8 @@ function setTheme(theme: Theme, undertone: Undertone) {
 export function ThemeMenu() {
   const menuId = useId();
   const [current, setCurrent] = useState<{ theme: Theme; undertone: Undertone }>({ theme: "dark", undertone: "sand" });
+  // The saved theme was applied before the page loaded; match the toolbar to it.
+  useEffect(syncBrowserColor, []);
 
   function readCurrent() {
     const { theme, undertone } = document.documentElement.dataset;

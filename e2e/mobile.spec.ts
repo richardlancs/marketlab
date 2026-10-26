@@ -106,11 +106,14 @@ test.describe("phone navigation and layout", () => {
     expect((await layoutProblems(page)).overflow).toBe(false);
   });
 
-  test("a stock page's chips jump to its sections", async ({ page }) => {
+  test("a stock page's sections are tabs, kept in the address", async ({ page }) => {
     await page.goto("/stocks/NVDA");
-    const chips = page.getByRole("navigation", { name: "Sections" });
-    await chips.getByRole("link", { name: "Risk" }).click();
+    const tabs = page.getByRole("tablist", { name: "NVDA sections" });
+    await tabs.getByRole("tab", { name: "Risk & technicals" }).click();
     await expect(page.getByRole("heading", { name: "Risk", exact: true })).toBeInViewport();
-    await expect(chips.getByRole("link", { name: "Risk" })).toHaveAttribute("aria-current", "location");
+    await expect(page.getByRole("heading", { name: "Price", exact: true })).toBeHidden();
+    await expect(page).toHaveURL(/#analysis$/);
+    await page.reload();
+    await expect(tabs.getByRole("tab", { name: "Risk & technicals" })).toHaveAttribute("aria-selected", "true");
   });
 });

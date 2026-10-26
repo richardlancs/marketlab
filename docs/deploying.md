@@ -56,9 +56,22 @@ Set them in Project → Settings → Environment Variables, separately for Produ
 | `EMAIL_FROM` | Optional: the sender name and address, e.g. `MarketLab <you@gmail.com>`. Defaults to `SMTP_USER`. |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Optional: the key pair that signs push notifications, a different pair per environment. Make one with `npx web-push generate-vapid-keys`. Without them, push is off and the alerts panel offers notifications only while MarketLab is open. Changing the pair cuts off every subscribed device until it turns notifications on again. |
 | `VAPID_SUBJECT` | Optional: an `https:` or `mailto:` contact for push services. Defaults to `BETTER_AUTH_URL` (or the GitHub repository when that isn't https). |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional: "Continue with Google" on the sign-in pages (see [Google sign-in](#google-sign-in)). Without them, the button is hidden. |
 | `TIINGO_API_KEY` | **Never on a public deployment** (personal-use licence). |
 
 Better Auth refuses to start in production without a real secret, so a missing secret shows up as an error rather than as an insecure site.
+
+## Google sign-in
+
+1. In [Google Cloud Console](https://console.cloud.google.com/), create a project (or pick one).
+2. **Google Auth Platform → Branding**: set the app name (MarketLab), a support email, and the site's home page. Audience: **External**. Scopes: the default `openid`, `email` and `profile` are all it needs.
+3. **Clients → Create client → Web application**:
+   - Authorised JavaScript origins: `http://localhost:3000` and `https://<production host>`.
+   - Authorised redirect URIs: `http://localhost:3000/api/auth/callback/google` and `https://<production host>/api/auth/callback/google`.
+4. Copy the client ID and secret into `.env.local` as `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`, and into Vercel's Production environment. Restart `npm run dev`, or redeploy: the sign-in pages are built with the button on or off.
+5. While the app is in **Testing**, only the test users listed under Audience can sign in; **Publish app** opens it to everyone (no Google review needed for these basic scopes).
+
+Google only accepts exact redirect URIs, so sign-in with Google doesn't work on preview URLs, which change with every deploy (email and password still do). A Google sign-in whose email matches an existing account joins that account only if the account's email is verified; otherwise the sign-in page says to use the password.
 
 ## Checking a deployment
 

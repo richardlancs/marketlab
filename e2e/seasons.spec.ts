@@ -18,7 +18,7 @@ test("a season: join with a fresh $100,000, trade in it, switch back, and appear
   await expect(page.getByText(/You're playing as/)).toBeVisible();
 
   // Trading now happens in the season portfolio: $100,000 in cash, nothing held.
-  await page.goto("/stocks/AAPL");
+  await page.goto("/stocks/AAPL#trade");
   const trade = page.locator("section[aria-labelledby=trade]");
   await expect(trade.getByRole("radio", { name: /season/ })).toHaveAttribute("aria-checked", "true");
   await trade.getByLabel("Shares").fill("10");

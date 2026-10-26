@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import { Screener } from "@/components/screener/screener";
+import { ScreenerTabs } from "@/components/screener/screener-tabs";
 import { Card } from "@/components/ui/card";
 import { getScreenerData } from "@/lib/analytics/server";
 import { formatDate } from "@/lib/format";
@@ -18,6 +19,7 @@ export default function ScreenerPage(props: PageProps<"/screener">) {
       <div className="animate-fade-up">
         <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">Screener</h1>
         <p className="mt-2 text-muted">Filter the market by momentum, risk, technicals and value. Start from a preset, or set your own ranges.</p>
+        <ScreenerTabs current="/screener" />
       </div>
       <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
         <Suspense fallback={<ScreenerSkeleton />}>

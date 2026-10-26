@@ -5,6 +5,7 @@ import { DataSource } from "@/components/market/data-source";
 import { StockTable } from "@/components/stocks/stock-table";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
 import { Card } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { getStocks } from "@/lib/market";
 import { MORE_LISTINGS } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
@@ -37,43 +38,56 @@ export default async function StocksPage() {
         </p>
       </div>
 
-      <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
-        {/* The table itself has no outer padding, so the card's padding frames it. */}
-        <Card aria-label="All stocks" className="overflow-x-auto py-2">
-          <StockTable rows={rows} />
-        </Card>
-      </div>
-
-      <div style={{ animationDelay: "120ms" }} className="mt-4 animate-fade-up lg:mt-6">
-        <Card aria-labelledby="more-stocks">
-          <h2 id="more-stocks" className="text-lg font-semibold tracking-tight">
-            More stocks
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            {MORE_LISTINGS.length} more you can open, watch, trade and backtest.
-            {marketMode() === "tiingo" && " Or search for any other ticker with ⌘K."}
-          </p>
-          <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
-            {[...bySector].map(([sector, listings]) => (
-              <section key={sector} aria-label={sector}>
-                <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{sector}</h3>
-                <ul className="mt-2 space-y-1 text-sm">
-                  {listings.map((listing) => (
-                    <li key={listing.symbol}>
-                      <Link href={`/stocks/${listing.symbol}`} className="flex items-center gap-2.5 rounded-sm py-0.5 hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
-                        <StockLogo symbol={listing.symbol} size={22} />
-                        <span className="truncate">
-                          <span className="font-semibold">{listing.symbol}</span> <span className="text-muted">{listing.name}</span>
-                        </span>
-                      </Link>
-                    </li>
+      <Tabs
+        className="mt-6"
+        label="Stock lists"
+        tabs={[
+          {
+            id: "featured",
+            label: "Featured",
+            content: (
+              // The table itself has no outer padding, so the card's padding frames it.
+              <Card aria-label="All stocks" className="overflow-x-auto py-2">
+                <StockTable rows={rows} />
+              </Card>
+            ),
+          },
+          {
+            id: "more",
+            label: `More stocks (${MORE_LISTINGS.length})`,
+            content: (
+              <Card aria-labelledby="more-stocks">
+                <h2 id="more-stocks" className="text-lg font-semibold tracking-tight">
+                  More stocks
+                </h2>
+                <p className="mt-1 text-sm text-muted">
+                  {MORE_LISTINGS.length} more you can open, watch, trade and backtest.
+                  {marketMode() === "tiingo" && " Or search for any other ticker with ⌘K."}
+                </p>
+                <div className="mt-4 grid gap-x-6 gap-y-5 sm:grid-cols-2 lg:grid-cols-4">
+                  {[...bySector].map(([sector, listings]) => (
+                    <section key={sector} aria-label={sector}>
+                      <h3 className="text-xs font-semibold tracking-wide text-muted uppercase">{sector}</h3>
+                      <ul className="mt-2 space-y-1 text-sm">
+                        {listings.map((listing) => (
+                          <li key={listing.symbol}>
+                            <Link href={`/stocks/${listing.symbol}`} className="flex items-center gap-2.5 rounded-sm py-0.5 hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
+                              <StockLogo symbol={listing.symbol} size={22} />
+                              <span className="truncate">
+                                <span className="font-semibold">{listing.symbol}</span> <span className="text-muted">{listing.name}</span>
+                              </span>
+                            </Link>
+                          </li>
+                        ))}
+                      </ul>
+                    </section>
                   ))}
-                </ul>
-              </section>
-            ))}
-          </div>
-        </Card>
-      </div>
+                </div>
+              </Card>
+            ),
+          },
+        ]}
+      />
     </main>
   );
 }

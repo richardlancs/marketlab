@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { revealOnPhone } from "@/components/ui/reveal";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
+import { Tabs } from "@/components/ui/tabs";
 import { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, type ReproduceResult } from "@/lib/backtest-actions";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
 import { isSymbolFormat } from "@/lib/market/symbols";
@@ -168,27 +169,54 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
-      <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
-        <Card aria-labelledby="settings">
-          <h2 id="settings" className="mb-4 text-lg font-semibold tracking-tight">
-            Settings
-          </h2>
-          <BacktestForm form={form} onChange={setForm} onRun={run} stocks={listings} openTickers={openTickers} firstDate={firstDate} lastDate={lastDate} running={running} error={error} />
-        </Card>
-        <SweepPanel base={sweepBase} state={sweep.state} onRun={runSweep} onCancel={sweep.cancel} />
-        <SavedRuns
-          runs={saved.runs}
-          signedIn={saved.signedIn}
-          selected={selected}
-          onToggle={(id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
-          onCompare={compare}
-          onOpen={open}
-          onDelete={(r) => {
-            setSelected((s) => s.filter((x) => x !== r.id));
-            void saved.remove(r.id);
-          }}
-        />
-      </div>
+      {/*
+       * The controls as tabs, with the results always beside (or, on phones,
+       * below) them. Not in the address: the #fragment holds shared runs.
+       */}
+      <Tabs
+        className="-mt-2 lg:col-span-4"
+        label="Backtest tools"
+        sync={false}
+        sticky={false}
+        tabs={[
+          {
+            id: "settings",
+            label: "Settings",
+            content: (
+              <Card aria-labelledby="settings">
+                <h2 id="settings" className="mb-4 text-lg font-semibold tracking-tight">
+                  Settings
+                </h2>
+                <BacktestForm form={form} onChange={setForm} onRun={run} stocks={listings} openTickers={openTickers} firstDate={firstDate} lastDate={lastDate} running={running} error={error} />
+              </Card>
+            ),
+          },
+          {
+            id: "sweep",
+            label: "Sweep",
+            content: <SweepPanel base={sweepBase} state={sweep.state} onRun={runSweep} onCancel={sweep.cancel} />,
+            empty: "Pick a strategy with numbers to vary (like the moving averages' lengths) in Settings, and sweep them here.",
+          },
+          {
+            id: "saved",
+            label: saved.runs?.length ? `Saved (${saved.runs.length})` : "Saved",
+            content: (
+              <SavedRuns
+                runs={saved.runs}
+                signedIn={saved.signedIn}
+                selected={selected}
+                onToggle={(id) => setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]))}
+                onCompare={compare}
+                onOpen={open}
+                onDelete={(r) => {
+                  setSelected((s) => s.filter((x) => x !== r.id));
+                  void saved.remove(r.id);
+                }}
+              />
+            ),
+          },
+        ]}
+      />
 
       <div className="lg:col-span-8">
         {/* aria-live: the results are announced when a run finishes. */}

@@ -3,6 +3,7 @@ import { Suspense } from "react";
 import { AlertsBadge } from "@/components/alerts/alerts-badge";
 import { AccountMenu } from "@/components/auth/account-menu";
 import { SearchDialog } from "@/components/search/search-dialog";
+import { Logo } from "./logo";
 import { NavLinks, NavLinksFallback, type NavItem } from "./nav-links";
 import { ThemeMenu } from "./theme-menu";
 
@@ -31,16 +32,8 @@ export function Header() {
        * sit in the top row.
        */}
       <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
-        <Link href="/" className="flex h-14 items-center gap-2.5 font-semibold tracking-tight">
-          <span
-            aria-hidden
-            className="grid size-7 place-items-center rounded-lg bg-linear-to-br from-brand-start via-brand-mid to-brand-end shadow-sm shadow-brand-glow"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="size-4">
-              <path d="M3 17l6-6 4 4 8-8" />
-            </svg>
-          </span>
-          MarketLab
+        <Link href="/" aria-label="MarketLab home" className="flex h-14 items-center">
+          <Logo />
         </Link>
 
         <nav

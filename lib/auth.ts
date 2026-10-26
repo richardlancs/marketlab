@@ -1,6 +1,7 @@
 /**
- * Sign-in for MarketLab, with Better Auth: email + password accounts, stored
- * in our database through the Drizzle adapter. Server-only: it holds the
+ * Sign-in for MarketLab, with Better Auth: email + password accounts and,
+ * where it's set up, Google, stored in our database through the Drizzle
+ * adapter. Server-only: it holds the
  * secret that signs session cookies.
  *
  * Better Auth handles the security-sensitive parts: password hashing,
@@ -25,6 +26,14 @@ const allowedHosts = (process.env.BETTER_AUTH_ALLOWED_HOSTS ?? "")
   .map((host) => host.trim())
   .filter(Boolean);
 
+/**
+ * Whether "Continue with Google" is offered: only once the OAuth client from
+ * Google Cloud Console is configured (see docs/deploying.md).
+ */
+export function googleEnabled() {
+  return !!(process.env.GOOGLE_CLIENT_ID && process.env.GOOGLE_CLIENT_SECRET);
+}
+
 export const auth = betterAuth({
   // BETTER_AUTH_SECRET and BETTER_AUTH_URL are read from the environment
   // (.env.local in development; see .env.example). With allowed hosts set,
@@ -42,6 +51,20 @@ export const auth = betterAuth({
     // addresses (user.emailVerified) are what email features rely on.
     autoSignIn: true,
   },
+  // Sign in with Google. A Google sign-in whose email matches an existing
+  // account joins that account, but only if the account's address is verified
+  // (Better Auth's default): otherwise anyone could sign up with someone
+  // else's address and later receive their Google sign-in.
+  ...(googleEnabled() && {
+    socialProviders: {
+      google: {
+        clientId: process.env.GOOGLE_CLIENT_ID!,
+        clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+        // Always ask which Google account, so a shared computer doesn't sign in as whoever used it last.
+        prompt: "select_account" as const,
+      },
+    },
+  }),
   // Verifying email addresses: a link sent on sign-up (and on request from
   // the banner, components/account/verify-email-notice.tsx), valid for a day.
   // Only where email can be sent (lib/email.ts): otherwise nothing promises
