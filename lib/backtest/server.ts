@@ -25,7 +25,8 @@ import type { PricePoint } from "../types";
 import { configNeedsBars, type BacktestConfig } from "./config";
 import type { BacktestRun, ExtraPoint } from "./engine";
 import { ASSUMPTIONS, compute } from "./engines";
-import { PythonEngineError, pythonEngineVersion, sweepOnPython } from "./python-client";
+import type { LuckResult } from "./luck";
+import { luckOnPython, PythonEngineError, pythonEngineVersion, sweepOnPython } from "./python-client";
 import { describeSnapshot, makeSnapshot, type PriceSnapshot } from "./snapshot";
 import type { StoredResult } from "./stored";
 import { buildGrid, type Axis, type SweepResult } from "./sweep";
@@ -189,4 +190,34 @@ async function sweepCached(base: BacktestConfig, grid: Grid, snapshot: PriceSnap
   void engineVersion; // part of the cache key only
   const swept = await sweepOnPython(base, grid.points.map((p) => p.config), snapshot);
   return { axes: grid.axes, points: grid.points.map((p, i) => ({ ...p, metrics: swept.metrics[i] })), benchmark: swept.benchmark, check: swept.check };
+}
+
+export type LuckOutcome = { ok: true; result: LuckResult } | { ok: false; message: string };
+
+/**
+ * "Was it luck?" for a run (lib/backtest/luck.ts): on a saved run's own
+ * snapshot when given one, otherwise on today's prices (the same snapshot a
+ * fresh run of these settings uses). Cached by the settings, the prices and
+ * the engine version, like runs.
+ */
+export async function luckOnServer(config: BacktestConfig, saved?: PriceSnapshot): Promise<LuckOutcome> {
+  let snapshot = saved;
+  if (!snapshot) {
+    const prices = await loadPrices(config.holdings.map((h) => h.symbol), configNeedsBars(config));
+    if ("error" in prices) return { ok: false, message: prices.error };
+    snapshot = makeSnapshot(config, prices.history, prices.market, prices.source, prices.asOf, prices.extra);
+  }
+  try {
+    return { ok: true, result: await luckCached(config, snapshot, await pythonEngineVersion()) };
+  } catch (error) {
+    return { ok: false, message: error instanceof PythonEngineError ? error.message : "The luck check couldn't be run. Try again in a minute." };
+  }
+}
+
+async function luckCached(config: BacktestConfig, snapshot: PriceSnapshot, engineVersion: string): Promise<LuckResult> {
+  "use cache";
+  cacheTag("market");
+  cacheLife("hours");
+  void engineVersion; // part of the cache key only
+  return luckOnPython(config, snapshot);
 }

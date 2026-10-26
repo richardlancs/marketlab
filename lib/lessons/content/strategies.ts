@@ -395,7 +395,7 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Backtest", href: "/backtest", text: "Change the start and end dates to check settings you chose on one period against another." },
       { label: "Machine learning sandbox", href: "/backtest#ml", text: "The Machine learning tab tests models walk-forward against a shuffled-label baseline, so you can see how often an apparent edge is luck." },
     ],
-    related: ["maCrossover", "sharpe", "machineLearning", "benchmark"],
+    related: ["maCrossover", "sharpe", "machineLearning", "luck"],
     quiz: [
       {
         kind: "Terminology",
@@ -540,6 +540,8 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         "MarketLab's Risk parity backtest uses the standard deviation of each stock's last 63 daily returns, about three months, and resets the weights at the start of every month or quarter, as you choose. Between resets, the weights drift with prices, as in [[rebalancing]]. It waits in cash until there are 63 returns to measure.",
         "This simple version ignores [[correlation]]: it treats each holding's risk on its own. Two closely related stocks each get their full share, so together they add more risk than an unrelated one. Full risk parity, used by the Optimise tab in the portfolio's Risk analysis, accounts for how holdings move together and sets weights so their risk contributions come out equal, within its cap on any one stock.",
         "Because risk parity leans toward calmer holdings, it usually swings less than equal weights. It doesn't aim for the highest return: calm stocks are often slower growers, so in a strong rally led by volatile stocks it tends to lag.",
+        "Optimisers chase noise. The Optimise tab's Least risk and Best Sharpe weights come from an optimiser, which takes estimates of each stock's return, volatility and correlations and finds the best mix for them. Those estimates come from a few years of noisy prices, and the optimiser can't tell a real pattern from luck: it piles into whatever happened to rise most with the least swing. So weights that were optimal in hindsight usually disappoint in the years that follow. Expected returns are the worst offender, being far harder to estimate than risk.",
+        "Careful optimisers tone their estimates down. MarketLab's Optimised weights backtest pulls each expected return halfway towards the stocks' average and each correlation a quarter of the way towards theirs, never goes short, and caps any one stock at 40% (80% with only two). Each month or quarter it re-optimises from the last 12 or 36 months of prices only, for least risk or best Sharpe ratio, holding equal weights until 3 months of prices exist. The chart compares it with equal weights rebalanced as often, a bar optimisers often fail to clear.",
       ],
       formula: {
         expression: "weight of a holding = (1 ÷ its volatility) ÷ (sum of 1 ÷ volatility over all holdings)",
@@ -561,11 +563,13 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Weights close to equal", meaning: "The holdings have had similar volatility, so risk parity and equal weights give almost the same portfolio." },
       { label: "Lower volatility than equal weights", meaning: "The usual result: leaning toward calm holdings smooths the ride." },
       { label: "Lower return than equal weights", meaning: "Common when the volatile holdings led the market. Balanced risk is the aim, not the top return." },
+      { label: "Optimised weights trailing equal weights", meaning: "The usual out-of-sample story: the optimiser's estimates were mostly noise." },
     ],
     realWorld: [
       "Bridgewater's All Weather fund, launched in 1996, popularized the idea across asset classes: rather than the classic 60% stocks and 40% bonds, where stocks drive most of the risk, it balances risk between stocks, bonds and commodities, often using borrowing to lift the calmer bond side.",
       "Risk parity funds had a hard year in 2022, when stocks and bonds fell together. Balancing risk only spreads it if the holdings don't all fall at once, which is why correlation matters.",
       "Many equity funds use the simpler inverse-volatility weighting described here, sometimes as part of low-volatility strategies, because it needs only each holding's own volatility, which is far easier to estimate than a full set of correlations.",
+      "A 2009 study by Victor DeMiguel, Lorenzo Garlappi and Raman Uppal tested 14 optimisation methods out of sample and found none consistently beat simply splitting money equally.",
     ],
     mistakes: [
       "Thinking equal risk means low risk. A risk parity portfolio of five volatile tech stocks is still very volatile; it just spreads that risk evenly.",
@@ -579,9 +583,14 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         href: backtestLink({ kind: "risk-parity", frequency: "monthly" }, ["NVDA", "AAPL", "KO", "JNJ"]),
         text: "Opens a monthly risk parity backtest of NVIDIA, Apple, Coca-Cola and Johnson & Johnson, compared with holding them in equal amounts.",
       },
-      { label: "Portfolio Optimise tab", href: "/portfolio", text: "Under Risk analysis, the Optimise tab compares your weights with Least risk, Best Sharpe and Risk parity weightings of the same stocks, and plots each on a chart of risk against return." },
+      { label: "Portfolio Optimise tab", href: "/portfolio#risk", text: "Under Risk analysis, the Optimise tab compares your weights with Least risk, Best Sharpe and Risk parity weightings of the same stocks, and plots each on a chart of risk against return. Its Test the same idea over time links open the matching backtest." },
+      {
+        label: "Backtest: optimised weights",
+        href: backtestLink({ kind: "optimised", objective: "max-sharpe", frequency: "monthly", lookbackMonths: 36 }, ["NVDA", "AAPL", "KO", "JNJ"]),
+        text: "Re-optimises the same four stocks for best Sharpe ratio each month from the last 36 months of prices, compared with equal weights rebalanced monthly.",
+      },
     ],
-    related: ["volatility", "rebalancing", "correlation", "diversification"],
+    related: ["volatility", "correlation", "diversification", "overfitting"],
     quiz: [
       {
         kind: "Terminology",
@@ -625,6 +634,113 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 3,
         explanation: "Risk parity spreads risk between assets in the hope they don't all fall together. In 2022, rising interest rates pushed both stocks and bonds down.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why does MarketLab's Optimised weights strategy pull each expected return halfway towards the average?",
+        choices: [
+          "To make the backtest run faster",
+          "Because past returns are noisy, and an untamed optimiser piles into whichever stock was luckiest",
+          "Because every stock has the same expected return",
+          "To guarantee it beats equal weights",
+        ],
+        answer: 1,
+        explanation: "A few years of returns say little about the future. Shrinking the estimates stops the optimiser betting heavily on noise, which is why weights optimal in hindsight usually disappoint.",
+      },
+    ],
+  },
+  pairsTrading: {
+    why: [
+      "Most strategies bet on prices going up. Pairs trading bets on a relationship instead: two similar companies, say two big oil producers, whose prices have kept a steady link. When one runs ahead of the other, you sell the one that ran ahead and buy the one that lagged, and profit if the gap closes, whether the market rises or falls.",
+      "It's one of the oldest quant strategies, and a good lesson in how easily statistics can fool you. Search enough pairs and some will look perfectly linked by chance.",
+    ],
+    how: {
+      paragraphs: [
+        "Correlation isn't enough. [[correlation|Correlation]] says two stocks move the same way day to day; it says nothing about whether their prices drift apart over months. Two stocks can be highly correlated and still end the year 30% apart, with nothing pulling them back. Cointegration is the stronger idea: a fixed mix of the two prices, the gap, keeps returning to its average. Think of a dog on a long lead: each wanders, but they can't drift far apart.",
+        "MarketLab's pairs lab scans pairs of stocks from the same sector over a formation year. For each pair it fits the hedge ratio by least squares: how much A has tended to move for each 1% move in B. The gap is log A minus the hedge ratio times log B, so it's measured in percentages. The Engle–Granger test then gives a p-value: how likely a gap that reverts this convincingly would be if the pair weren't really cointegrated. It also reports the half-life, the number of trading days it typically took the gap to close half of a stretch.",
+        "Testing many pairs needs adjusting. About 400 tests at a 5% threshold find about 20 false discoveries by chance alone, the same trap as [[overfitting]] and the subject of [[luck|Luck or skill?]]. So the lab also shows a Benjamini–Hochberg adjusted p-value, which keeps the share of false discoveries among the pairs it keeps near 5%. The best of 400 p-values can be adjusted up as far as 400 times.",
+        "The chosen pair is then traded on the following year, using only the formation year's average and spread for the gap. Its z-score is how many standard deviations the gap sits from that average. Past +2, sell the gap: short A, buy B. Past −2, buy the gap. Close when the z-score gets back to 0, and stop out at ±4, since a gap that keeps widening may mean the link has broken. B's leg is the hedge ratio times A's in dollars, so a market-wide move roughly cancels out.",
+        "Shorting costs extra. A short seller borrows the shares and pays a fee for as long as the position is open, 0.5% a year by default here, on top of commission and slippage. MarketLab's public prices are simulated: stocks share only market and sector moves, so their gaps have nothing pulling them back. Few or no pairs survive the adjustment, and that's the honest answer, not a bug.",
+      ],
+      formula: {
+        expression: "gap = log A − hedge ratio × log B; z-score = (gap − formation average) ÷ formation standard deviation",
+        reading: "How stretched the gap is, measured against how it behaved in the formation year.",
+      },
+    },
+    example: {
+      setup: "Two oil producers, A and B, have a formation-year hedge ratio of 1.5: A has tended to move 1.5% for each 1% move in B. The gap averaged 1% with a standard deviation of 4%. You trade with $10,000.",
+      steps: [
+        "A month into the next year, A has run ahead and the gap is 11%. Its z-score is (11% − 1%) ÷ 4% = 2.5, past +2, so sell the gap: short A, buy B.",
+        "Legs: B's is 1.5 times A's, and together they're $10,000. A's leg is $10,000 ÷ 2.5 = $4,000 short, and B's is $4,000 × 1.5 = $6,000 long.",
+        "If the market lifts B 1%, the $6,000 long gains $60, and A's expected 1.5% rise costs the $4,000 short about $60. The market move cancels out.",
+        "Stop: if instead the gap widens to a z-score of 4, that's 1% + 4 × 4% = 17%, and both legs are closed at a loss.",
+        "Borrowing: 0.5% a year on the $4,000 short is $4,000 × 0.5% = $20 a year, paid on every day the trade is open.",
+      ],
+      result: "The trade wins if the gap closes and loses if it keeps widening; the market's direction barely matters. Its real risk is that the link that held last year has broken, which is why the stop and the formation-year test both matter.",
+    },
+    reading: [
+      { label: "Adjusted p-value below 5%", meaning: "The pair still looks cointegrated after allowing for how many pairs were tested. Rare, and worth testing on the next year." },
+      { label: "Raw p-value below 5%, adjusted well above", meaning: "Probably one of the chance discoveries that hundreds of tests always produce." },
+      { label: "Short half-life (a few days to a few weeks)", meaning: "Stretches close quickly, so there are more trades and each one ties up money briefly." },
+      { label: "Long or missing half-life", meaning: "The gap barely pulls back. A trade could wait months or never close." },
+    ],
+    realWorld: [
+      "Pairs trading was developed at Morgan Stanley in the mid-1980s by a team of quants led by Nunzio Tartaglia. A well-known 2006 study by Evan Gatev, William Goetzmann and Geert Rouwenhorst found simple pairs rules were profitable in US stocks for decades, with profits shrinking in later years as more funds did the same.",
+      "Royal Dutch and Shell traded as two share lines with fixed claims on one business, yet their prices drifted as much as 30% apart from fair value for years. A gap that should close can stay open far longer than a trader can afford to wait.",
+      "In August 2007, many market-neutral funds holding similar long-short positions lost heavily within days as crowded trades were unwound at once. Hedging away the market doesn't hedge away everyone else selling the same thing.",
+    ],
+    mistakes: [
+      "Treating high correlation as cointegration. Stocks can move together daily and still drift apart for good.",
+      "Picking the best p-value from hundreds of tests without adjusting. Some pairs always look linked by chance.",
+      "Measuring the z-score with the trading year's own average and spread, which you wouldn't have known at the time.",
+      "Forgetting the borrow fee and costs. A small gap that closes slowly can be eaten entirely by them.",
+    ],
+    inMarketLab: [
+      { label: "Pairs lab", href: "/backtest#pairs", text: "On the Backtest page, the Pairs tab scans same-sector pairs over a formation year, shows each pair's hedge ratio, half-life, p-value and adjusted p-value, and tests the one you choose on the following year with costs and a borrow fee." },
+    ],
+    related: ["correlation", "luck", "overfitting", "tradingCosts"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What makes two stocks cointegrated rather than just correlated?",
+        choices: [
+          "They have the same share price",
+          "A fixed mix of their prices keeps returning to its average",
+          "They are in the same sector",
+          "Their daily returns have a correlation above 0.9",
+        ],
+        answer: 1,
+        explanation: "Correlation is about daily moves. Cointegration means the gap between them, using the hedge ratio, keeps coming back, however far each price wanders.",
+      },
+      {
+        kind: "Using it",
+        prompt: "The gap's formation-year average is 0% and its standard deviation 3%. Today the gap is −7.5%. What does the rule do?",
+        choices: [
+          "Nothing: the z-score is inside ±2",
+          "Buy the gap (long A, short B): the z-score is −2.5",
+          "Stop out: the z-score is past ±4",
+          "Sell the gap (short A, long B): the z-score is +2.5",
+        ],
+        answer: 1,
+        explanation: "z = (−7.5% − 0%) ÷ 3% = −2.5, past −2, so the gap is unusually low: buy A and short the hedge-ratio amount of B, betting it rises back to its average.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You test 400 pairs that aren't really linked, at a 5% threshold. About how many will look cointegrated anyway?",
+        choices: ["None", "About 2", "About 20", "About 200"],
+        answer: 2,
+        explanation: "400 × 5% = 20 false discoveries by chance alone, which is why the lab also shows adjusted p-values.",
+      },
+      {
+        kind: "Real world",
+        prompt: "What happened to the gap between Royal Dutch and Shell shares, which had fixed claims on the same business?",
+        choices: [
+          "It closed within days, as theory says",
+          "It stayed open, sometimes far from fair value, for years",
+          "It never existed",
+        ],
+        answer: 1,
+        explanation: "The gap should have closed but persisted for years. A sound reason for a gap to close doesn't say when it will, and traders can run out of money or patience first.",
       },
     ],
   },

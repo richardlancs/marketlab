@@ -24,6 +24,27 @@ export interface StressResult {
   coverage?: number | null;
 }
 
+/** How a set of stocks move together (services/analytics/analytics/correlation.py), in the order the stocks are listed. */
+export interface CorrelationSummary {
+  correlation: (number | null)[][];
+  /** Indices into the list, ordered so stocks that move alike sit together. */
+  order: number[];
+  /** How many independent bets the stocks amount to: 1 if they move in lockstep, their number if not at all. */
+  effectiveBets: number | null;
+  closest: { a: string; b: string; correlation: number | null }[];
+}
+
+/** What /api/watchlist/correlation answers: the watched stocks compared, or nothing to compare. */
+export type WatchlistCorrelation = { empty: true } | { symbols: string[]; leftOut: string[]; asOf: number; summary: CorrelationSummary };
+
+/** The summary if `value` (for `n` stocks) has its shape, or null. */
+export function isCorrelationSummary(value: unknown, n: number): value is CorrelationSummary {
+  const v = obj(value);
+  if (!v || !Array.isArray(v.correlation) || v.correlation.length !== n || !v.correlation.every((row) => numbers(row, n))) return false;
+  if (!Array.isArray(v.order) || v.order.length !== n || [...v.order].sort((a, b) => a - b).some((x, i) => x !== i)) return false;
+  return numOrNull(v.effectiveBets) && Array.isArray(v.closest) && v.closest.every((c) => obj(c) && typeof (c as Record<string, unknown>).a === "string" && typeof (c as Record<string, unknown>).b === "string" && numOrNull((c as Record<string, unknown>).correlation));
+}
+
 export interface PortfolioAnalysis {
   asOf: number;
   symbols: string[];
@@ -39,8 +60,7 @@ export interface PortfolioAnalysis {
     holdingVolatility: (number | null)[];
     holdingBeta: (number | null)[];
     riskContribution: (number | null)[];
-    correlation: (number | null)[][];
-  };
+  } & CorrelationSummary;
   sectors: Record<string, number | null>;
   stress: StressResult[];
   monteCarlo: {
@@ -83,7 +103,7 @@ export function parsePortfolioAnalysis(value: unknown): PortfolioAnalysis | null
   if (!numbers(a.weights, n) || !numOrNull(a.cashWeight) || !Array.isArray(a.leftOut)) return null;
   if (!["volatility", "beta", "var95", "expectedShortfall95", "diversificationRatio"].every((k) => numOrNull(risk[k]))) return null;
   if (!["holdingVolatility", "holdingBeta", "riskContribution"].every((k) => numbers(risk[k], n))) return null;
-  if (!Array.isArray(risk.correlation) || risk.correlation.length !== n || !risk.correlation.every((row) => numbers(row, n))) return null;
+  if (!isCorrelationSummary(risk, n)) return null;
   const sectors = obj(a.sectors);
   if (!sectors || !Object.values(sectors).every(numOrNull)) return null;
   if (!Array.isArray(a.stress) || !a.stress.every((s) => obj(s) && typeof (s as StressResult).name === "string" && numOrNull((s as StressResult).portfolio))) return null;

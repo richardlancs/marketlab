@@ -18,6 +18,7 @@ import { cacheLife } from "next/cache";
 import type { BacktestConfig, BacktestOutcome, RunSummary } from "./config";
 import type { BacktestRun, BacktestTrade, Metrics } from "./engine";
 import { parseExtras, type ResultExtras } from "./extras";
+import { parseLuck, type LuckResult } from "./luck";
 import type { PriceSnapshot } from "./snapshot";
 import type { SelectionCheck } from "./sweep";
 import { parseStoredResult, type Comparison, type StoredResult } from "./stored";
@@ -116,6 +117,14 @@ export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapsho
 export async function analyseOnPython(outcome: BacktestOutcome, costs: BacktestConfig["costs"]): Promise<ResultExtras | null> {
   const data = await post("v1/backtests/analyse", { run: outcome.run, benchmark: outcome.benchmark, costs }, "Analyse");
   return parseExtras(data.extras);
+}
+
+/** The run against 1,000 random versions of itself, and its Sharpe ratio's range (luck.py), on a snapshot's prices. */
+export async function luckOnPython(config: BacktestConfig, snapshot: PriceSnapshot): Promise<LuckResult> {
+  const data = await post("v1/backtests/luck", { config, prices: snapshot.series, market: snapshot.market?.data ?? null }, "Luck", 30_000);
+  const result = parseLuck(data.result);
+  if (!result) throw new PythonEngineError("The analytics service sent back a luck check MarketLab couldn't read.");
+  return result;
 }
 
 /** How long to wait before the one retry, when the service couldn't be reached: long enough for it to wake from idle. */

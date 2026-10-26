@@ -21,6 +21,9 @@ export interface FormState {
   top: string;
   lookbackMonths: 3 | 6 | 12;
   absolute: boolean;
+  /** Optimised weights: what to aim for, and how many months of returns to estimate from. */
+  objective: "min-variance" | "max-sharpe";
+  estimateMonths: 12 | 36;
   /** Custom rules: when to buy each stock, and when to sell it. */
   entry: RuleSetDraft;
   exit: RuleSetDraft;
@@ -56,6 +59,8 @@ export function defaultForm(lastDate: number): FormState {
     top: "1",
     lookbackMonths: 6,
     absolute: true,
+    objective: "min-variance",
+    estimateMonths: 36,
     entry: toDraft(RULE_PRESETS[0].entry),
     exit: toDraft(RULE_PRESETS[0].exit),
     start: toInput(yearsBefore(lastDate, 5)),
@@ -76,10 +81,12 @@ export function formFromConfig(config: BacktestConfig): FormState {
     fast: s.kind === "moving-average" ? String(s.fast) : "50",
     slow: s.kind === "moving-average" ? String(s.slow) : "200",
     installments: s.kind === "dollar-cost-averaging" ? String(s.installments) : "12",
-    frequency: s.kind === "rebalancing" || s.kind === "risk-parity" ? s.frequency : "quarterly",
+    frequency: s.kind === "rebalancing" || s.kind === "risk-parity" || s.kind === "optimised" ? s.frequency : "quarterly",
     top: s.kind === "momentum-rotation" ? String(s.top) : "1",
     lookbackMonths: s.kind === "momentum-rotation" ? s.lookbackMonths : 6,
     absolute: s.kind === "momentum-rotation" ? s.absolute : true,
+    objective: s.kind === "optimised" ? s.objective : "min-variance",
+    estimateMonths: s.kind === "optimised" ? s.lookbackMonths : 36,
     entry: toDraft(s.kind === "rules" ? s.entry : RULE_PRESETS[0].entry),
     exit: toDraft(s.kind === "rules" ? s.exit : RULE_PRESETS[0].exit),
     start: toInput(config.start),
@@ -121,7 +128,7 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
   if (form.strategy === "momentum-rotation" && !(Number.isInteger(top) && top >= 1 && top <= symbols.length)) {
     return { error: `Hold between 1 and ${symbols.length} of the stocks listed (momentum rotation picks among them).` };
   }
-  if ((form.strategy === "momentum-rotation" || form.strategy === "risk-parity") && symbols.length < 2) {
+  if ((form.strategy === "momentum-rotation" || form.strategy === "risk-parity" || form.strategy === "optimised") && symbols.length < 2) {
     return { error: "List at least two stocks: this strategy chooses or weights among them." };
   }
 
@@ -159,7 +166,9 @@ export function toConfig(form: FormState, isKnown: (symbol: string) => boolean):
               ? { kind: "momentum-rotation", top, lookbackMonths: form.lookbackMonths, absolute: form.absolute }
               : form.strategy === "risk-parity"
                 ? { kind: "risk-parity", frequency: form.frequency }
-                : { kind: "buy-and-hold" };
+                : form.strategy === "optimised"
+                  ? { kind: "optimised", objective: form.objective, frequency: form.frequency, lookbackMonths: form.estimateMonths }
+                  : { kind: "buy-and-hold" };
 
   const config = parseConfig(
     {
@@ -185,6 +194,7 @@ const STRATEGY_HELP: Record<StrategyConfig["kind"], string> = {
   rules: "Build your own: buy each stock when your conditions are met, sell it when others are.",
   "momentum-rotation": "Each month, hold the stocks below that rose the most lately. The weights below are ignored.",
   "risk-parity": "Weight the stocks below by how calm they've been, so each adds about the same risk; reset regularly. The weights below are ignored.",
+  optimised: "Each month or quarter, let an optimiser choose the weights from past prices only, as the portfolio page does today. The weights below are ignored.",
 };
 
 const input =
@@ -419,7 +429,32 @@ export function BacktestForm({ form, onChange, onRun, stocks, openTickers, first
             </label>
           </div>
         )}
-        {(form.strategy === "rebalancing" || form.strategy === "risk-parity") && (
+        {form.strategy === "optimised" && (
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label htmlFor="objective" className={label}>
+                Aim for
+              </label>
+              <select id="objective" value={form.objective} onChange={(e) => set({ objective: e.target.value as FormState["objective"] })} className={`${input} mt-1`}>
+                <option value="min-variance">Least risk</option>
+                <option value="max-sharpe">Best Sharpe ratio</option>
+              </select>
+            </div>
+            <div>
+              <label htmlFor="estimate" className={label}>
+                Estimated from the last
+              </label>
+              <select id="estimate" value={form.estimateMonths} onChange={(e) => set({ estimateMonths: Number(e.target.value) as 12 | 36 })} className={`${input} mt-1`}>
+                <option value={12}>12 months</option>
+                <option value={36}>36 months</option>
+              </select>
+            </div>
+            <p className="col-span-2 text-xs text-muted">
+              At most 40% in one stock (80% with two). Until there are three months of prices to estimate from, it holds equal weights. It&apos;s compared with equal weights rebalanced as often.
+            </p>
+          </div>
+        )}
+        {(form.strategy === "rebalancing" || form.strategy === "risk-parity" || form.strategy === "optimised") && (
           <div>
             <label htmlFor="frequency" className={label}>
               Rebalance

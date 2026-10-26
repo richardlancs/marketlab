@@ -18,6 +18,7 @@ export const LESSON_SLUGS = {
   beta: "beta",
   factors: "factor-investing",
   alpha: "alpha",
+  luck: "luck-or-skill",
   benchmark: "benchmark",
   exposure: "time-invested",
   monteCarlo: "monte-carlo",
@@ -50,6 +51,7 @@ export const LESSON_SLUGS = {
   maCrossover: "moving-average-crossover",
   momentum: "momentum-rotation",
   riskParity: "risk-parity",
+  pairsTrading: "pairs-trading",
   overfitting: "overfitting",
   machineLearning: "machine-learning",
 } as const satisfies Record<TermKey, string>;

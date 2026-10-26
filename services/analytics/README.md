@@ -2,10 +2,12 @@
 
 A FastAPI service that does all of MarketLab's numerical work. Only the Next.js server calls it, with a shared token. See [What runs where](../../docs/how-it-works.md#what-runs-where).
 
-- **Backtests:** every strategy (buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation, risk parity), and parameter sweeps with the deflated Sharpe ratio of the best result. It's MarketLab's only backtest engine.
+- **Backtests:** every strategy (buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation, risk parity, optimised weights), and parameter sweeps with the deflated Sharpe ratio of the best result. It's MarketLab's only backtest engine.
+- **"Was it luck?":** a run against 1,000 random versions of itself, and a block-bootstrap range for its Sharpe ratio.
+- **The pairs lab:** cointegration scans of same-sector pairs (Benjamini–Hochberg adjusted) and a long/short simulator for trading one pair's gap.
 - **Walk-forward tests** of the crossover, and **historical screens**.
 - **Stored analytics:** each stock's risk and technical profile and its factor exposures, calculated nightly from the price store. These feed the stock pages and the Screener.
-- **Portfolios:** performance against an index, risk, stress tests, a Monte Carlo projection, the goal planner and optimisation (SciPy), and factor exposures (statsmodels).
+- **Portfolios:** performance against an index, risk, stress tests, a Monte Carlo projection, the goal planner and optimisation (SciPy), factor exposures (statsmodels), and how holdings (or a watchlist) move together.
 - **The options lab:** Black-Scholes prices and Greeks, implied volatility, a simulated chain and strategy payoffs.
 - **The machine-learning sandbox:** small scikit-learn models tested walk-forward against luck and buy and hold.
 - **SEC company numbers:** fetched by company number and parsed.
@@ -21,13 +23,17 @@ Modules:
   - `analytics/accounting.py`: cash, shares and a ledger row per session;
   - `analytics/metrics.py`: returns, drawdown, volatility, Sharpe and exposure;
   - `analytics/engine.py`: runs them in order and is the public interface (`run_config`, `Config`, `Outcome`);
-  - `analytics/overfitting.py`: the deflated Sharpe ratio, for sweeps and the sandbox.
+  - `analytics/overfitting.py`: the deflated Sharpe ratio, for sweeps and the sandbox;
+  - `analytics/optimisation.py`: long-only optimisation with shrunk estimates, for the optimised strategy and the portfolio page;
+  - `analytics/luck.py`: "Was it luck?", random versions of a run and a bootstrap range for its Sharpe ratio.
 - Analytics built on the price store:
   - `analytics/store.py`: reads stored daily bars and writes `analytics_result` rows, with checksums and `ANALYTICS_VERSION`;
   - `analytics/technicals.py`: standard indicators as of a close (SMA, EMA, RSI, MACD, Bollinger, ATR);
   - `analytics/profiles.py`: a stock's risk and technical profile;
   - `analytics/factors.py`: factor returns from MarketLab's universe, and exposures by regression;
   - `analytics/portfolio.py`: portfolio risk, stress tests, Monte Carlo and optimisation;
+  - `analytics/correlation.py`: correlations, clustered order, closest pairs and the effective number of bets;
+  - `analytics/pairs.py`: the pairs lab, cointegration scans and the long/short gap simulator;
   - `analytics/plan.py`: the goal planner;
   - `analytics/performance.py`: a portfolio's value history rebuilt from its trades, and its performance;
   - `analytics/walkforward.py`: walk-forward testing;
@@ -43,12 +49,13 @@ Modules:
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
 - `tests/` (with `tests/fixtures/`, fixed inputs and expected results):
   - `test_engine.py`, `test_timing.py`: the engine's rules, the timing rule and no look-ahead, warm-up, missing and duplicate data, costs, and the ledger;
-  - `test_golden.py`: 23 fixed cases across every strategy, with exact results (from the former TypeScript engine, which this one matched to the last digit);
+  - `test_golden.py`: 25 fixed cases across every strategy, with exact results (23 from the former TypeScript engine, which this one matched to the last digit; the 2 optimised ones from this engine);
   - `test_api.py`, `test_sweep.py`: authentication, validation and limits; sweeps and the overfitting check;
   - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client;
   - `test_analytics.py`, `test_screens.py`: indicators, profiles, portfolio analysis, walk-forward tests and historical screening;
   - `test_performance.py`, `test_fundamentals.py`, `test_alerts.py`: against cases made by MarketLab's TypeScript code (accounts from real orders, SEC inputs, alert triggers), so moving each calculation here changed nothing;
-  - `test_factors.py`, `test_plan.py`, `test_options.py`, `test_ml.py`, `test_nightly.py`: the Phase 16 tools and the nightly runner.
+  - `test_factors.py`, `test_plan.py`, `test_options.py`, `test_ml.py`, `test_nightly.py`: the Phase 16 tools and the nightly runner;
+  - `test_luck.py`, `test_optimised.py`, `test_pairs.py`, `test_correlation.py`: the Phase 17 tools.
 
 ## Setup
 
@@ -82,7 +89,7 @@ npm run test:python            # all Python tests
 
 ## API
 
-Phase 16 endpoints, briefly (each validates its input; see `analytics/api.py` for the models):
+Phase 16 and 17 endpoints, briefly (each validates its input; see `analytics/api.py` for the models):
 
 | Endpoint | What it does |
 |---|---|
@@ -95,6 +102,9 @@ Phase 16 endpoints, briefly (each validates its input; see `analytics/api.py` fo
 | `POST /v1/analytics/portfolio/factors` | A portfolio's factor exposures at today's weights |
 | `POST /v1/options/chain` · `/price` · `/implied-volatility` · `/payoff` | The options lab |
 | `POST /v1/ml/run` · `/v1/ml/saved` · `/v1/ml/saved/{id}/reproduce` | The machine-learning sandbox, and saving and reproducing its runs |
+| `POST /v1/backtests/luck` | A run against 1,000 random versions of itself, and its Sharpe ratio's range |
+| `POST /v1/pairs/scan` · `/v1/pairs/backtest` | The pairs lab: scan same-sector pairs; trade one pair's gap the year after |
+| `POST /v1/analytics/correlation` | How a set of stocks (a watchlist) move together |
 | `POST /v1/fundamentals/company` | A company's SEC numbers, fetched by CIK and parsed |
 | `POST /v1/jobs/nightly` | The nightly runner: indicator alerts, portfolio snapshots, stock profiles, factors |
 

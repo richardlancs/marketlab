@@ -133,4 +133,19 @@ describe("strategy worked examples", () => {
     expect(text).toContain(`from ${(53 - margin).toFixed(1)}% to ${(53 + margin).toFixed(1)}%`);
     expect(text).toContain(`20 × 0.2% = ${20 * 0.2}%`);
   });
+
+  it("pairs trading: z-score, legs, hedge, stop and borrowing", () => {
+    const text = exampleText(STRATEGIES_LESSONS.pairsTrading);
+    expect(text).toContain(`(11% − 1%) ÷ 4% = ${(11 - 1) / 4}`);
+    const short = 10_000 / (1 + 1.5);
+    expect(text).toContain(`$10,000 ÷ 2.5 = ${money(short)} short`);
+    expect(text).toContain(`$4,000 × 1.5 = ${money(short * 1.5)} long`);
+    expect(text).toContain(`gains $${6_000 * 0.01}`);
+    expect(text).toContain(`about $${4_000 * 0.015}`);
+    expect(text).toContain(`1% + 4 × 4% = ${1 + 4 * 4}%`);
+    expect(text).toContain(`$4,000 × 0.5% = $${4_000 * 0.005} a year`);
+    // Quiz: z of −7.5% against a 3% spread, and 400 tests at 5%.
+    expect(-7.5 / 3).toBe(-2.5);
+    expect(400 * 0.05).toBe(20);
+  });
 });

@@ -167,6 +167,13 @@ def period_returns(equity: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[s
     return {"months": months, "years": years}
 
 
-def extras(run: Mapping[str, Any], benchmark: Mapping[str, Any], costs: Mapping[str, Any]) -> dict[str, Any]:
-    """What the results page shows beyond the run itself: the measures above and both curves' period returns."""
-    return {"analysis": analyse_run(run, benchmark, costs), "periods": {"run": period_returns(run["equity"]), "benchmark": period_returns(benchmark["equity"])}}
+def extras(run: Mapping[str, Any], benchmark: Mapping[str, Any], costs: Mapping[str, Any], alternative: Mapping[str, Any] | None = None) -> dict[str, Any]:
+    """
+    What the results page shows beyond the run itself: the measures above and
+    both curves' period returns; and for an optimised run, the equal-weight
+    run it's compared with (engine.py Outcome.alternative): its values and metrics.
+    """
+    out: dict[str, Any] = {"analysis": analyse_run(run, benchmark, costs), "periods": {"run": period_returns(run["equity"]), "benchmark": period_returns(benchmark["equity"])}}
+    if alternative is not None:
+        out["alternative"] = {"label": "Equal weights", "equity": [{"time": p["time"], "price": round(p["price"], 2)} for p in alternative["equity"]], "metrics": alternative["metrics"]}
+    return out

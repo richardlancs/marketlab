@@ -3,6 +3,7 @@ import { TrendRangePicker } from "@/components/charts/trend-line";
 import { StorageLabel } from "@/components/account/storage-label";
 import { AlertsPanel } from "@/components/alerts/alerts-panel";
 import { toStockTableRow } from "@/components/stocks/stock-table-rows";
+import { WatchlistCorrelation } from "@/components/stocks/watchlist-correlation";
 import { WatchlistTable } from "@/components/stocks/watchlist-table";
 import { Card } from "@/components/ui/card";
 import { Tabs } from "@/components/ui/tabs";
@@ -43,6 +44,7 @@ export default async function WatchlistPage() {
               </Card>
             ),
           },
+          { id: "together", label: "How they move together", content: <WatchlistCorrelation /> },
           { id: "alerts", label: "Price alerts", content: <AlertsPanel /> },
         ]}
       />

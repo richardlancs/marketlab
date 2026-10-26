@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
-import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib/backtest/config";
+import { OBJECTIVE_NAMES, STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
 import type { ResultExtras, RunAnalysis } from "@/lib/backtest/extras";
 import { describeRuleSet } from "@/lib/backtest/rules";
+import { LuckCard } from "./luck-card";
 import { ReturnHeatmap } from "./return-heatmap";
 import { Explain } from "@/components/ui/explain";
 import { formatCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
@@ -37,7 +38,7 @@ export const ROWS: { label: string; term?: TermKey; cell: (m: Metrics) => { text
 
 const TRADES_SHOWN = 20;
 
-export function BacktestResults({ config, outcome, extras }: { config: BacktestConfig; outcome: BacktestOutcome; extras?: ResultExtras }) {
+export function BacktestResults({ config, outcome, extras, savedRunId }: { config: BacktestConfig; outcome: BacktestOutcome; extras?: ResultExtras; savedRunId?: string }) {
   const [allTrades, setAllTrades] = useState(false);
   const { run, benchmark } = outcome;
   const times = run.equity.map((p) => p.time);
@@ -49,6 +50,8 @@ export function BacktestResults({ config, outcome, extras }: { config: BacktestC
   const monthEnds = run.equity.filter((p, i) => i === run.equity.length - 1 || new Date(p.time).getUTCMonth() !== new Date(run.equity[i + 1].time).getUTCMonth());
   const benchmarkAt = new Map(benchmark.equity.map((p) => [p.time, p.price]));
   const trades = allTrades ? run.trades : run.trades.slice(0, TRADES_SHOWN);
+  // An optimised run's equal-weight comparison, on the same days.
+  const alternative = extras?.alternative && extras.alternative.equity.length === run.equity.length ? extras.alternative : null;
 
   return (
     <div className="space-y-6">
@@ -63,6 +66,13 @@ export function BacktestResults({ config, outcome, extras }: { config: BacktestC
           Buy when {describeRuleSet(config.strategy.entry)}. Sell when {describeRuleSet(config.strategy.exit)}.
         </p>
       )}
+      {config.strategy.kind === "optimised" && alternative && (
+        <p className="-mt-3 text-sm text-muted">
+          Re-optimised for the {OBJECTIVE_NAMES[config.strategy.objective]} every {config.strategy.frequency === "monthly" ? "month" : "quarter"} from the last {config.strategy.lookbackMonths} months of prices. The same
+          stocks at equal weights, rebalanced as often, made {formatPercent(alternative.metrics.totalReturn)} with a Sharpe ratio of {alternative.metrics.sharpe === null ? "—" : alternative.metrics.sharpe.toFixed(2)}
+          {alternative.metrics.sharpe !== null && run.metrics.sharpe !== null && (run.metrics.sharpe > alternative.metrics.sharpe ? ": the optimiser helped here." : ": the optimiser didn't beat simply splitting evenly.")}
+        </p>
+      )}
 
       <ComparisonChart
         label={`Portfolio value: ${strategyName} compared with ${other}`}
@@ -70,6 +80,7 @@ export function BacktestResults({ config, outcome, extras }: { config: BacktestC
         series={[
           { label: strategyName, color: "var(--series-1)", values: run.equity.map((p) => p.price) },
           { label: other, color: "var(--series-2)", dashed: true, values: benchmark.equity.map((p) => p.price) },
+          ...(alternative ? [{ label: alternative.label, color: "var(--series-3)", dashed: true, values: alternative.equity.map((p) => p.price) }] : []),
         ]}
       />
 
@@ -118,6 +129,8 @@ export function BacktestResults({ config, outcome, extras }: { config: BacktestC
       {extras && <MoreMeasures analysis={extras.analysis} benchmarkLabel={other} />}
 
       {extras && <ReturnHeatmap periods={extras.periods} strategyName={strategyName} benchmarkName={other} />}
+
+      <LuckCard key={`${savedRunId ?? ""}${JSON.stringify(config)}`} config={config} savedRunId={savedRunId} strategyName={strategyName} benchmarkName={other} />
 
       {/* The chart's numbers as a table, for screen readers and for reading exact values. */}
       <details className="group text-sm">

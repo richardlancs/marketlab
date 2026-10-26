@@ -18,19 +18,22 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
   - risk and technicals on every stock page;
   - a screener with presets;
   - portfolio risk analysis with stress tests, a Monte Carlo projection and optimised weightings;
+  - how holdings or watched stocks move together: a clustered correlation map and the number of independent bets;
   - a goal planner: monthly contributions or withdrawals, a target and inflation;
   - factor analysis: what drives a stock or portfolio (market, size, value, momentum, low volatility);
   - an options lab: a simulated chain, the Greeks, implied volatility and strategy payoffs.
 - **Alerts** on prices and indicators (RSI, average crosses, big moves, 52-week highs), checked at every close by a daily job.
 - **Portfolio history** kept nightly, so past values stay exact.
 - **Backtesting:**
-  - six built-in strategies (buy and hold, moving-average crossover, dollar-cost averaging, rebalancing, momentum rotation, risk parity), or your own rules;
+  - seven built-in strategies (buy and hold, moving-average crossover, dollar-cost averaging, rebalancing, momentum rotation, risk parity, optimised weights), or your own rules;
   - up to five stocks, with trading costs and a benchmark;
   - parameter sweeps, with overfitting checks and walk-forward testing;
+  - "Was it luck?": any run against 1,000 random versions of itself, and a range for its Sharpe ratio;
   - saved runs that can be reproduced exactly;
   - share links;
+  - a pairs-trading lab: find cointegrated pairs (adjusted for how many were tested) and trade the gap the year after;
   - a machine-learning sandbox that tests models walk-forward against luck and buy and hold.
-- **Learn:** 47 short lessons with demos and quizzes, plus ⓘ explanations of terms throughout the app.
+- **Learn:** 49 short lessons with demos and quizzes, plus ⓘ explanations of terms throughout the app.
 - **Leaderboard:** opt-in, under a display name.
 
 ## Quick start
@@ -69,7 +72,7 @@ npm run dev                     # http://localhost:3000, and the Python service 
 | `lib/market/` | Market data: the mock market, Tiingo, the stock catalog and caching |
 | `lib/backtest/` | Backtest settings, the Python client, price snapshots, extra measures, and the Learn demos' small engine |
 | `lib/analytics/` | Stored analytics: the price store sync, stock profiles, factors, the screener, portfolio analysis and plans |
-| `lib/options/`, `lib/ml/` | The options lab and the machine-learning sandbox (types and server calls) |
+| `lib/options/`, `lib/ml/`, `lib/pairs/` | The options lab, the machine-learning sandbox and the pairs lab (types and server calls) |
 | `lib/lessons/` | The lessons and their demos |
 | `lib/db/` | The database schema (Drizzle), accounts, guests, saved runs |
 | `lib/*-actions.ts` | Server Actions: every change goes through these |
@@ -83,7 +86,7 @@ The mock market is the default and needs no key. Setting `TIINGO_API_KEY` gives 
 
 ## The analytics service
 
-Every calculation runs in the Python service: backtests, sweeps and walk-forward tests, historical screens, portfolio performance and risk, the goal planner, stock profiles and factors, the options lab, the machine-learning sandbox, SEC company numbers, and the nightly jobs. The Next.js app keeps accounts, trading, market data and the pages. See [What runs where](docs/how-it-works.md#what-runs-where).
+Every calculation runs in the Python service: backtests, sweeps and walk-forward tests, historical screens, the luck check, the pairs lab, portfolio performance, risk and correlation, the goal planner, stock profiles and factors, the options lab, the machine-learning sandbox, SEC company numbers, and the nightly jobs. The Next.js app keeps accounts, trading, market data and the pages. See [What runs where](docs/how-it-works.md#what-runs-where).
 
 Backtests follow one timing rule:
 

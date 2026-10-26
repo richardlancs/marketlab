@@ -146,8 +146,16 @@ describe("config", () => {
     ["negative costs", { ...valid, costs: { commission: -1, slippageBps: 0 } }],
     ["a version from a newer app", { ...valid, version: 3 }],
     ["a nonsense version", { ...valid, version: "2" }],
+    ["optimising one stock", { ...valid, holdings: [{ symbol: "AAPL", weight: 1 }], strategy: { kind: "optimised", objective: "min-variance", frequency: "monthly", lookbackMonths: 12 } }],
+    ["an odd optimiser look-back", { ...valid, strategy: { kind: "optimised", objective: "min-variance", frequency: "monthly", lookbackMonths: 24 } }],
+    ["an unknown objective", { ...valid, strategy: { kind: "optimised", objective: "max-return", frequency: "monthly", lookbackMonths: 12 } }],
   ])("rejects %s", (_, config) => {
     expect(parseConfig(config, symbols)).toBeNull();
+  });
+
+  it("accepts an optimised strategy", () => {
+    const optimised: BacktestConfig = { ...valid, strategy: { kind: "optimised", objective: "max-sharpe", frequency: "quarterly", lookbackMonths: 36 } };
+    expect(parseConfig(optimised, symbols)).toEqual(optimised);
   });
 
 });

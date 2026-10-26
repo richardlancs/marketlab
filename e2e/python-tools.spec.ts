@@ -1,4 +1,4 @@
-import { expect, test } from "./fixtures";
+import { backtestLink, expect, lastFiveYears, test, waitForResults } from "./fixtures";
 
 // Phase 16's Python tools, end to end: the analytics service calculates every number here.
 
@@ -52,4 +52,54 @@ test("the machine-learning sandbox trains, saves and reproduces a run", async ({
   await page.getByRole("region", { name: "Saved machine-learning runs" }).getByRole("button", { name: /^E2E model/ }).click();
   await page.getByRole("button", { name: "Reproduce from saved prices" }).click();
   await expect(page.getByText(/the same result ✓/)).toBeVisible({ timeout: 90_000 });
+});
+
+const fiveYears = (strategy: object, holdings: { symbol: string; weight: number }[]) => ({
+  version: 2,
+  holdings,
+  strategy,
+  ...lastFiveYears(),
+  initialCash: 10_000,
+  costs: { commission: 1, slippageBps: 5 },
+  benchmark: "same-stocks",
+});
+
+test("a backtest is checked against random versions of itself", async ({ page }) => {
+  await page.goto(backtestLink(fiveYears({ kind: "moving-average", fast: 20, slow: 100 }, [{ symbol: "AAPL", weight: 1 }])));
+  await waitForResults(page);
+  await page.getByRole("button", { name: "Was it luck?" }).click();
+  const luck = page.locator('section[aria-labelledby="luck-heading"]');
+  await expect(luck.getByText(/It beat \d+% of 1,000 random timings/)).toBeVisible({ timeout: 60_000 });
+  await expect(luck.getByText(/could plausibly have been anywhere from/)).toBeVisible();
+  await expect(luck.getByRole("img", { name: /Histogram of 1000 random versions/ })).toBeVisible();
+});
+
+test("optimised weights run next to equal weights", async ({ page }) => {
+  const three = [
+    { symbol: "NVDA", weight: 0.34 },
+    { symbol: "KO", weight: 0.33 },
+    { symbol: "JPM", weight: 0.33 },
+  ];
+  await page.goto(backtestLink(fiveYears({ kind: "optimised", objective: "min-variance", frequency: "monthly", lookbackMonths: 12 }, three)));
+  await waitForResults(page);
+  const results = page.locator('section[aria-labelledby="results"]');
+  await expect(results).toContainText("Re-optimised for the least risk every month");
+  await expect(results).toContainText("The same stocks at equal weights, rebalanced as often, made");
+});
+
+test("the pairs lab scans for pairs and tests one", async ({ page }) => {
+  test.slow(); // a scan reads every stock's stored prices
+  await page.goto("/backtest#pairs");
+  await page.getByRole("button", { name: "Find pairs" }).click();
+  await expect(page.getByText(/same-sector pairs tested/)).toBeVisible({ timeout: 90_000 });
+  await page.getByRole("button", { name: /^Test / }).first().click();
+  await expect(page.getByText("Time in a trade")).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("img", { name: /z-score each day/ })).toBeVisible();
+});
+
+test("the portfolio and the watchlist show how many independent bets they hold", async ({ page }) => {
+  await page.goto("/portfolio#risk");
+  await expect(page.getByText(/independent bets?/).first()).toBeVisible({ timeout: 90_000 });
+  await page.goto("/watchlist#together");
+  await expect(page.getByText(/independent bets?|Watch two or more stocks/).first()).toBeVisible({ timeout: 60_000 });
 });

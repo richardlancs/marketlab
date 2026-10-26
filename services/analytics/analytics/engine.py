@@ -59,6 +59,7 @@ from .strategies import (
     LookAheadError,
     MomentumRotation,
     MovingAverageCrossover,
+    Optimised,
     Rebalancing,
     RiskParity,
     Rules,
@@ -69,12 +70,12 @@ from .strategies import (
 __all__ = [
     "ASSUMPTIONS", "ENGINE_NAME", "ENGINE_VERSION", "MARKET", "MAX_POINTS", "MIN_TRADE_VALUE", "TRADING_DAYS_PER_YEAR", "YEAR_MS",
     "Buy", "BuyAndHold", "Config", "Costs", "Decision", "DollarCostAveraging", "Rebalancing", "Rules", "DecisionContext", "DayRecord", "History", "InputError", "LookAheadError",
-    "Metrics", "MovingAverageCrossover", "Outcome", "Run", "Sessions", "Strategy", "Target", "Trade", "Warmup",
+    "Metrics", "MovingAverageCrossover", "Optimised", "Outcome", "Run", "Sessions", "Strategy", "Target", "Trade", "Warmup",
     "align", "compute_metrics", "run_backtest", "run_config", "to_series",
 ]
 
 ENGINE_NAME = "python"
-ENGINE_VERSION = "1.3.0"
+ENGINE_VERSION = "1.4.0"
 
 #: The rules every run follows, in words (recorded with results; matches lib/backtest/engines.ts ASSUMPTIONS).
 ASSUMPTIONS = {
@@ -194,7 +195,7 @@ class Config:
     """The settings MarketLab's backtester uses (lib/backtest/config.ts), for the strategies this engine runs."""
 
     holdings: list[tuple[str, float]]
-    strategy: Literal["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity"]
+    strategy: Literal["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity", "optimised"]
     start: int
     end: int
     initial_cash: float
@@ -210,6 +211,11 @@ class Config:
     top: int | None = None
     lookback_months: int | None = None
     absolute: bool | None = None
+    objective: Literal["min-variance", "max-sharpe"] | None = None
+
+
+#: What an optimised run is compared with, besides its benchmark: the same stocks at equal weights, rebalanced as often.
+EQUAL_WEIGHTS = "Equal weights"
 
 
 @dataclass(frozen=True)
@@ -217,6 +223,8 @@ class Outcome:
     run: Run
     benchmark: Run
     warnings: list[str]
+    alternative: Run | None = None
+    """For an optimised run: the same stocks at equal weights, rebalanced on the same schedule (EQUAL_WEIGHTS)."""
 
 
 MARKET = "MARKET"
@@ -258,6 +266,10 @@ def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Serie
         if config.frequency not in ("monthly", "quarterly"):
             raise InputError("Risk parity needs a frequency: monthly or quarterly.")
         strategy = RiskParity(weights, config.frequency)
+    elif config.strategy == "optimised":
+        if config.frequency not in ("monthly", "quarterly") or config.objective not in ("min-variance", "max-sharpe") or config.lookback_months not in (12, 36):
+            raise InputError("Optimising needs an objective (least risk or best Sharpe), a frequency and a 12 or 36-month look-back.")
+        strategy = Optimised(weights, config.objective, config.frequency, config.lookback_months)
     elif config.strategy == "rebalancing":
         if config.frequency not in ("monthly", "quarterly"):
             raise InputError("Rebalancing needs a frequency: monthly or quarterly.")
@@ -300,4 +312,8 @@ def run_config(config: Config, prices: Mapping[str, pd.Series], market: pd.Serie
         benchmark = run_backtest({MARKET: market}, BuyAndHold({MARKET: 1.0}), start=first, end=last, initial_cash=config.initial_cash, costs=config.costs)
     else:
         benchmark = run_backtest(series, BuyAndHold(weights), start=first, end=last, initial_cash=config.initial_cash, costs=config.costs)
-    return Outcome(run=run, benchmark=benchmark, warnings=warnings)
+    alternative = None
+    if config.strategy == "optimised":
+        equal = {s: 1 / len(weights) for s in weights}
+        alternative = simulate(sessions, Rebalancing(equal, config.frequency), initial_cash=config.initial_cash, costs=config.costs)
+    return Outcome(run=run, benchmark=benchmark, warnings=warnings, alternative=alternative)

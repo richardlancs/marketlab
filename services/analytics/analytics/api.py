@@ -8,14 +8,18 @@ Next.js server's own market data, never from a browser.
 
     GET  /health                             Liveness, and the engine version. No token needed.
     POST /v1/backtests                       Runs one backtest. See BacktestRequest / BacktestResponse.
+    POST /v1/backtests/luck                  A run against 1,000 random versions of itself, and its Sharpe ratio's range.
     POST /v1/saved-runs                      Calculates a run from a snapshot and saves it (database).
     POST /v1/saved-runs/{id}/reproduce       Reads a saved run (database), recalculates it, compares.
     POST /v1/analytics/stock-profiles        Recalculates stored stock profiles that are missing or stale (database).
     POST /v1/analytics/portfolio             Risk, stress tests, Monte Carlo and optimisation for a set of holdings (stored prices).
+    POST /v1/analytics/correlation           How a set of stocks move together: correlations, clusters, effective bets (stored prices).
     POST /v1/backtests/walk-forward          Walk-forward test of a moving-average crossover (stored prices).
     POST /v1/screens/history                 A stock screen applied every month over the past (stored prices).
     POST /v1/saved-screens                   Calculates a historical screen and saves it with its input prices (database).
     POST /v1/saved-screens/{id}/reproduce    Recalculates a saved historical screen from its saved prices, compares.
+    POST /v1/pairs/scan                      Same-sector pairs tested for cointegration over a formation year (stored prices).
+    POST /v1/pairs/backtest                  One pair's gap traded over the year after its formation (stored prices).
 """
 
 from __future__ import annotations
@@ -35,7 +39,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import analysis, engine, factors, fundamentals, jobs, ml, options, overfitting, performance, plan, portfolio, saved, screener, screens, snapshots, store, walkforward
+from . import analysis, correlation, engine, factors, fundamentals, jobs, luck, ml, options, overfitting, pairs, performance, plan, portfolio, saved, screener, screens, snapshots, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -176,6 +180,13 @@ class RiskParityModel(Model):
     frequency: Literal["monthly", "quarterly"]
 
 
+class OptimisedModel(Model):
+    kind: Literal["optimised"]
+    objective: Literal["min-variance", "max-sharpe"]
+    frequency: Literal["monthly", "quarterly"]
+    lookback_months: Literal[12, 36]
+
+
 class CostsModel(Model):
     commission: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
     slippage_bps: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)]
@@ -186,7 +197,7 @@ class ConfigModel(Model):
 
     version: Annotated[int, Field(ge=1, le=2)]
     holdings: Annotated[list[Holding], Field(min_length=1, max_length=5)]
-    strategy: Annotated[Union[BuyAndHold, MovingAverage, DollarCostAveraging, Rebalancing, RulesStrategy, MomentumRotationModel, RiskParityModel], Field(discriminator="kind")]
+    strategy: Annotated[Union[BuyAndHold, MovingAverage, DollarCostAveraging, Rebalancing, RulesStrategy, MomentumRotationModel, RiskParityModel, OptimisedModel], Field(discriminator="kind")]
     start: int
     end: int
     initial_cash: Annotated[float, Field(ge=100, le=10_000_000, allow_inf_nan=False)]
@@ -204,6 +215,8 @@ class ConfigModel(Model):
             raise ValueError("the weights must add up to 100%")
         if self.strategy.kind == "momentum-rotation" and self.strategy.top > len(self.holdings):
             raise ValueError("momentum rotation can't hold more stocks than are listed")
+        if self.strategy.kind == "optimised" and len(self.holdings) < 2:
+            raise ValueError("optimising needs at least two stocks")
         return self
 
 
@@ -437,6 +450,7 @@ def to_engine_config(c: ConfigModel, warmup: str = "within-period") -> engine.Co
         top=getattr(c.strategy, "top", None),
         lookback_months=getattr(c.strategy, "lookback_months", None),
         absolute=getattr(c.strategy, "absolute", None),
+        objective=getattr(c.strategy, "objective", None),
         entry=c.strategy.entry.model_dump() if c.strategy.kind == "rules" else None,
         exit=c.strategy.exit.model_dump() if c.strategy.kind == "rules" else None,
     )
@@ -470,7 +484,12 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
         warnings=outcome.warnings,
         assumptions=engine.ASSUMPTIONS,
         warmup=body.warmup,
-        extras=analysis.extras(run.model_dump(by_alias=True), benchmark.model_dump(by_alias=True), body.config.costs.model_dump(by_alias=True)),
+        extras=analysis.extras(
+            run.model_dump(by_alias=True),
+            benchmark.model_dump(by_alias=True),
+            body.config.costs.model_dump(by_alias=True),
+            _run_model(outcome.alternative).model_dump(by_alias=True) if outcome.alternative else None,
+        ),
     )
 
 
@@ -489,6 +508,27 @@ def analyse(body: AnalyseRequest) -> dict:
         return {"extras": analysis.extras(body.run, body.benchmark, body.costs.model_dump(by_alias=True))}
     except (KeyError, TypeError, ZeroDivisionError, IndexError) as error:
         raise HTTPException(status_code=422, detail=f"That result couldn't be read: {error}") from error
+
+
+class LuckRequest(Model):
+    """A backtest to check against random versions of itself (luck.py): its settings and prices, as for /v1/backtests."""
+
+    config: ConfigModel
+    prices: Annotated[dict[str, SeriesModel], Field(min_length=1, max_length=5)]
+    market: SeriesModel | None = None
+
+
+@app.post("/v1/backtests/luck", dependencies=[Depends(require_token)])
+def run_luck(body: LuckRequest) -> dict:
+    """How the run compares with 1,000 random versions of itself, and a range for its Sharpe ratio (luck.py)."""
+    try:
+        prices = {symbol: engine.to_series(symbol, s.times, s.prices) for symbol, s in body.prices.items()}
+        market = engine.to_series("Market", body.market.times, body.market.prices) if body.market else None
+        extras = saved.extras_of({symbol: s.model_dump() for symbol, s in body.prices.items()})
+        result = luck.luck(to_engine_config(body.config), prices, market, extras)
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION}, "result": result}
 
 
 class SweepRequest(Model):
@@ -1165,3 +1205,89 @@ def reproduce_screen(run_id: Annotated[str, Path(min_length=1, max_length=64)], 
         raise HTTPException(status_code=409, detail=str(error)) from error
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+# --- Pairs trading (pairs.py) ------------------------------------------------------
+
+YEAR_MS = 366 * 86_400_000
+
+
+class PairStock(Model):
+    symbol: Symbol
+    sector: Annotated[str, Field(max_length=60)] | None = None
+
+
+class PairScanRequest(Model):
+    source: Source
+    universe: Annotated[list[PairStock], Field(min_length=2, max_length=200)]
+    """The stocks to pair up (the Next.js server's catalog), with their sectors: only same-sector pairs are tested."""
+    formation_end: int
+
+
+@app.post("/v1/pairs/scan", dependencies=[Depends(require_token)])
+def pair_scan(body: PairScanRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Every same-sector pair tested for cointegration over the formation year to `formationEnd`, best first (pairs.py)."""
+    symbols = list(dict.fromkeys(s.symbol for s in body.universe))
+    closes = store.load_closes(db, body.source, symbols, body.formation_end - 2 * YEAR_MS, body.formation_end)
+    try:
+        return {"result": pairs.scan(closes, {s.symbol: s.sector or "Other" for s in body.universe}, body.formation_end)}
+    except pairs.PairError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+class PairBacktestRequest(Model):
+    source: Source
+    a: Symbol
+    b: Symbol
+    formation_end: int
+    entry: Annotated[float, Field(ge=0.5, le=4, allow_inf_nan=False)] = 2.0
+    exit: Annotated[float, Field(ge=0, le=3, allow_inf_nan=False)] = 0.0
+    stop: Annotated[float, Field(ge=1, le=8, allow_inf_nan=False)] = 4.0
+    initial_cash: Annotated[float, Field(ge=100, le=10_000_000, allow_inf_nan=False)] = 10_000.0
+    costs: CostsModel
+    borrow_bps: Annotated[float, Field(ge=0, le=2000, allow_inf_nan=False)] = 50.0
+
+    @model_validator(mode="after")
+    def different(self):
+        if self.a == self.b:
+            raise ValueError("a pair needs two different stocks")
+        return self
+
+
+@app.post("/v1/pairs/backtest", dependencies=[Depends(require_token)])
+def pair_backtest(body: PairBacktestRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """One pair's gap traded over the year after its formation year, with the formation's numbers only (pairs.py)."""
+    closes = store.load_closes(db, body.source, [body.a, body.b], body.formation_end - 2 * YEAR_MS, body.formation_end + 2 * YEAR_MS)
+    missing = [s for s in (body.a, body.b) if s not in closes]
+    if missing:
+        raise HTTPException(status_code=422, detail=f"No stored prices for {', '.join(missing)}.")
+    try:
+        result = pairs.backtest(
+            closes[body.a], closes[body.b], body.formation_end, names=(body.a, body.b),
+            entry=body.entry, exit=body.exit, stop=body.stop, initial_cash=body.initial_cash,
+            commission=body.costs.commission, slippage_bps=body.costs.slippage_bps, borrow_bps=body.borrow_bps,
+        )
+    except pairs.PairError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"result": {**result, "a": body.a, "b": body.b, "metrics": MetricsModel(**result["metrics"].__dict__).model_dump(by_alias=True)}}
+
+
+# --- How stocks move together (correlation.py) -----------------------------------------
+
+
+class CorrelationRequest(Model):
+    source: Source
+    symbols: Annotated[list[Symbol], Field(min_length=2, max_length=30)]
+
+
+@app.post("/v1/analytics/correlation", dependencies=[Depends(require_token)])
+def stock_correlation(body: CorrelationRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The last year's daily-return correlations of these stocks (the watchlist's), clustered (correlation.py)."""
+    symbols = list(dict.fromkeys(body.symbols))
+    bars = store.load_bars(db, body.source, symbols)
+    usable = [s for s in symbols if s in bars and len(bars[s]) >= 60]
+    if len(usable) < 2:
+        raise HTTPException(status_code=422, detail="At least two of these stocks need a few months of prices to compare.")
+    closes = pd.concat({s: bars[s]["adj_close"] for s in usable}, axis=1, join="inner").sort_index()
+    returns = closes.pct_change().iloc[1:].iloc[-portfolio.TRADING_DAYS :]
+    return {"symbols": usable, "leftOut": [s for s in symbols if s not in usable], "asOf": int(returns.index[-1]), **correlation.summary(returns)}

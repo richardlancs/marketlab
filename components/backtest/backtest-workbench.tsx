@@ -244,7 +244,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             {view.kind === "saved" && (
               <>
                 <SavedRunBar view={view} onRerun={() => openConfig(view.run.config)} onReproduce={() => reproduce(view.run)} />
-                <BacktestResults config={view.run.config} outcome={view.result.outcome} extras={view.result.extras} />
+                <BacktestResults config={view.run.config} outcome={view.result.outcome} extras={view.result.extras} savedRunId={view.run.id} />
                 <RunProvenance provenance={view.result.provenance} saved={view.run} />
               </>
             )}

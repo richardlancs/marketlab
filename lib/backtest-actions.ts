@@ -9,7 +9,7 @@
  */
 import { MAX_RUN_NAME, MAX_SAVED_RUNS, parseConfig, parseSavedRun, summarize, type BacktestConfig, type SavedRun } from "./backtest/config";
 import { analyseOnPython, PythonEngineError, reproducePythonRun, savePythonRun } from "./backtest/python-client";
-import { runFull, runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
+import { luckOnServer, runFull, runOnServer, sweepOnServer, type LuckOutcome, type RunResult, type SweepOutcome } from "./backtest/server";
 import type { Comparison, StoredResult } from "./backtest/stored";
 import type { Axis } from "./backtest/sweep";
 import { walkForwardOnServer, type WalkForwardResult } from "./analytics/server";
@@ -160,6 +160,26 @@ export async function walkForwardAction(
   if (![1, 2, 3].includes(trainYears as number) || ![3, 6, 12].includes(testMonths as number)) return { ok: false, message: INVALID };
   if (!(await allow("sweep", 6, 60))) return { ok: false, message: "You're running a lot of tests. Wait a minute and try again." };
   return walkForwardOnServer(parsed, f, s, trainYears as number, testMonths as number);
+}
+
+/**
+ * "Was it luck?" for a run: 1,000 random versions of it, and a range for its
+ * Sharpe ratio. With `savedRunId` (one of this visitor's saved runs), on the
+ * prices that run was saved with, so it matches the result shown; otherwise
+ * on today's prices. It has its own limit: each check is a thousand runs.
+ */
+export async function runLuckAction(config: unknown, savedRunId?: unknown): Promise<LuckOutcome> {
+  const parsed = parseConfig(config, isSymbolFormat);
+  if (!parsed) return { ok: false, message: INVALID };
+  if (savedRunId !== undefined && (typeof savedRunId !== "string" || savedRunId.length > 64)) return { ok: false, message: "That saved run doesn't exist." };
+  if (!(await allow("luck", 10, 60))) return { ok: false, message: "You're running a lot of checks. Wait a minute and try again." };
+  if (typeof savedRunId === "string") {
+    const owner = await currentOwner({ create: false });
+    const found = owner ? await backtests.get(owner.id, savedRunId) : null; // only the owner's own runs
+    if (!found) return { ok: false, message: "That saved run doesn't exist." };
+    if (found.stored) return luckOnServer(parsed, found.stored.snapshot);
+  }
+  return luckOnServer(parsed);
 }
 
 export type SavedResult = { ok: true; run: SavedRun; stored: StoredResult | null } | { ok: false; message: string };

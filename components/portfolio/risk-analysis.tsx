@@ -4,9 +4,12 @@ import { useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
+import { CorrelationMap } from "@/components/analytics/correlation-map";
 import { GoalPlanner } from "./goal-planner";
 import { ServiceError, useServiceData } from "@/components/ui/service-data";
 import type { PortfolioAnalysis, Weighting } from "@/lib/analytics/portfolio";
+import { CONFIG_VERSION, LIMITS } from "@/lib/backtest/config";
+import { shareFragment } from "@/lib/backtest/share";
 import { formatCompactCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
 import type { TermKey } from "@/lib/glossary";
 
@@ -151,8 +154,8 @@ function RiskView({ a }: { a: PortfolioAnalysis }) {
           <h3 className="flex items-center gap-1.5 text-sm font-semibold">
             How they move together <Explain term="correlation" />
           </h3>
-          <p className="text-xs text-muted">Correlation of daily returns over the last year: 1 moves in lockstep, 0 unrelated, below 0 opposite.</p>
-          <Heatmap symbols={a.symbols} matrix={r.correlation} />
+          <p className="text-xs text-muted">Correlation of daily returns over the last year, similar stocks side by side.</p>
+          <CorrelationMap symbols={a.symbols} summary={r} />
         </div>
       </div>
 
@@ -169,50 +172,6 @@ function RiskView({ a }: { a: PortfolioAnalysis }) {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function Heatmap({ symbols, matrix }: { symbols: string[]; matrix: (number | null)[][] }) {
-  if (symbols.length < 2) return <p className="mt-3 text-sm text-muted">Hold two or more stocks to compare them.</p>;
-  return (
-    <div className="mt-3 overflow-x-auto">
-      <table className="text-xs tabular-nums">
-        <thead>
-          <tr>
-            <td />
-            {symbols.map((s) => (
-              <th key={s} scope="col" className="px-1 pb-1 font-medium text-muted">
-                {s}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {symbols.map((row, i) => (
-            <tr key={row}>
-              <th scope="row" className="pr-2 text-right font-medium text-muted">
-                {row}
-              </th>
-              {symbols.map((col, j) => {
-                const c = matrix[i][j] ?? 0;
-                const strength = Math.round(Math.min(1, Math.abs(c)) * 70);
-                return (
-                  <td key={col} className="p-0.5">
-                    <div
-                      title={`${row} and ${col}: ${num(c)}`}
-                      className="grid size-10 place-items-center rounded-md"
-                      style={{ background: `color-mix(in oklab, var(${c >= 0 ? "--accent" : "--loss"}) ${strength}%, transparent)`, color: strength > 45 ? "white" : undefined }}
-                    >
-                      {i === j ? "" : num(c)}
-                    </div>
-                  </td>
-                );
-              })}
-            </tr>
-          ))}
-        </tbody>
-      </table>
     </div>
   );
 }
@@ -328,6 +287,7 @@ function OptimiseView({ a }: { a: PortfolioAnalysis }) {
         The same stocks (your cash aside), weighted other ways: long only, at most {share(o.cap)} in one stock. Expected returns and risks are estimated from the last {Math.round(o.estimationSessions / 252)} years and deliberately
         toned down, because past returns are a poor guide; treat this as a way to see trade-offs, not a recommendation.
       </p>
+      <TestOverTime a={a} />
       <div className="mt-4 grid gap-6 lg:grid-cols-2">
         <div className="overflow-x-auto">
           <table className="w-full text-sm tabular-nums">
@@ -402,5 +362,43 @@ function OptimiseView({ a }: { a: PortfolioAnalysis }) {
         </figure>
       </div>
     </div>
+  );
+}
+
+const YEAR = 365.25 * 24 * 60 * 60 * 1000;
+
+/**
+ * A link to the backtester with these stocks (the largest five, its limit)
+ * re-optimised every month on past prices only: does the optimiser actually
+ * help over time, or only in hindsight?
+ */
+function TestOverTime({ a }: { a: PortfolioAnalysis }) {
+  const largest = a.symbols
+    .map((symbol, i) => ({ symbol, weight: a.weights[i] ?? 0 }))
+    .sort((x, y) => y.weight - x.weight)
+    .slice(0, LIMITS.maxHoldings);
+  const link = (objective: "min-variance" | "max-sharpe") =>
+    `/backtest#${shareFragment({
+      version: CONFIG_VERSION,
+      holdings: largest.map((h, i) => ({ symbol: h.symbol, weight: i === 0 ? 1 - (largest.length - 1) * Math.round(1e4 / largest.length) / 1e4 : Math.round(1e4 / largest.length) / 1e4 })),
+      strategy: { kind: "optimised", objective, frequency: "monthly", lookbackMonths: 36 },
+      start: Math.round(a.asOf - 5 * YEAR),
+      end: a.asOf,
+      initialCash: 10_000,
+      costs: { commission: 0, slippageBps: 5 },
+      benchmark: "same-stocks",
+    })}`;
+  return (
+    <p className="mt-3 text-sm">
+      These use today&apos;s hindsight. Test the same idea over time, re-optimising every month from past prices only:{" "}
+      <a href={link("min-variance")} className="font-medium text-accent hover:underline">
+        least risk
+      </a>{" "}
+      or{" "}
+      <a href={link("max-sharpe")} className="font-medium text-accent hover:underline">
+        best Sharpe
+      </a>
+      {a.symbols.length > LIMITS.maxHoldings && ` (your largest ${LIMITS.maxHoldings} holdings)`}.
+    </p>
   );
 }

@@ -38,14 +38,14 @@ AUTH = {"Authorization": f"Bearer {TOKEN}"}
 
 
 def test_health_needs_no_token(client):
-    assert client.get("/health").json() == {"status": "ok", "engine": {"name": "python", "version": "1.3.0"}}
+    assert client.get("/health").json() == {"status": "ok", "engine": {"name": "python", "version": "1.4.0"}}
 
 
 def test_runs_a_backtest_and_answers_in_camel_case(client):
     response = client.post("/v1/backtests", json=body(), headers=AUTH)
     assert response.status_code == 200
     data = response.json()
-    assert data["engine"] == {"name": "python", "version": "1.3.0"}
+    assert data["engine"] == {"name": "python", "version": "1.4.0"}
     assert set(data["run"]["metrics"]) >= {"finalValue", "totalReturn", "cagr", "maxDrawdown", "sharpe", "exposure"}
     assert len(data["run"]["equity"]) == 60
 
@@ -109,3 +109,32 @@ def test_pre_start_warm_up_is_an_option(client):
     assert pre["run"]["trades"][0]["time"] == T0 + 30 * DAY
     assert within["run"]["trades"][0]["time"] == T0 + 50 * DAY
     assert client.post("/v1/backtests", json=data | {"warmup": "later"}, headers=AUTH).status_code == 422
+
+
+def test_checks_a_run_against_random_versions_of_itself(client):
+    response = client.post("/v1/backtests/luck", json=body(), headers=AUTH)
+    assert response.status_code == 200
+    result = response.json()["result"]
+    assert result["comparison"]["kind"] == "timing" and result["comparison"]["trials"] == 1000
+    assert set(result) == {"comparison", "sharpeRange", "notes"}
+
+
+def two_stocks(strategy):
+    data = body(strategy=strategy, holdings=[{"symbol": "AAPL", "weight": 0.5}, {"symbol": "MSFT", "weight": 0.5}])
+    times = data["prices"]["AAPL"]["times"]
+    data["prices"]["MSFT"] = {"times": times, "prices": [200 - i * 0.5 + (i % 7) for i in range(60)]}
+    return data
+
+
+def test_runs_an_optimised_strategy_with_its_equal_weight_comparison(client):
+    response = client.post("/v1/backtests", json=two_stocks({"kind": "optimised", "objective": "max-sharpe", "frequency": "monthly", "lookbackMonths": 12}), headers=AUTH)
+    assert response.status_code == 200
+    alternative = response.json()["extras"]["alternative"]
+    assert alternative["label"] == "Equal weights" and len(alternative["equity"]) == 60
+
+
+def test_refuses_optimising_one_stock_or_odd_settings(client):
+    one = body(strategy={"kind": "optimised", "objective": "min-variance", "frequency": "monthly", "lookbackMonths": 12})
+    assert client.post("/v1/backtests", json=one, headers=AUTH).status_code == 422
+    odd = two_stocks({"kind": "optimised", "objective": "min-variance", "frequency": "monthly", "lookbackMonths": 24})
+    assert client.post("/v1/backtests", json=odd, headers=AUTH).status_code == 422

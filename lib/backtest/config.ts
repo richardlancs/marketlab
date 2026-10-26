@@ -14,7 +14,8 @@ export type StrategyConfig =
   | { kind: "rebalancing"; frequency: "monthly" | "quarterly" }
   | { kind: "rules"; entry: RuleSet; exit: RuleSet }
   | { kind: "momentum-rotation"; top: number; lookbackMonths: 3 | 6 | 12; absolute: boolean }
-  | { kind: "risk-parity"; frequency: "monthly" | "quarterly" };
+  | { kind: "risk-parity"; frequency: "monthly" | "quarterly" }
+  | { kind: "optimised"; objective: "min-variance" | "max-sharpe"; frequency: "monthly" | "quarterly"; lookbackMonths: 12 | 36 };
 
 /**
  * The version of the config format. Version 1 (Phase 4) had no `version`
@@ -51,7 +52,11 @@ export const STRATEGY_NAMES: Record<StrategyConfig["kind"], string> = {
   rules: "Custom rules",
   "momentum-rotation": "Momentum rotation",
   "risk-parity": "Risk parity",
+  optimised: "Optimised weights",
 };
+
+/** What an optimised strategy aims for, in words. */
+export const OBJECTIVE_NAMES = { "min-variance": "least risk", "max-sharpe": "best Sharpe ratio" } as const;
 
 export const LIMITS = {
   maxHoldings: 5,
@@ -111,6 +116,14 @@ export function parseConfig(value: unknown, isKnown: (symbol: string) => boolean
   } else if (s.kind === "momentum-rotation" && Number.isInteger(s.top) && inRange(s.top, 1, holdings.length) && (s.lookbackMonths === 3 || s.lookbackMonths === 6 || s.lookbackMonths === 12) && typeof s.absolute === "boolean")
     strategy = { kind: "momentum-rotation", top: s.top as number, lookbackMonths: s.lookbackMonths, absolute: s.absolute };
   else if (s.kind === "risk-parity" && (s.frequency === "monthly" || s.frequency === "quarterly")) strategy = { kind: "risk-parity", frequency: s.frequency };
+  else if (
+    s.kind === "optimised" &&
+    holdings.length >= 2 &&
+    (s.objective === "min-variance" || s.objective === "max-sharpe") &&
+    (s.frequency === "monthly" || s.frequency === "quarterly") &&
+    (s.lookbackMonths === 12 || s.lookbackMonths === 36)
+  )
+    strategy = { kind: "optimised", objective: s.objective, frequency: s.frequency, lookbackMonths: s.lookbackMonths };
   else return null;
 
   if (!isNumber(v.start) || !isNumber(v.end) || v.start >= v.end) return null;

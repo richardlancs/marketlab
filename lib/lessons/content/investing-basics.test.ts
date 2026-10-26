@@ -36,6 +36,22 @@ describe("investing basics worked examples", () => {
     expect(t).toContain(`${((total / 10_000 - 1) * 100).toFixed(1)}%`);
   });
 
+  it("diversification: effective number of independent bets", () => {
+    // Eight holdings, every pair at correlation ρ: eigenvalues 1 + 7ρ once and 1 − ρ seven times.
+    const bets = (n: number, rho: number) => {
+      const eigenvalues = [1 + (n - 1) * rho, ...Array.from({ length: n - 1 }, () => 1 - rho)];
+      const sum = eigenvalues.reduce((a, b) => a + b, 0);
+      return sum ** 2 / eigenvalues.reduce((a, b) => a + b * b, 0);
+    };
+    expect(Math.round(bets(8, 0.5))).toBe(3);
+    expect(bets(8, 0)).toBeCloseTo(8, 10);
+    expect(bets(8, 1)).toBeCloseTo(1, 10);
+    const how = INVESTING_BASICS_LESSONS.diversification!.how.paragraphs.join(" ");
+    expect(how).toContain("about 0.5 behave like about 3 independent bets");
+    expect(how).toContain("nearly 8");
+    expect(how).toContain("just 1");
+  });
+
   it("etf", () => {
     const cheap = 10_000 * 1.0695 ** 30;
     const pricey = 10_000 * 1.06 ** 30;

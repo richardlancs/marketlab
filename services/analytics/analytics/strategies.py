@@ -552,3 +552,54 @@ class RiskParity:
         for x in inverse:
             total = total + x
         return {s: inverse[i] / total for i, s in enumerate(symbols)}
+
+
+@dataclass
+class Optimised:
+    """
+    At the start of each month (or quarter), re-optimise the weights from the
+    completed sessions only: minimum variance, or maximum Sharpe ratio, from
+    the last `lookback_months` of daily returns (21 sessions a month), with
+    the same toned-down estimates and 40% cap as the portfolio page
+    (optimisation.py). Until there are MIN_SESSIONS of returns to estimate
+    from, it holds equal weights.
+    """
+
+    weights: Mapping[str, float]
+    objective: str
+    frequency: str
+    lookback_months: int
+    name: str = "optimised"
+
+    #: The fewest daily returns an estimate is made from (about three months).
+    MIN_SESSIONS = 63
+
+    def __post_init__(self):
+        if len(self.weights) < 2:
+            raise InputError("Optimising needs at least two stocks to weight.")
+
+    def indicators(self, sessions: Sessions) -> Mapping[tuple[str, str], Sequence[float | None]]:
+        return {}
+
+    def decide(self, ctx: DecisionContext) -> Target | None:
+        import numpy as np
+        import pandas as pd
+
+        from .optimisation import default_cap, maximum_sharpe, minimum_variance, shrink_returns, shrunk_covariance
+
+        every = 1 if self.frequency == "monthly" else 3
+        if not (ctx.day == 0 or (starts_month(ctx) and months_started(ctx) % every == 0)):
+            return None
+        symbols = list(self.weights)
+        available = min(len(ctx.history.closes(s)) for s in symbols) - 1
+        if available < self.MIN_SESSIONS:
+            return {s: 1 / len(symbols) for s in symbols}
+        count = min(available, self.lookback_months * 21)
+        closes = np.array([ctx.history.last(s, count + 1) for s in symbols], dtype=float).T
+        returns = pd.DataFrame(closes[1:] / closes[:-1] - 1, columns=symbols)
+        if (returns.std() == 0).any():
+            return {s: 1 / len(symbols) for s in symbols}  # a flat price: nothing to estimate risk from
+        cov = shrunk_covariance(returns)
+        cap = default_cap(len(symbols))
+        w = minimum_variance(cov, cap) if self.objective == "min-variance" else maximum_sharpe(shrink_returns(returns), cov, cap)
+        return {s: float(w[i]) for i, s in enumerate(symbols)}

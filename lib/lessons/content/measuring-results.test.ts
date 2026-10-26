@@ -201,4 +201,16 @@ describe("measuring results worked examples", () => {
     // Quiz: 0.9 × 10% explains all of a 9% return.
     expect(9 - 0.9 * 10).toBeCloseTo(0, 10);
   });
+
+  it("luck or skill", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.luck);
+    expect(t).toContain(`710 ÷ 1,000 = ${pct(710 / 1_000)}`);
+    expect(t).toContain(`100% − 71% = ${pct(1 - 0.71)}`);
+    expect(t).toContain(`1,260 ÷ 21 = ${1_260 / 21} blocks`);
+    expect(t).toContain(`2,000 × 5% = ${2_000 * 0.05}th`);
+    expect(t).toContain(`the ${(2_000 * 0.95).toLocaleString("en-US")}th`);
+    expect(t).toContain(`1 − 0.95²⁰ ≈ ${pct(1 - 0.95 ** 20)}`);
+    // Quiz: the middle 90% of 2,000 values, and 1 − 80% left to luck.
+    expect([2_000 * 0.05, 2_000 * 0.95]).toEqual([100, 1_900]);
+  });
 });

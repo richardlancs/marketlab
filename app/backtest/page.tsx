@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { BacktestWorkbench } from "@/components/backtest/backtest-workbench";
 import { MLSandbox } from "@/components/backtest/ml-sandbox";
+import { PairsLab } from "@/components/backtest/pairs-lab";
 import { Tabs } from "@/components/ui/tabs";
 import { DataSource } from "@/components/market/data-source";
 import { getMarket } from "@/lib/market";
@@ -31,6 +32,7 @@ export default async function BacktestPage() {
         label="Backtest tools"
         tabs={[
           { id: "strategies", label: "Strategies", content: <BacktestWorkbench firstDate={firstDate} lastDate={lastDate} /> },
+          { id: "pairs", label: "Pairs", content: <PairsLab lastDate={lastDate} /> },
           { id: "ml", label: "Machine learning", content: <MLSandbox lastDate={lastDate} /> },
         ]}
       />

@@ -116,6 +116,12 @@ export const GLOSSARY = {
     more: "Instead of one guess, it shows a spread: a middle path, the outcomes most paths land between, and how often money is lost. It's only as good as the past it's built from, so treat it as a picture of uncertainty, not a forecast.",
     group: "Measuring results",
   },
+  luck: {
+    title: "Luck or skill?",
+    short: "Checking a result against random versions of the same strategy, and against reshuffles of its own days, to see how much luck could explain.",
+    more: "A strategy that beat 95% of random versions making the same kind of choices has some evidence behind it; one that beat 60% looks like chance. A bootstrap range shows how far its Sharpe ratio could have landed with the same kind of days in a different order.",
+    group: "Measuring results",
+  },
   marketOrder: {
     title: "Market order",
     short: "Buy or sell right away, at whatever the current price is.",
@@ -288,6 +294,12 @@ export const GLOSSARY = {
     title: "Risk parity",
     short: "Weighting holdings by how calm they are, so each adds about the same amount of risk.",
     more: "A stock half as volatile gets twice the weight. Compared with equal weights, it leans toward steadier holdings, so no single wild one dominates the swings. It aims for balanced risk, not the highest return.",
+    group: "Strategies",
+  },
+  pairsTrading: {
+    title: "Pairs trading and cointegration",
+    short: "Trading the gap between two linked stocks: when it stretches far from normal, buy the one that lagged and short the one that ran ahead, betting the gap comes back.",
+    more: "It only makes sense if the pair is cointegrated: a fixed mix of the two keeps returning to its average, which is more than moving together day to day. Test hundreds of pairs and some will look cointegrated by chance, so the results need adjusting for how many were tried.",
     group: "Strategies",
   },
   overfitting: {

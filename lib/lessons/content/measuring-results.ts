@@ -793,7 +793,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
     ],
     inMarketLab: [
       { label: "Stock pages", href: "/stocks/AAPL", text: "The Risk card shows each stock's correlation with the S&P 500 over the last year, next to its beta. Compare Apple with a steadier company like Coca-Cola (KO)." },
-      { label: "Portfolio risk analysis", href: "/portfolio", text: "Under Risk analysis, the Risk tab draws a heatmap of the correlation between every pair of your holdings, so clusters that move together stand out." },
+      { label: "Portfolio risk analysis", href: "/portfolio#risk", text: "Under Risk analysis, the Risk tab's correlation map groups holdings that move together, names the most correlated pairs and counts how many independent bets they add up to." },
       { label: "Backtest", href: "/backtest", text: "Under the results, open More measures to see a strategy's correlation with its benchmark: close to 1 means it mostly moved like the thing it's compared with." },
     ],
     related: ["diversification", "beta", "volatility", "riskParity"],
@@ -1216,6 +1216,109 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 2,
         explanation: "Around 9 in 10 large-company US funds trailed the index over 15 years. Average alpha after fees is negative.",
+      },
+    ],
+  },
+  luck: {
+    why: [
+      "A strategy beat the market over five years. Was it a good idea, or a lucky draw? From one backtest you can't tell: markets are noisy enough that plenty of strategies with no edge at all will beat a benchmark over any given stretch, just as some coin-flippers throw five heads in a row.",
+      "The honest way to judge a result is to ask what luck alone would have produced. If random choices of the same kind usually did as well, the strategy hasn't shown anything yet. Only when it beats nearly all of them is there something worth a closer look.",
+    ],
+    how: {
+      paragraphs: [
+        "The first yardstick is a set of random versions of the same strategy. They take the same kind of decisions as the real one, but at random. For a timing strategy, like a [[maCrossover|moving-average crossover]] or custom rules, each random version holds each stock for as many separate stretches, and as many days in total, as the real one did, but at random dates. For a picking strategy, like [[momentum|momentum rotation]], [[riskParity|risk parity]] or optimised weights, each one rebalances on the same days with the same weights, but hands them to the stocks in a random order.",
+        "The result is a percentile: the share of random versions the real run beat. Beating 71% means luck alone did at least as well 29% of the time, which is what chance often gives. Beating 97% is harder to explain by luck, though one period is still only one period. Strategies that make no choices, like [[buyAndHold|buy and hold]], [[dollarCostAveraging|dollar-cost averaging]] or [[rebalancing]], have nothing to randomise, so they get no random versions.",
+        "The second yardstick is a bootstrap: a range for the [[sharpe|Sharpe ratio]]. Take the run's own daily returns, cut them into blocks of 21 trading days, and draw blocks at random, with repeats, to build a new history of the same length. Do that 2,000 times and work out the Sharpe ratio each time. The middle 90% of those values is the range the result could plausibly have landed in with the same kind of days in a different order.",
+        "Blocks matter because markets have moods. Calm weeks tend to follow calm weeks, and stormy ones follow stormy ones. Shuffling single days would break those stretches up and make the range look narrower than it should. The benchmark is reshuffled on the same days, so you also see how often the strategy's Sharpe ratio came out ahead of the benchmark's.",
+        "Both checks assume you ran one strategy. If you tried twenty settings and kept the best, its percentile overstates the evidence, which is the problem of [[overfitting]]; the parameter sweep's deflated Sharpe ratio is built to allow for that.",
+      ],
+      formula: {
+        expression: "Share beaten = random versions that did worse ÷ all random versions; chance by luck = 100% − share beaten",
+        reading: "How unusual the run is next to strategies that made the same kind of choices at random.",
+      },
+    },
+    example: {
+      setup: "A moving-average crossover on one stock made +34% over five years, with a Sharpe ratio of 0.90. Its Was it luck? check runs 1,000 random versions and 2,000 reshuffles.",
+      steps: [
+        "Random versions: 710 of the 1,000 made less than +34%, so it beat 710 ÷ 1,000 = 71% of them. Luck alone did at least as well 100% − 71% = 29% of the time.",
+        "Blocks: five years is about 1,260 trading days, or 1,260 ÷ 21 = 60 blocks of 21 days. Each reshuffle draws 60 blocks at random and works out a new Sharpe ratio.",
+        "Range: sort the 2,000 Sharpe ratios. The low end of the middle 90% is the 2,000 × 5% = 100th from the bottom, here 0.10, and the high end is the 1,900th, here 1.70.",
+        "Many tries: had you tested 20 settings with no edge at all, the chance that at least one beats 95% of its random versions is 1 − 0.95²⁰ ≈ 64%.",
+      ],
+      result: "Beating 71% of random versions is what chance gives about three times in ten, and a Sharpe ratio that could be anywhere from 0.10 to 1.70 is too uncertain to lean on. The fair verdict: no evidence of skill yet, and none against it.",
+    },
+    reading: [
+      { label: "Beat 95% or more", meaning: "Luck alone rarely does that well, so the choices may have mattered. Check it holds on another period before trusting it." },
+      { label: "Beat 75% to 95%", meaning: "Better than most random versions, but luck does this often enough to be suggestive, not convincing." },
+      { label: "Beat 25% to 75%", meaning: "What chance typically gives. No sign the strategy's choices added anything." },
+      { label: "Sharpe range includes the benchmark's, or zero", meaning: "With the same kind of days in another order, the result could easily have been no better. Treat the edge as unproven." },
+    ],
+    realWorld: [
+      "Burton Malkiel wrote in 1973 that a blindfolded monkey throwing darts at the stock pages could pick a portfolio as well as the experts. Researchers have since found that random portfolios often match or beat the indexes they're drawn from, which is why random strategies make a fair yardstick.",
+      "S&P's persistence reports find that funds in the top quarter one year rarely stay there: only a small share are still in the top quarter a few years later, about what luck would predict.",
+      "The bootstrap was introduced by statistician Bradley Efron in 1979, and the block version for data that comes in streaks followed in the late 1980s. Quant researchers use both to put ranges around backtest results instead of quoting a single number.",
+    ],
+    mistakes: [
+      "Treating one good backtest as proof. Beating the market once is something many strategies with no edge do.",
+      "Reading a 71st percentile as \"71% likely to be skill\". It means luck alone did as well 29% of the time, not that the strategy is probably good.",
+      "Checking only the best of many settings. Its percentile looks impressive because you picked it; that's [[overfitting]].",
+      "Treating the bootstrap range as a forecast. It only reshuffles the past, so a future unlike any stretch in it isn't covered.",
+    ],
+    inMarketLab: [
+      {
+        label: "Was it luck? on a crossover",
+        href: backtestLink({ kind: "moving-average", fast: 50, slow: 200 }, ["AAPL"]),
+        text: "Opens a crossover backtest on Apple. Under the results, press Was it luck? to see the share of random timings it beat, a histogram of their returns and a 90% range for its Sharpe ratio.",
+      },
+      {
+        label: "Was it luck? on momentum",
+        href: backtestLink({ kind: "momentum-rotation", top: 2, lookbackMonths: 6, absolute: false }, ["AAPL", "MSFT", "NVDA", "XOM"]),
+        text: "A picking strategy: here the random versions rebalance on the same days but give the top weights to stocks chosen at random.",
+      },
+    ],
+    related: ["overfitting", "sharpe", "benchmark", "pairsTrading"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "A backtest \"beat 80% of random versions\". What does that mean?",
+        choices: [
+          "It's 80% certain to keep working",
+          "It did better than 80% of strategies that made the same kind of choices at random",
+          "It beat the market in 80% of years",
+          "It made 80% more than the benchmark",
+        ],
+        answer: 1,
+        explanation: "The random versions make the same kind of decisions, but by chance. Beating 80% of them means luck alone did at least as well 20% of the time.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A bootstrap makes 2,000 Sharpe ratios. Which sorted values mark the middle 90%?",
+        choices: ["The 1st and the 2,000th", "The 100th and the 1,900th", "The 200th and the 1,800th", "The 500th and the 1,500th"],
+        answer: 1,
+        explanation: "5% of 2,000 is 100, so the middle 90% runs from the 100th value from the bottom to the 1,900th, cutting 100 off each end.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why does MarketLab reshuffle returns in 21-day blocks instead of single days?",
+        choices: [
+          "It's faster to compute",
+          "Blocks keep calm and stormy stretches together, so the range isn't made too narrow",
+          "A month always has 21 days",
+          "Single days would make the Sharpe ratio negative",
+        ],
+        answer: 1,
+        explanation: "Volatile days tend to cluster. Shuffling single days would scatter the stormy spells and understate how much the result could vary.",
+      },
+      {
+        kind: "Real world",
+        prompt: "What do studies find about funds that were in the top quarter of their category one year?",
+        choices: [
+          "Most stay in the top quarter for years",
+          "Few are still there a few years later, about what luck would predict",
+          "They all fall to the bottom quarter",
+        ],
+        answer: 1,
+        explanation: "Top performance rarely persists. Much of one period's lead turns out to be luck, which is why one good run proves little.",
       },
     ],
   },

@@ -88,7 +88,7 @@ def stored_result(outcome: engine.Outcome, *, note: str | None, dataset: Mapping
     return {
         "outcome": {"run": run, "benchmark": benchmark},
         # The measures and heatmap the results page shows (analysis.py), saved with the result.
-        **({"extras": analysis.extras(run, benchmark, costs)} if costs is not None else {}),
+        **({"extras": analysis.extras(run, benchmark, costs, run_json(outcome.alternative) if outcome.alternative else None)} if costs is not None else {}),
         "note": full_note,
         "provenance": {
             "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION},

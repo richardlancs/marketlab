@@ -14,4 +14,12 @@ describe("result extras from the analytics service", () => {
     expect(parseExtras({ analysis: extras.analysis })).toBeNull();
     expect(parseExtras(null)).toBeNull();
   });
+
+  it("may carry an optimised run's equal-weight comparison", () => {
+    const metrics = { finalValue: 11_000, totalReturn: 0.1, cagr: 0.05, maxDrawdown: 0.08, drawdownPeak: null, drawdownTrough: null, volatility: 0.15, sharpe: 0.4, trades: 6, exposure: 1 };
+    const alternative = { label: "Equal weights", equity: [{ time: 1, price: 10_000 }, { time: 2, price: 11_000 }], metrics };
+    expect(parseExtras({ ...extras, alternative })).toEqual({ ...extras, alternative });
+    expect(parseExtras({ ...extras, alternative: { ...alternative, equity: [{ time: 1.5, price: 1 }] } })).toBeNull();
+    expect(parseExtras({ ...extras, alternative: { ...alternative, metrics: { ...metrics, sharpe: "high" } } })).toBeNull();
+  });
 });

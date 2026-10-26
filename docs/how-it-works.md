@@ -26,6 +26,7 @@ Browser ──▶ Next.js (pages, Server Actions, API routes)
               │
               └──▶ Python analytics service (FastAPI, pandas, SciPy, statsmodels, scikit-learn)
                       backtests, sweeps, walk-forward tests, historical screens
+                      the luck check, the pairs lab, correlation maps
                       portfolio performance, risk, projection and the goal planner
                       stock profiles and factor exposures
                       the options lab, the machine-learning sandbox
@@ -214,11 +215,12 @@ These are calculated by the Python analytics service ([its README](../services/a
   - only prices are used.
 
 **Portfolio: Risk analysis** (`app/api/portfolio/analysis`; holdings are read on the server)
-- **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation heatmap and sector exposure.
+- **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation map and sector exposure.
+- **Correlation map** (`services/analytics/analytics/correlation.py`; also the watchlist's "How they move together" tab, `app/api/watchlist/correlation`): a year of daily-return correlations, ordered by hierarchical clustering so similar stocks sit together, the closest pairs, and the effective number of independent bets, (Σλ)² / Σλ² over the correlation matrix's eigenvalues.
 - **Stress tests:** the market's worst falls in the data, replayed on today's weights, plus beta-scaled hypothetical shocks.
 - **Projection:** a 10-year Monte Carlo of 2,000 paths from month-long blocks of the portfolio's own daily returns.
 - **Goal planner** (under the projection; `app/api/portfolio/plan`, `services/analytics/analytics/plan.py`): the same simulated futures, with money added or taken out at each month's end, over 1 to 40 years, with an optional target and inflation (2.5% a year: monthly amounts rise with prices, and results are in today's dollars). It shows the chance of reaching the target, the middle and bad-case (1 in 10) outcomes, and for withdrawals, the chance the money runs out and when.
-- **Optimise:** least-risk, best-Sharpe and risk-parity weightings of the same stocks, and the efficient frontier. These come from SciPy, long-only, with shrunk estimates.
+- **Optimise:** least-risk, best-Sharpe and risk-parity weightings of the same stocks, and the efficient frontier. These come from SciPy, long-only, with shrunk estimates (`services/analytics/analytics/optimisation.py`, shared with the optimised backtest strategy). At most 40% in one stock, or 80% with two. Links open the backtester to test the same weighting re-optimised over time.
 
 **Factor analysis: "What drives it"** (stock pages' Risk & technicals tab; the portfolio's Risk tab; `services/analytics/analytics/factors.py`)
 - Five factors, each a daily return series built from MarketLab's own universe, the same way on simulated and real prices:
@@ -243,7 +245,8 @@ These are calculated by the Python analytics service ([its README](../services/a
 - buy and hold, moving-average crossover, dollar-cost averaging, rebalancing;
 - custom rules (price, averages, RSI, MACD, Bollinger Bands, a chandelier trailing stop on ATR, and volume against its average);
 - momentum rotation (hold the top N of your stocks by trailing return, optionally only if positive);
-- risk parity (weights by inverse volatility).
+- risk parity (weights by inverse volatility);
+- optimised weights: least risk or best Sharpe, re-optimised every month or quarter from the last 12 or 36 months of past prices only, with the portfolio page's shrunk estimates and caps (equal weights until three months of prices exist). It's charted against the same stocks at equal weights, rebalanced as often.
 
 Each run uses up to five stocks, with trading costs and a benchmark.
 
@@ -251,6 +254,10 @@ Each run uses up to five stocks, with trading costs and a benchmark.
 - **Risk-adjusted:** Sortino and Calmar.
 - **Against the benchmark:** beta, alpha, correlation, tracking error and information ratio.
 - **Trades:** round trips, win rate, average win and loss, holding period, turnover, and costs paid (commission plus slippage).
+
+**Was it luck?** (`services/analytics/analytics/luck.py`, on request under any result; a saved run is checked on its saved prices.)
+- **Random versions:** 1,000 of them. Timing strategies (crossover, rules) get random timings that hold each stock for as many separate stretches and days. Picking strategies (momentum, risk parity, optimised) get their decisions' weights handed to the stocks in a random order. The strategy and its random versions are valued the same simple way (daily weighted returns, less costs when positions change), and the result is the share of random versions it beat. Strategies that make no choice (buy and hold, dollar-cost averaging, rebalancing) have none.
+- **Sharpe range:** a block bootstrap (2,000 resamples of 21-session blocks of the run's daily returns, the benchmark's drawn from the same days): a 90% range, and how often the strategy's Sharpe beat the benchmark's.
 
 **Overfitting checks**
 - **Sweeps:** a sweep reports the deflated Sharpe ratio of its best cell (`services/analytics/analytics/overfitting.py`): how likely it is to be real, given how many settings were tried.
@@ -294,11 +301,19 @@ A missing day is skipped for every stock, never filled in. The Python README has
 
 Runs are seeded, and saved runs keep the exact prices they used, so they can be reproduced like backtests (saved with `kind = 'ml'`).
 
+**Pairs-trading lab** (the Backtest page's Pairs tab; `services/analytics/analytics/pairs.py`). A scan tests every same-sector pair of catalog stocks for cointegration (Engle–Granger on log prices, statsmodels) over the 252 sessions to a chosen date. For each pair it gives the hedge ratio (least squares), the gap's half-life (AR(1)), the p-value, and a Benjamini–Hochberg adjusted p-value for the number tested. A test then trades one pair over the next 252 sessions using the formation's numbers only:
+- long A and short the hedge ratio's worth of B when the gap's z-score falls past −entry (the reverse past +entry);
+- close back at ±exit, give up at ±stop, and after a stop wait until the gap is back inside ±entry;
+- decided on the previous close and filled at the day's close with slippage, commission, and a yearly borrow fee on the short side;
+- its own small simulator, since the backtest engine is long-only.
+
+On simulated prices, stocks share only market and sector moves, so few or no pairs survive the adjustment; the scan shows how many pass before and after it.
+
 **Settings versions:** settings carry a `version`. Older settings are upgraded when read; newer ones are refused rather than misread.
 
 Rules that use a chandelier stop or volume need each day's high, low and volume. Only those runs load them, and their snapshots keep them, so every other snapshot is unchanged.
 
-**Python engine 1.2.0** added the strategies above (all bit-identical with the former TypeScript engine on the golden cases). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
+**Python engine 1.4.0** added the optimised strategy (golden cases generated by this engine). **Python engine 1.2.0** added the strategies above (all bit-identical with the former TypeScript engine on the golden cases). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
 
 ## The daily job
 

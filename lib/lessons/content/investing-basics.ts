@@ -107,6 +107,7 @@ export const INVESTING_BASICS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         "A stock's risk has two parts. Company risk comes from things that only affect that company or its industry. Market risk comes from things that hit almost everything at once, like a recession or a jump in interest rates. Diversification shrinks the first kind; it can't remove the second. A stock's [[beta]] measures how much of the second kind it carries.",
         "The key is that stocks don't move in lockstep. When two investments are unrelated, the swings of a 50/50 mix are smaller than the average of their swings. For two unrelated stocks with the same [[volatility]], the mix's volatility is about 30% lower. Stocks in the same industry tend to move together, so owning ten tech stocks spreads risk much less than owning ten stocks from ten different industries.",
         "Holding more stocks helps a lot at first and less with each addition. Going from one stock to 20 removes much of the company risk; going from 200 to 400 barely changes anything. Funds that hold a whole index, like [[etf|ETFs and index funds]], take this to its practical limit.",
+        "So count bets, not tickers. Holdings that rise and fall on the same days act like one bet, however many there are. MarketLab sums this up as the effective number of independent bets: eight holdings whose every pair has a [[correlation]] of about 0.5 behave like about 3 independent bets, while eight unrelated ones would count as nearly 8, and eight in perfect lockstep as just 1. (For the curious, it's worked out from the correlation matrix's eigenvalues: their sum squared, divided by the sum of their squares.)",
       ],
     },
     example: {
@@ -125,6 +126,7 @@ export const INVESTING_BASICS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "A handful in one industry", meaning: "Better, but they share the same risks. A bad year for the industry hits them all." },
       { label: "20 to 30 across industries", meaning: "Much of the company-specific risk is gone. What's left is mostly the market's own ups and downs." },
       { label: "A broad index fund", meaning: "Hundreds of companies in one purchase. You get close to the market's return and its risk, and little else." },
+      { label: "Far fewer effective bets than holdings", meaning: "Several holdings move as one. The correlation map groups them together and names the most correlated pairs, so you can see where the overlap is." },
     ],
     realWorld: [
       "When Enron collapsed in 2001, many of its employees had most of their retirement savings in Enron stock. They lost their jobs and their savings at the same time. It's a standard warning against putting too much in any one company, especially your own employer.",
@@ -139,6 +141,7 @@ export const INVESTING_BASICS_LESSONS: Partial<Record<TermKey, Lesson>> = {
     ],
     inMarketLab: [
       { label: "Portfolio", href: "/portfolio", text: "The by-sector breakdown shows at a glance whether most of your money sits in one industry." },
+      { label: "Correlation map", href: "/portfolio#risk", text: "Under Risk analysis, the Risk tab's correlation map clusters holdings that move together, names the most correlated pairs and says how many independent bets your holdings behave like. The Watchlist page shows the same for the stocks you follow." },
       {
         label: "Five stocks, five industries",
         href: backtestLink({ kind: "buy-and-hold" }, ["AAPL", "JPM", "KO", "XOM", "UNH"], { benchmark: "market" }),
@@ -177,6 +180,18 @@ export const INVESTING_BASICS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 3,
         explanation: "Spreading across industries matters more than the number of tickers. Five tech stocks share risks, and three S&P 500 funds hold the same companies.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You own 10 stocks, and the correlation map says they behave like about 2 independent bets. What does that tell you?",
+        choices: [
+          "Two of the stocks are worthless",
+          "Most of the holdings move together, so the portfolio is far less spread out than 10 tickers suggests",
+          "You should sell 8 stocks",
+          "The portfolio has no risk",
+        ],
+        answer: 1,
+        explanation: "Closely correlated holdings rise and fall together, so they count as roughly one bet each group. Adding stocks that move differently would raise the number.",
       },
       {
         kind: "Real world",
