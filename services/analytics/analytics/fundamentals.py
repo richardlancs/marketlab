@@ -299,3 +299,58 @@ def fetch_company_facts(cik: int, user_agent: str, client: httpx.Client | None =
     if response.status_code != 200:
         raise FetchError(f"The SEC answered HTTP {response.status_code}")
     return parse_company_facts(response.json())
+
+
+# --- Ratios at a price -------------------------------------------------------------
+
+DAY_MS = 86_400_000
+#: Numbers this old (by their latest period) are left out of comparisons: the company has stopped reporting in dollars, or at all.
+CURRENT_FOR_MS = 15 * 31 * DAY_MS
+
+
+def _iso_ms(day: str) -> int:
+    return int((date.fromisoformat(day) - date(1970, 1, 1)).days * DAY_MS)
+
+
+def is_current(facts: Mapping[str, Any], now_ms: int) -> bool:
+    end = (facts.get("trailing") or {}).get("end") or ((facts.get("years") or [{}])[-1] or {}).get("end")
+    return bool(end) and _iso_ms(end) > now_ms - CURRENT_FOR_MS
+
+
+def _ratio(a: float | None, b: float | None) -> float | None:
+    return None if a is None or b is None or b == 0 else a / b
+
+
+def _growth(now: float | None, before: float | None) -> float | None:
+    return None if now is None or before is None or before <= 0 else now / before - 1
+
+
+def ratios_of(facts: Mapping[str, Any], price: float, market_cap: float | None) -> dict[str, float | None]:
+    """Ratios from the reported numbers and a price. Without a market value, it's the price times the diluted shares."""
+    years = facts.get("years") or []
+    last = years[-1] if years else None
+    before = years[-2] if len(years) >= 2 else None
+    t = facts.get("trailing")
+    g = lambda d, k: d.get(k) if d else None  # noqa: E731
+    shares = g(last, "dilutedShares")
+    value = market_cap if market_cap is not None else (price * shares if shares else None)
+    equity = g(last, "equity")
+    if market_cap is not None:
+        income = g(t, "netIncome")
+        pe = market_cap / income if income and income > 0 else None
+    else:
+        eps = g(t, "eps")
+        pe = price / eps if eps and eps > 0 else None
+    return {
+        "revenueGrowth": _growth(g(last, "revenue"), g(before, "revenue")),
+        "epsGrowth": _growth(g(last, "eps"), g(before, "eps")),
+        "grossMargin": _ratio(g(t, "grossProfit"), g(t, "revenue")),
+        "operatingMargin": _ratio(g(t, "operatingIncome"), g(t, "revenue")),
+        "netMargin": _ratio(g(t, "netIncome"), g(t, "revenue")),
+        "returnOnEquity": _ratio(g(last, "netIncome"), equity) if equity and equity > 0 else None,
+        # By value rather than per share where possible: per-share figures don't
+        # match the traded share for depositary receipts (TSM) or share classes (BRK-B).
+        "peRatio": pe,
+        "priceToSales": _ratio(value, g(t, "revenue")),
+        "freeCashFlowYield": _ratio(g(last, "freeCashFlow"), value),
+    }

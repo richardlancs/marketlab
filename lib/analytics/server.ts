@@ -16,15 +16,13 @@ import type { BacktestConfig, RunSummary } from "../backtest/config";
 import type { Comparison } from "../backtest/stored";
 import { post, pythonConfigured } from "../backtest/python-client";
 import { prices } from "../db";
-import { allFundamentals } from "../fundamentals";
 import { getBarsForStore, priceSource } from "../market";
 import { CATALOG } from "../market/catalog";
-import { isCurrent } from "../market/fundamentals";
 import { INDICES } from "../market/universe";
 import { parseScreenResult, summarizeScreen, type ScreenConfig, type ScreenResult, type ScreenSettings } from "./history";
 import { parseFactorExposures, type FactorExposures } from "./factors";
 import { parseStockProfile, type StockProfile } from "./profile";
-import { buildRows, type ScreenerRow } from "./screener";
+import type { ScreenerRow } from "./screener";
 
 /** The index every beta is measured against (it must be stored with any stock). */
 const MARKET = "SPX";
@@ -226,25 +224,16 @@ export async function getScreenerData(): Promise<ScreenerData> {
       }
       profiles = await prices.results("stock-profile", source, parseStockProfile);
     }
-    const [index, facts] = await Promise.all([prices.seriesIndex(source), allFundamentals()]);
-    const now = Date.now();
-    const rows = buildRows(
-      CATALOG.flatMap((s) => {
-        const stored = profiles.get(s.symbol);
-        const meta = index.get(s.symbol);
-        const reported = facts.get(s.symbol);
-        return stored
-          ? [{ symbol: s.symbol, name: s.name, sector: s.sector, profile: stored.result, marketCap: meta?.marketCap ?? null, peRatio: meta?.peRatio ?? null, dividendYield: meta?.dividendYield ?? null, facts: reported && isCurrent(reported, now) ? reported : null }]
-          : [];
-      }),
-    );
+    // The rows (ratios at the latest close, percentile ranks) come from the analytics service; the browser filters them.
+    const data = await post("/v1/analytics/screener-rows", { source, catalog: CATALOG.map(({ symbol, name, sector }) => ({ symbol, name, sector })), now: Date.now() }, "Screener rows");
+    const rows = Array.isArray(data.rows) ? (data.rows as ScreenerRow[]).filter((r) => typeof r?.symbol === "string" && typeof r.price === "number") : [];
     if (rows.length === 0) {
       cacheLife("minutes");
       return { status: "unavailable", reason: pythonConfigured() ? "The screener's numbers aren't ready yet. Try again in a minute." : "The analytics service isn't running." };
     }
     if (rows.length < CATALOG.length) cacheLife("minutes");
     else cacheLife("hours");
-    return { status: "ok", rows, asOf: Math.max(...[...profiles.values()].map((p) => p.asOf)) };
+    return { status: "ok", rows, asOf: typeof data.asOf === "number" ? data.asOf : Math.max(...[...profiles.values()].map((p) => p.asOf)) };
   } catch (error) {
     console.error("[analytics] Screener failed:", error instanceof Error ? error.message : error);
     cacheLife("minutes");

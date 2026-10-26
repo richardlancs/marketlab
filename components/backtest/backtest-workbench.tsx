@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { revealOnPhone } from "@/components/ui/reveal";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
+import type { ResultExtras } from "@/lib/backtest/extras";
 import { Tabs } from "@/components/ui/tabs";
 import { compareRunsAction, loadSavedRunAction, reproduceSavedRunAction, runBacktestAction, type ReproduceResult } from "@/lib/backtest-actions";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome, type SavedRun } from "@/lib/backtest/config";
@@ -25,7 +26,7 @@ import { RunProvenance } from "./run-provenance";
 
 type View =
   | { kind: "empty" }
-  | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome; provenance: StoredResult["provenance"] }
+  | { kind: "result"; config: BacktestConfig; outcome: BacktestOutcome; provenance: StoredResult["provenance"]; extras?: ResultExtras }
   /** A saved run's stored result, exactly as it was calculated (not re-run). */
   | { kind: "saved"; run: SavedRun; result: StoredResult; reproduction: ReproduceResult | "running" | null }
   /** A run saved before results were stored: only its settings exist. */
@@ -79,7 +80,7 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
       const result = await runBacktestAction(config);
       if (!result.ok) return setError(result.message);
       setNote(result.note);
-      setView({ kind: "result", config, outcome: result.outcome, provenance: result.provenance });
+      setView({ kind: "result", config, outcome: result.outcome, provenance: result.provenance, extras: result.extras });
     });
 
   function run() {
@@ -236,14 +237,14 @@ export function BacktestWorkbench({ firstDate, lastDate }: { firstDate: number; 
             {(view.kind === "result" || view.kind === "saved") && note && <p className="mb-3 text-sm text-muted">{note}</p>}
             {view.kind === "result" && (
               <>
-                <BacktestResults config={view.config} outcome={view.outcome} />
+                <BacktestResults config={view.config} outcome={view.outcome} extras={view.extras} />
                 <RunProvenance provenance={view.provenance} />
               </>
             )}
             {view.kind === "saved" && (
               <>
                 <SavedRunBar view={view} onRerun={() => openConfig(view.run.config)} onReproduce={() => reproduce(view.run)} />
-                <BacktestResults config={view.run.config} outcome={view.result.outcome} />
+                <BacktestResults config={view.run.config} outcome={view.result.outcome} extras={view.result.extras} />
                 <RunProvenance provenance={view.result.provenance} saved={view.run} />
               </>
             )}

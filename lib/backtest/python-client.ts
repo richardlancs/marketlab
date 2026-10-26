@@ -17,6 +17,7 @@ import "server-only";
 import { cacheLife } from "next/cache";
 import type { BacktestConfig, BacktestOutcome, RunSummary } from "./config";
 import type { BacktestRun, BacktestTrade, Metrics } from "./engine";
+import { parseExtras, type ResultExtras } from "./extras";
 import type { PriceSnapshot } from "./snapshot";
 import type { SelectionCheck } from "./sweep";
 import { parseStoredResult, type Comparison, type StoredResult } from "./stored";
@@ -33,6 +34,7 @@ export interface PythonResult {
   outcome: BacktestOutcome;
   engine: { name: string; version: string };
   warnings: string[];
+  extras: ResultExtras | null;
 }
 
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -107,7 +109,13 @@ export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapsho
     throw new PythonEngineError("The Python engine sent back an answer MarketLab couldn't read.");
   }
   const warnings = Array.isArray(body?.warnings) ? (body.warnings as unknown[]).filter((w): w is string => typeof w === "string") : [];
-  return { outcome: { run, benchmark }, engine: { name: engine.name, version: engine.version }, warnings };
+  return { outcome: { run, benchmark }, engine: { name: engine.name, version: engine.version }, warnings, extras: parseExtras(body.extras) };
+}
+
+/** More measures and period returns for a finished result: for results saved before they came with every run. */
+export async function analyseOnPython(outcome: BacktestOutcome, costs: BacktestConfig["costs"]): Promise<ResultExtras | null> {
+  const data = await post("v1/backtests/analyse", { run: outcome.run, benchmark: outcome.benchmark, costs }, "Analyse");
+  return parseExtras(data.extras);
 }
 
 /** How long to wait before the one retry, when the service couldn't be reached: long enough for it to wake from idle. */

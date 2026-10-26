@@ -9,6 +9,7 @@
  */
 import "server-only";
 import type { BacktestConfig, BacktestOutcome } from "./config";
+import type { ResultExtras } from "./extras";
 import { PythonEngineError, runOnPython } from "./python-client";
 import type { PriceSnapshot } from "./snapshot";
 
@@ -38,11 +39,12 @@ export interface Computed {
   outcome: BacktestOutcome;
   engine: EngineInfo;
   warnings: string[];
+  extras: ResultExtras | null;
 }
 
 /** Runs a backtest on a snapshot's prices. Throws PythonEngineError if the service fails. */
 export async function compute(config: BacktestConfig, snapshot: PriceSnapshot): Promise<Computed> {
   const result = await runOnPython(config, snapshot);
   if (result.engine.name !== "python") throw new PythonEngineError("The analytics service didn't identify itself as the Python engine.");
-  return { outcome: result.outcome, engine: { name: "python", version: result.engine.version }, warnings: result.warnings };
+  return { outcome: result.outcome, engine: { name: "python", version: result.engine.version }, warnings: result.warnings, extras: result.extras };
 }

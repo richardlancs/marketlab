@@ -36,7 +36,7 @@ Browser ──▶ Next.js (pages, Server Actions, API routes)
 
 **In Next.js:** everything that changes an account (trades, orders, dividends and splits, price alerts), because a visit catches the account up as well as the nightly job, with the same rules as live trading (`lib/trading.ts`, `lib/processing.ts`).
 
-**In Python:** the numerical work. There's one copy of each calculation: no TypeScript backtest engine to keep in step. The only TypeScript engine left is the small one the Learn demos run in the browser (`lib/backtest/engine.ts`), checked against the same golden results as the Python engine. Price-dependent ratios such as P/E are worked out in Next.js, next to today's price.
+**In Python:** the numerical work. There's one copy of each calculation: no TypeScript backtest engine to keep in step. The only TypeScript engine left is the small one the Learn demos run in the browser (`lib/backtest/engine.ts`), checked against the same golden results as the Python engine. What stays in TypeScript is presentation and the instant parts of the UI: the screener's filters and presets, the live portfolio totals and allocation, chart ranges, and the mock market's price generator, which every page's prices come from.
 
 **When the service is down or waking up:** calls are retried once (a service that sleeps when idle can refuse the first connection), cards show "Try again" and retry once by themselves, and nothing falls back to another calculation.
 
@@ -174,13 +174,13 @@ These are calculated by the Python analytics service ([its README](../services/a
 - The analytics service fetches each company's facts file from the SEC by its company number (CIK; Next.js keeps the ticker-to-CIK map) and parses it (`services/analytics/analytics/fundamentals.py`):
   - five fiscal years of revenue, gross profit, operating income, net income, diluted EPS, equity and free cash flow;
   - the last four quarters added up, working out quarters reported only year-to-date.
-- Ratios at today's price are worked out in Next.js, next to the price (`lib/market/fundamentals.ts`): P/E (market value ÷ trailing net income), price to sales, margins, revenue growth, return on equity, free-cash-flow yield.
+- Ratios at a price are worked out by the analytics service too (`fundamentals.py`), given the price: P/E (market value ÷ trailing net income), price to sales, margins, revenue growth, return on equity, free-cash-flow yield.
 - Companies tag the same line differently, so each line tries a list of XBRL tags. Only US-dollar figures are used: Spotify (euros) has none. Exxon's ticker now belongs to a new holding company with no reports yet, so its predecessor's filings are used until there are.
 - The facts files are several megabytes each, so the parsed numbers are stored (`company_facts`, `lib/fundamentals.ts`). The daily job refreshes about 30 a run, so each company about weekly. A stock with nothing stored is fetched on its page and cached for a day.
 - Shown in the stock page's "Company numbers" card. On the public site the valuation ratios use the simulated price, and the card says so.
 
 **Screener (`/screener`)**
-- Every catalog stock with momentum 12-1, volatility, beta, RSI, distance from its high, yield, market cap and P/E (`lib/analytics/screener.ts`).
+- Every catalog stock with momentum 12-1, volatility, beta, RSI, distance from its high, yield, market cap and P/E, with percentile ranks, built by the analytics service (`services/analytics/analytics/screener.py`); the presets and filters are `lib/analytics/screener.ts`.
 - A "Company numbers" column view adds P/S, revenue growth, net margin, ROE and free-cash-flow yield. P/E comes from reported earnings when there are any. Figures more than 15 months old are left out.
 - Filtering and sorting happen in the browser, so they're instant.
 - Presets: momentum leaders, low volatility, oversold in an uptrend, dividend payers, defensive, quality, value, growth.
@@ -247,7 +247,7 @@ These are calculated by the Python analytics service ([its README](../services/a
 
 Each run uses up to five stocks, with trading costs and a benchmark.
 
-**More measures** (`lib/backtest/analysis.ts`) under every result:
+**More measures** under every result, calculated by the analytics service with the result (`services/analytics/analytics/analysis.py`), along with the monthly and yearly return heatmap:
 - **Risk-adjusted:** Sortino and Calmar.
 - **Against the benchmark:** beta, alpha, correlation, tracking error and information ratio.
 - **Trades:** round trips, win rate, average win and loss, holding period, turnover, and costs paid (commission plus slippage).

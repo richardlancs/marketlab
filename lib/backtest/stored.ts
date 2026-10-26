@@ -5,6 +5,7 @@
  * the browser, tests).
  */
 import type { BacktestOutcome } from "./config";
+import { parseExtras, type ResultExtras } from "./extras";
 import type { BacktestRun } from "./engine";
 
 export interface DatasetInfo {
@@ -35,6 +36,8 @@ export interface StoredResult {
   outcome: BacktestOutcome;
   note: string | null;
   provenance: Provenance;
+  /** More measures and period returns (./extras.ts); missing on results saved before they came from the analytics service. */
+  extras?: ResultExtras;
 }
 
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -58,7 +61,8 @@ export function parseStoredResult(value: unknown): StoredResult | null {
   if (!v || !v.outcome || !isRun(v.outcome.run) || !isRun(v.outcome.benchmark)) return null;
   const p = v.provenance;
   if (!p || typeof p.engine?.name !== "string" || typeof p.engine.version !== "string" || typeof p.dataset?.checksum !== "string" || !isNumber(p.computedAt)) return null;
-  return { outcome: v.outcome, note: typeof v.note === "string" ? v.note : null, provenance: p };
+  const extras = parseExtras(v.extras);
+  return { outcome: v.outcome, note: typeof v.note === "string" ? v.note : null, provenance: p, ...(extras && { extras }) };
 }
 
 export interface Comparison {

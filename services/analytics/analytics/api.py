@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import engine, factors, fundamentals, jobs, ml, options, overfitting, performance, plan, portfolio, saved, screens, snapshots, store, walkforward
+from . import analysis, engine, factors, fundamentals, jobs, ml, options, overfitting, performance, plan, portfolio, saved, screener, screens, snapshots, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -366,6 +366,8 @@ class BacktestResponse(Model):
     warnings: list[str]
     assumptions: dict[str, str]
     warmup: Literal["within-period", "pre-start"]
+    extras: dict | None = None
+    """More measures and period returns for the results page (analysis.py)."""
 
 
 def _run_model(run: engine.Run, include_ledger: bool = False) -> RunModel:
@@ -460,14 +462,33 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
         outcome = engine.run_config(to_engine_config(body.config, body.warmup), prices, market, extras)
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    run, benchmark = _run_model(outcome.run, body.include_ledger), _run_model(outcome.benchmark, body.include_ledger)
     return BacktestResponse(
         engine=EngineInfo(name=engine.ENGINE_NAME, version=engine.ENGINE_VERSION),
-        run=_run_model(outcome.run, body.include_ledger),
-        benchmark=_run_model(outcome.benchmark, body.include_ledger),
+        run=run,
+        benchmark=benchmark,
         warnings=outcome.warnings,
         assumptions=engine.ASSUMPTIONS,
         warmup=body.warmup,
+        extras=analysis.extras(run.model_dump(by_alias=True), benchmark.model_dump(by_alias=True), body.config.costs.model_dump(by_alias=True)),
     )
+
+
+class AnalyseRequest(Model):
+    """A finished result (run and benchmark, as JSON) and its costs: for results saved before their measures were."""
+
+    run: dict
+    benchmark: dict
+    costs: CostsModel
+
+
+@app.post("/v1/backtests/analyse", dependencies=[Depends(require_token)])
+def analyse(body: AnalyseRequest) -> dict:
+    """More measures and period returns for a finished result (analysis.py)."""
+    try:
+        return {"extras": analysis.extras(body.run, body.benchmark, body.costs.model_dump(by_alias=True))}
+    except (KeyError, TypeError, ZeroDivisionError, IndexError) as error:
+        raise HTTPException(status_code=422, detail=f"That result couldn't be read: {error}") from error
 
 
 class SweepRequest(Model):
@@ -530,7 +551,7 @@ def save_run(body: SaveRequest, db: Annotated[database.Database, Depends(get_dat
     except engine.InputError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
     dataset = body.dataset.model_dump(by_alias=True)
-    result = saved.stored_result(outcome, note=body.note, dataset=dataset, assumptions=body.assumptions)
+    result = saved.stored_result(outcome, note=body.note, dataset=dataset, assumptions=body.assumptions, costs=body.config.costs.model_dump(by_alias=True))
     summary = saved.summary_of(outcome)
     ok = database.save_run(
         db,
@@ -983,6 +1004,41 @@ class NightlyRequest(Model):
 def nightly(body: NightlyRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
     """The nightly calculations (jobs.run_nightly): indicator alerts, portfolio snapshots, stock profiles and factors, within a time budget."""
     return jobs.run_nightly(db, body.source, body.universe, body.budget_ms, body.parts or jobs.NIGHTLY_PARTS)
+
+
+class CatalogEntry(Model):
+    symbol: Symbol
+    name: Annotated[str, Field(max_length=200)]
+    sector: Annotated[str, Field(max_length=100)]
+
+
+class ScreenerRowsRequest(Model):
+    source: Source
+    catalog: Annotated[list[CatalogEntry], Field(min_length=1, max_length=500)]
+    now: int
+    """The time (ms) SEC numbers are judged current against."""
+
+
+@app.post("/v1/analytics/screener-rows", dependencies=[Depends(require_token)])
+def screener_rows(body: ScreenerRowsRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The screener's rows from the stored profiles, price-store numbers and SEC facts (screener.py)."""
+    return screener.rows_from_store(db, body.source, [c.model_dump() for c in body.catalog], body.now)
+
+
+class RatiosRequest(Model):
+    facts: dict
+    price: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    market_cap: Annotated[float, Field(gt=0, allow_inf_nan=False)] | None = None
+    now: int
+
+
+@app.post("/v1/fundamentals/ratios", dependencies=[Depends(require_token)])
+def fundamentals_ratios(body: RatiosRequest) -> dict:
+    """Ratios from a company's reported numbers at a price, and whether the numbers are current (fundamentals.py)."""
+    try:
+        return {"ratios": fundamentals.ratios_of(body.facts, body.price, body.market_cap), "current": fundamentals.is_current(body.facts, body.now)}
+    except (KeyError, TypeError, ValueError, IndexError) as error:
+        raise HTTPException(status_code=422, detail=f"Those company numbers couldn't be read: {error}") from error
 
 
 @app.post("/v1/backtests/walk-forward", dependencies=[Depends(require_token)])

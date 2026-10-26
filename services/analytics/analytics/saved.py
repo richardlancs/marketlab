@@ -16,7 +16,7 @@ from typing import Any, Mapping
 import pandas as pd
 
 from . import db as database
-from . import engine
+from . import analysis, engine
 
 #: Relative tolerance when comparing a reproduced result with the stored one (as lib/backtest/stored.ts).
 TOLERANCE = 1e-9
@@ -81,11 +81,14 @@ def summary_of(outcome: engine.Outcome) -> dict[str, float]:
     }
 
 
-def stored_result(outcome: engine.Outcome, *, note: str | None, dataset: Mapping[str, Any], assumptions: Mapping[str, str]) -> dict[str, Any]:
+def stored_result(outcome: engine.Outcome, *, note: str | None, dataset: Mapping[str, Any], assumptions: Mapping[str, str], costs: Mapping[str, Any] | None = None) -> dict[str, Any]:
     # The Next.js server sends the full note (including these same warnings); on its own, the engine's warnings are the note.
     full_note = note if note is not None else (" ".join(outcome.warnings) or None)
+    run, benchmark = run_json(outcome.run), run_json(outcome.benchmark)
     return {
-        "outcome": {"run": run_json(outcome.run), "benchmark": run_json(outcome.benchmark)},
+        "outcome": {"run": run, "benchmark": benchmark},
+        # The measures and heatmap the results page shows (analysis.py), saved with the result.
+        **({"extras": analysis.extras(run, benchmark, costs)} if costs is not None else {}),
         "note": full_note,
         "provenance": {
             "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION},
@@ -156,7 +159,8 @@ def reproduce(db: database.Database, owner_id: str, run_id: str, to_config) -> d
     stored = json.loads(row["result"])
     snapshot = json.loads(row["snapshot"])
     outcome = outcome_from_snapshot(to_config(json.loads(row["config"])), snapshot)
-    reproduced = stored_result(outcome, note=None, dataset=stored["provenance"]["dataset"], assumptions=stored["provenance"]["assumptions"])
+    config = json.loads(row["config"])
+    reproduced = stored_result(outcome, note=None, dataset=stored["provenance"]["dataset"], assumptions=stored["provenance"]["assumptions"], costs=config.get("costs"))
     reproduced["note"] = stored.get("note")
     return {"reproduced": reproduced, "comparison": compare(stored["outcome"], reproduced["outcome"])}
 

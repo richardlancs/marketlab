@@ -11,10 +11,9 @@
  * dollar amounts are read: a company reporting in another currency has no
  * numbers here rather than misleading ones.
  *
- * The analytics service fetches and parses them
- * (services/analytics/analytics/fundamentals.py); lib/fundamentals.ts stores
- * them. The ratios that depend on today's price are worked out here, next to
- * the price.
+ * The analytics service fetches and parses them, and works out the ratios at
+ * a price (services/analytics/analytics/fundamentals.py); lib/fundamentals.ts
+ * stores them. Types and a checker only.
  */
 
 /** One reporting period's income statement. Amounts in dollars; null where the company didn't report it. */
@@ -52,7 +51,6 @@ export interface CompanyFacts {
   filed: string;
 }
 
-const DAY = 86_400_000;
 const isNumberOrNull = (v: unknown) => v === null || (typeof v === "number" && Number.isFinite(v));
 const isDay = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
 const PERIOD_FIELDS = ["revenue", "grossProfit", "operatingIncome", "netIncome", "eps"] as const;
@@ -66,10 +64,6 @@ export function isCompanyFacts(value: unknown): value is CompanyFacts {
   const t = v.trailing as Record<string, unknown> | null;
   return yearsOk && (t === null || (isDay(t?.end) && PERIOD_FIELDS.every((k) => isNumberOrNull(t[k]))));
 }
-
-/** Numbers this old (by their latest period) are left out of comparisons: the company has stopped reporting in dollars, or at all. */
-const CURRENT_FOR = 15 * 31 * DAY;
-export const isCurrent = (facts: CompanyFacts, now: number) => Date.parse(facts.trailing?.end ?? facts.years.at(-1)?.end ?? "") > now - CURRENT_FOR;
 
 export interface Ratios {
   /** Last fiscal year's revenue against the year before. */
@@ -90,26 +84,5 @@ export interface Ratios {
   freeCashFlowYield: number | null;
 }
 
-const ratio = (a: number | null | undefined, b: number | null | undefined) => (a == null || b == null || b === 0 ? null : a / b);
-const growth = (now: number | null | undefined, before: number | null | undefined) => (now == null || before == null || before <= 0 ? null : now / before - 1);
-
-/** Ratios from the reported numbers and today's price. Without a market value, it's the price times the diluted shares. */
-export function ratiosOf(facts: CompanyFacts, price: number, marketCap: number | null): Ratios {
-  const last = facts.years.at(-1);
-  const before = facts.years.at(-2);
-  const t = facts.trailing;
-  const value = marketCap ?? (last?.dilutedShares ? price * last.dilutedShares : null);
-  return {
-    revenueGrowth: growth(last?.revenue, before?.revenue),
-    epsGrowth: growth(last?.eps, before?.eps),
-    grossMargin: ratio(t?.grossProfit, t?.revenue),
-    operatingMargin: ratio(t?.operatingIncome, t?.revenue),
-    netMargin: ratio(t?.netIncome, t?.revenue),
-    returnOnEquity: last?.equity && last.equity > 0 ? ratio(last.netIncome, last.equity) : null,
-    // By value rather than per share where possible: per-share figures don't
-    // match the traded share for depositary receipts (TSM) or share classes (BRK-B).
-    peRatio: marketCap !== null ? (t?.netIncome && t.netIncome > 0 ? marketCap / t.netIncome : null) : t?.eps && t.eps > 0 ? price / t.eps : null,
-    priceToSales: ratio(value, t?.revenue),
-    freeCashFlowYield: ratio(last?.freeCashFlow, value),
-  };
-}
+/** The ratios' names, for checking an answer from the analytics service. */
+export const RATIO_KEYS = ["revenueGrowth", "epsGrowth", "grossMargin", "operatingMargin", "netMargin", "returnOnEquity", "peRatio", "priceToSales", "freeCashFlowYield"] as const;

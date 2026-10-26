@@ -2,8 +2,7 @@
 
 import { useState } from "react";
 import { HeatTable, type HeatRow } from "@/components/charts/heat-table";
-import type { BacktestRun } from "@/lib/backtest/engine";
-import { periodReturns, type MonthReturn, type YearReturn } from "@/lib/backtest/periods";
+import type { MonthReturn, ResultExtras, YearReturn } from "@/lib/backtest/extras";
 import { formatPercent } from "@/lib/format";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -22,10 +21,10 @@ function toRows(months: MonthReturn[], years: YearReturn[]): HeatRow[] {
 }
 
 /** Month-by-month and year-by-year returns: which stretches made or lost the money. */
-export function ReturnHeatmap({ run, benchmark, strategyName, benchmarkName }: { run: BacktestRun; benchmark: BacktestRun; strategyName: string; benchmarkName: string }) {
+export function ReturnHeatmap({ periods, strategyName, benchmarkName }: { periods: ResultExtras["periods"]; strategyName: string; benchmarkName: string }) {
   const [show, setShow] = useState<Show>("strategy");
-  const ours = periodReturns(run.equity);
-  const theirs = periodReturns(benchmark.equity);
+  const ours = periods.run;
+  const theirs = periods.benchmark;
   const ourRows = toRows(ours.months, ours.years);
   const theirRows = toRows(theirs.months, theirs.years);
   // Both runs cover exactly the same days, so their rows and cells line up.

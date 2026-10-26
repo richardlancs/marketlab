@@ -31,6 +31,8 @@ Modules:
   - `analytics/plan.py`: the goal planner;
   - `analytics/performance.py`: a portfolio's value history rebuilt from its trades, and its performance;
   - `analytics/walkforward.py`: walk-forward testing;
+  - `analytics/screener.py`: the screener's rows (ratios and percentile ranks);
+  - `analytics/analysis.py`: more measures and period returns for every backtest result;
   - `analytics/screens.py`: historical screening, a stock screen applied every month from the prices known then (see [Historical screening](#historical-screening)).
 - `analytics/options.py`: Black-Scholes, implied volatility, the simulated chain and payoffs.
 - `analytics/ml.py`: the machine-learning sandbox, with snapshots for saving and reproducing.
@@ -84,6 +86,8 @@ Phase 16 endpoints, briefly (each validates its input; see `analytics/api.py` fo
 
 | Endpoint | What it does |
 |---|---|
+| `POST /v1/backtests/analyse` | More measures and period returns for a saved result that lacks them |
+| `POST /v1/analytics/screener-rows` · `/v1/fundamentals/ratios` | The screener's rows; a company's ratios at a price |
 | `POST /v1/backtests/sweep` | Every point of a parameter sweep on one set of prices: each point's metrics, the benchmark, and the deflated Sharpe check |
 | `POST /v1/portfolio/performance` | A portfolio's value history from its trades, against an index, using its nightly snapshots for past closes |
 | `POST /v1/analytics/plan` | The goal planner |
@@ -233,7 +237,7 @@ These save and reproduce historical screens, as `/v1/saved-runs` does for backte
 `analytics/screens.py`. Its module docstring states every rule. In short:
 - **Inputs:** a *universe snapshot*, built from the store and saved with a run. It holds the market's trading days from 274 sessions before the start, and each candidate's adjusted close on each day, with `None` where it has none. Live runs and reproductions both calculate from a snapshot, so they share one code path.
 - **Decisions:** on session D, `rank()` gets `closes[:D]`, so D's own close and anything later are out of reach. Tests check that changing later prices, or D's own close, leaves earlier decisions unchanged.
-- **Measures:** 12-1 momentum and the 200-day average use `profiles.py`'s definitions, and percentiles use `screener.ts`'s. A stock qualifies with the top fifth of momentum and above its average. Picks are the top five by momentum, ties broken alphabetically, at 20% each.
+- **Measures:** 12-1 momentum and the 200-day average use `profiles.py`'s definitions, and percentiles use `screener.py`'s. A stock qualifies with the top fifth of momentum and above its average. Picks are the top five by momentum, ties broken alphabetically, at 20% each.
 - **Execution:** `execution.buy`/`sell` (the backtests' costs and rules). The benchmark is `engine.BuyAndHold` on the index, and the metrics are `metrics.compute_metrics`.
 - **Versions:** `SCREEN_VERSION` is recorded as the run's `method`. A reproduction made with another version says so.
 

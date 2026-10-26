@@ -17,7 +17,7 @@ vi.mock("./rate-limit", () => ({
 vi.mock("./db", () => db);
 const python = vi.hoisted(() => {
   class PythonEngineError extends Error {}
-  return { PythonEngineError, savePythonRun: vi.fn(), reproducePythonRun: vi.fn() };
+  return { PythonEngineError, savePythonRun: vi.fn(), reproducePythonRun: vi.fn(), analyseOnPython: vi.fn(async () => ({ analysis: {}, periods: {} })) };
 });
 vi.mock("./backtest/python-client", () => python);
 vi.mock("./owner", () => ({ currentOwner: async () => owner.current }));
@@ -94,7 +94,9 @@ describe("saved results", () => {
 
   it("show the stored result, not a new run", async () => {
     db.backtests.get.mockResolvedValue({ run: savedRun, stored });
-    expect(await loadSavedRunAction("run-1")).toEqual({ ok: true, run: savedRun, stored: stored.result });
+    // Saved before the measures came with results: they're worked out on opening.
+    expect(await loadSavedRunAction("run-1")).toEqual({ ok: true, run: savedRun, stored: { ...stored.result, extras: { analysis: {}, periods: {} } } });
+    expect(python.analyseOnPython).toHaveBeenCalledWith(stored.result.outcome, config.costs);
     expect(server.runFull).not.toHaveBeenCalled();
   });
 

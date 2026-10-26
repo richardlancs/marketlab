@@ -72,3 +72,30 @@ def test_the_endpoint_reports_an_unreachable_sec(monkeypatch):
     monkeypatch.setattr(fundamentals, "fetch_company_facts", fail)
     response = TestClient(app).post("/v1/fundamentals/company", json={"ciks": [1], "userAgent": "x"}, headers=AUTH)
     assert response.status_code == 200 and response.json() == {"facts": None, "failed": True}
+
+
+def example_corp():
+    return next(c for c in CASES if c["name"] == "company")["expected"]
+
+
+def test_ratios_from_growth_margins_returns_and_value():
+    r = fundamentals.ratios_of(example_corp(), 30, 600)
+    assert r["revenueGrowth"] == pytest.approx(0.2) and r["epsGrowth"] == pytest.approx(0.5)
+    assert r["netMargin"] == pytest.approx(18 / 131) and r["grossMargin"] is None
+    assert r["returnOnEquity"] == pytest.approx(15 / 60)
+    assert r["priceToSales"] == pytest.approx(600 / 131) and r["freeCashFlowYield"] == pytest.approx(15 / 600)
+    # By value: market value over trailing earnings, so it works without earnings per share.
+    assert r["peRatio"] == pytest.approx(600 / 18)
+
+
+def test_without_a_market_value_it_uses_diluted_shares_and_skips_meaningless_ratios():
+    facts = example_corp()
+    losing = {**facts, "trailing": {**facts["trailing"], "eps": -2}, "years": [{**y, "equity": -5} for y in facts["years"]]}
+    r = fundamentals.ratios_of(losing, 30, None)
+    assert r["priceToSales"] == pytest.approx(300 / 131) and r["peRatio"] is None and r["returnOnEquity"] is None
+    assert fundamentals.ratios_of({**facts, "trailing": {**facts["trailing"], "eps": 2}}, 30, None)["peRatio"] == 15
+
+
+def test_numbers_are_current_for_15_months():
+    june_2027, november_2027 = 1_811_808_000_000, 1_825_027_200_000
+    assert fundamentals.is_current(example_corp(), june_2027) and not fundamentals.is_current(example_corp(), november_2027)

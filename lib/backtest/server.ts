@@ -88,11 +88,15 @@ export type FullRun = Extract<RunResult, { ok: true }> & { snapshot: PriceSnapsh
  * checksum), and the engine and its version. A failure throws, and errors
  * aren't cached, so a brief outage isn't remembered for an hour.
  */
-async function computeCached(config: BacktestConfig, snapshot: PriceSnapshot, engineVersion: string) {
+/** Bumped when a result gains or changes fields (2: extras), so cached results in the old shape aren't served. */
+const RESULT_FORMAT = 2;
+
+async function computeCached(config: BacktestConfig, snapshot: PriceSnapshot, engineVersion: string, format = RESULT_FORMAT) {
   "use cache";
   cacheTag("market");
   cacheLife("hours");
   void engineVersion; // part of the cache key only
+  void format; // likewise
   return computeFresh(config, snapshot);
 }
 
@@ -120,6 +124,7 @@ export async function runFromSnapshot(config: BacktestConfig, snapshot: PriceSna
     outcome: computed.outcome,
     note: all.length ? all.join(" ") : null,
     provenance: { engine: computed.engine, dataset: describeSnapshot(snapshot), assumptions: ASSUMPTIONS, computedAt: computed.computedAt },
+    ...(computed.extras && { extras: computed.extras }),
   };
 }
 

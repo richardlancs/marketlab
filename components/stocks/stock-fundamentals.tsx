@@ -2,9 +2,9 @@ import { connection } from "next/server";
 import type { ReactNode } from "react";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
-import { getFundamentals, isOutdated } from "@/lib/fundamentals";
+import { getFundamentals, ratiosAt } from "@/lib/fundamentals";
 import { formatCompactCurrency, formatCurrency, formatPercent, formatShare } from "@/lib/format";
-import { ratiosOf, type FiscalYear } from "@/lib/market/fundamentals";
+import { RATIO_KEYS, type FiscalYear, type Ratios } from "@/lib/market/fundamentals";
 import { marketMode } from "@/lib/market/mode";
 import type { TermKey } from "@/lib/glossary";
 
@@ -25,7 +25,9 @@ export async function StockFundamentals({ symbol, price, marketCap }: { symbol: 
   await connection();
   const facts = await getFundamentals(symbol);
   if (!facts || facts.years.length === 0) return null;
-  const r = ratiosOf(facts, price, marketCap);
+  // The ratios at today's price, from the analytics service; without it, the reported numbers still show.
+  const worked = await ratiosAt(facts, price, marketCap);
+  const r: Ratios = worked?.ratios ?? Object.fromEntries(RATIO_KEYS.map((k) => [k, null])) as unknown as Ratios;
   const last = facts.years.at(-1)!;
   const t = facts.trailing;
   const quarterly = t !== null && t.end !== last.end;
@@ -39,7 +41,7 @@ export async function StockFundamentals({ symbol, price, marketCap }: { symbol: 
         </h2>
         <span className="text-xs text-muted">From SEC filings, through {day(t?.end ?? last.end)}</span>
       </div>
-      {isOutdated(facts) && <p className="mt-2 text-sm text-muted">These are the latest figures it reported in US dollars, which are now over a year old.</p>}
+      {worked?.current === false && <p className="mt-2 text-sm text-muted">These are the latest figures it reported in US dollars, which are now over a year old.</p>}
 
       <dl className="mt-4 grid grid-cols-2 gap-x-4 gap-y-4 sm:grid-cols-4">
         <Stat label="Revenue" value={money(t?.revenue ?? null)} note={quarterly ? "last 4 quarters" : "last fiscal year"} term="revenue" />

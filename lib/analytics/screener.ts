@@ -1,12 +1,10 @@
 /**
- * The stock screener's rules: the rows it shows (built from stored stock
- * profiles and fundamentals), percentile ranks, filters, presets and sorting.
- * Pure functions, so the page can filter all ~100 rows instantly in the
- * browser, and tests can check every rule.
+ * The stock screener's rules: the rows it shows (built by the analytics
+ * service from stored profiles and fundamentals, with percentile ranks:
+ * services/analytics/analytics/screener.py), and the filters, presets and
+ * sorting, which run in the browser so all ~100 rows filter instantly.
  */
 import { CONFIG_VERSION, type BacktestConfig } from "../backtest/config";
-import { ratiosOf, type CompanyFacts } from "../market/fundamentals";
-import type { StockProfile } from "./profile";
 
 export interface ScreenerRow {
   symbol: string;
@@ -38,80 +36,6 @@ export interface ScreenerRow {
   momentumSectorRank: number | null;
   /** Percentile of volatility among all rows (0 = calmest). */
   volatilityRank: number | null;
-}
-
-/** Fractions of 0 to 1: where each value sits among the others (ties share the average rank). Nulls stay null. */
-export function percentiles(values: (number | null)[]): (number | null)[] {
-  const present = values.map((v, i) => ({ v, i })).filter((x): x is { v: number; i: number } => x.v !== null);
-  const out: (number | null)[] = values.map(() => null);
-  if (present.length === 0) return out;
-  if (present.length === 1) {
-    out[present[0].i] = 0.5;
-    return out;
-  }
-  present.sort((a, b) => a.v - b.v);
-  for (let start = 0; start < present.length; ) {
-    let end = start;
-    while (end + 1 < present.length && present[end + 1].v === present[start].v) end++;
-    const rank = (start + end) / 2 / (present.length - 1);
-    for (let k = start; k <= end; k++) out[present[k].i] = rank;
-    start = end + 1;
-  }
-  return out;
-}
-
-export interface ProfileInput {
-  symbol: string;
-  name: string;
-  sector: string;
-  profile: StockProfile;
-  marketCap: number | null;
-  peRatio: number | null;
-  /** The source's indicated yield, if it has one; otherwise the trailing yield from the prices is used. */
-  dividendYield: number | null;
-  /** Reported numbers, when stored. */
-  facts?: CompanyFacts | null;
-}
-
-export function buildRows(inputs: ProfileInput[]): ScreenerRow[] {
-  const rows: ScreenerRow[] = inputs.map(({ symbol, name, sector, profile: p, marketCap, peRatio, dividendYield, facts }) => {
-    const r = facts ? ratiosOf(facts, p.price, marketCap) : null;
-    return {
-      symbol,
-      name,
-      sector,
-      price: p.price,
-      marketCap,
-      // With reported earnings, a loss means no P/E rather than the source's figure.
-      peRatio: r ? r.peRatio : peRatio,
-      dividendYield: dividendYield ?? p.income.dividendYield,
-      priceToSales: r?.priceToSales ?? null,
-      revenueGrowth: r?.revenueGrowth ?? null,
-      netMargin: r?.netMargin ?? null,
-      returnOnEquity: r?.returnOnEquity ?? null,
-      freeCashFlowYield: r?.freeCashFlowYield ?? null,
-      r1M: p.returns["1M"],
-      r3M: p.returns["3M"],
-      r1Y: p.returns["1Y"],
-      momentum: p.returns["12-1"],
-      volatility: p.risk.volatility1Y,
-      beta: p.risk.beta1Y,
-      rsi: p.technicals.rsi14,
-      fromHigh: p.risk.drawdownFromHigh,
-      trend: p.technicals.states.trend,
-      cross: p.technicals.states.cross,
-      momentumRank: null,
-      momentumSectorRank: null,
-      volatilityRank: null,
-    };
-  });
-  percentiles(rows.map((r) => r.momentum)).forEach((rank, i) => (rows[i].momentumRank = rank));
-  percentiles(rows.map((r) => r.volatility)).forEach((rank, i) => (rows[i].volatilityRank = rank));
-  for (const sector of new Set(rows.map((r) => r.sector))) {
-    const members = rows.filter((r) => r.sector === sector);
-    percentiles(members.map((r) => r.momentum)).forEach((rank, i) => (members[i].momentumSectorRank = rank));
-  }
-  return rows;
 }
 
 /** Columns that can be filtered by a range and sorted. */

@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { STRATEGY_NAMES, type BacktestConfig, type BacktestOutcome } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
-import { analyseRun } from "@/lib/backtest/analysis";
+import type { ResultExtras, RunAnalysis } from "@/lib/backtest/extras";
 import { describeRuleSet } from "@/lib/backtest/rules";
 import { ReturnHeatmap } from "./return-heatmap";
 import { Explain } from "@/components/ui/explain";
@@ -37,7 +37,7 @@ export const ROWS: { label: string; term?: TermKey; cell: (m: Metrics) => { text
 
 const TRADES_SHOWN = 20;
 
-export function BacktestResults({ config, outcome }: { config: BacktestConfig; outcome: BacktestOutcome }) {
+export function BacktestResults({ config, outcome, extras }: { config: BacktestConfig; outcome: BacktestOutcome; extras?: ResultExtras }) {
   const [allTrades, setAllTrades] = useState(false);
   const { run, benchmark } = outcome;
   const times = run.equity.map((p) => p.time);
@@ -115,9 +115,9 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
         )}
       </div>
 
-      <MoreMeasures config={config} outcome={outcome} benchmarkLabel={other} />
+      {extras && <MoreMeasures analysis={extras.analysis} benchmarkLabel={other} />}
 
-      <ReturnHeatmap run={run} benchmark={benchmark} strategyName={strategyName} benchmarkName={other} />
+      {extras && <ReturnHeatmap periods={extras.periods} strategyName={strategyName} benchmarkName={other} />}
 
       {/* The chart's numbers as a table, for screen readers and for reading exact values. */}
       <details className="group text-sm">
@@ -203,9 +203,8 @@ export function BacktestResults({ config, outcome }: { config: BacktestConfig; o
   );
 }
 
-/** Risk-adjusted returns, the strategy against its benchmark, and its trades (lib/backtest/analysis.ts). */
-function MoreMeasures({ config, outcome, benchmarkLabel }: { config: BacktestConfig; outcome: BacktestOutcome; benchmarkLabel: string }) {
-  const a = analyseRun(outcome.run, outcome.benchmark, config);
+/** Risk-adjusted returns, the strategy against its benchmark, and its trades (calculated by the analytics service: lib/backtest/extras.ts). */
+function MoreMeasures({ analysis: a, benchmarkLabel }: { analysis: RunAnalysis; benchmarkLabel: string }) {
   const ratio = (v: number | null) => (v === null ? "—" : v.toFixed(2));
   const days = (v: number | null) => (v === null ? "—" : `${Math.round(v)} days`);
   const groups: { title: string; items: [string, string, string?][] }[] = [

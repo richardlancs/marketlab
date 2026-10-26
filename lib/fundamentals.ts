@@ -13,7 +13,8 @@ import "server-only";
 import { cacheLife, cacheTag } from "next/cache";
 import { fundamentals } from "./db";
 import { fetchCompanyFacts, type CompanyFacts } from "./market";
-import { isCurrent } from "./market/fundamentals";
+import { post } from "./backtest/python-client";
+import { RATIO_KEYS, type Ratios } from "./market/fundamentals";
 import { CATALOG } from "./market/catalog";
 
 const DAY = 86_400_000;
@@ -101,13 +102,20 @@ export async function getFundamentals(symbol: string): Promise<CompanyFacts | nu
   return stored !== undefined ? stored : cachedFetch(symbol);
 }
 
-/** Every stored company's numbers, for the screener. Empty if they can't be read. */
-export async function allFundamentals(): Promise<Map<string, CompanyFacts>> {
-  return fundamentals.all().catch((error) => {
-    console.error("[fundamentals] Couldn't read stored numbers:", error instanceof Error ? error.message : error);
-    return new Map();
-  });
+/**
+ * Ratios from a company's numbers at a price (P/E, margins, growth, return on
+ * equity, free-cash-flow yield), and whether the numbers are current (under
+ * 15 months old), worked out by the analytics service
+ * (services/analytics/analytics/fundamentals.py). Null if it can't be reached.
+ */
+export async function ratiosAt(facts: CompanyFacts, price: number, marketCap: number | null): Promise<{ ratios: Ratios; current: boolean } | null> {
+  try {
+    const data = await post("/v1/fundamentals/ratios", { facts, price, marketCap, now: Date.now() }, "Company ratios");
+    const r = data.ratios as Record<string, unknown> | undefined;
+    if (!r || typeof data.current !== "boolean" || !RATIO_KEYS.every((k) => r[k] === null || (typeof r[k] === "number" && Number.isFinite(r[k])))) return null;
+    return { ratios: r as unknown as Ratios, current: data.current };
+  } catch (error) {
+    console.error("[fundamentals] Couldn't work out ratios:", error instanceof Error ? error.message : error);
+    return null;
+  }
 }
-
-/** True when the company's latest reported period is over 15 months old. */
-export const isOutdated = (facts: CompanyFacts) => !isCurrent(facts, Date.now());

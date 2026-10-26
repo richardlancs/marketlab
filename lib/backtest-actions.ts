@@ -8,7 +8,7 @@
  * than taken from the browser.
  */
 import { MAX_RUN_NAME, MAX_SAVED_RUNS, parseConfig, parseSavedRun, summarize, type BacktestConfig, type SavedRun } from "./backtest/config";
-import { PythonEngineError, reproducePythonRun, savePythonRun } from "./backtest/python-client";
+import { analyseOnPython, PythonEngineError, reproducePythonRun, savePythonRun } from "./backtest/python-client";
 import { runFull, runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
 import type { Comparison, StoredResult } from "./backtest/stored";
 import type { Axis } from "./backtest/sweep";
@@ -174,7 +174,14 @@ export async function loadSavedRunAction(id: unknown): Promise<SavedResult> {
   const owner = await currentOwner({ create: false });
   const found = owner ? await backtests.get(owner.id, id) : null; // only the owner's own runs
   if (!found) return { ok: false, message: "That saved run doesn't exist." };
-  return { ok: true, run: found.run, stored: found.stored?.result ?? null };
+  const stored = found.stored?.result ?? null;
+  // Results saved before the measures came with every run get them now (not saved: they follow from the result).
+  if (stored && !stored.extras) {
+    const config = parseConfig(found.run.config, isSymbolFormat);
+    const extras = config ? await analyseOnPython(stored.outcome, config.costs).catch(() => null) : null;
+    if (extras) return { ok: true, run: found.run, stored: { ...stored, extras } };
+  }
+  return { ok: true, run: found.run, stored };
 }
 
 export type ReproduceResult = { ok: true; reproduced: StoredResult; comparison: Comparison } | { ok: false; message: string };
