@@ -121,4 +121,16 @@ describe("strategy worked examples", () => {
     // Quiz: 20% and 40% volatility.
     expect(weights([0.2, 0.4]).map((w) => Math.round(w * 100))).toEqual([67, 33]);
   });
+
+  it("machine learning: accuracy against the base rate, its range, and costs", () => {
+    const text = exampleText(STRATEGIES_LESSONS.machineLearning);
+    expect(text).toContain(`530 ÷ 1,000 = ${(530 / 1_000) * 100}%`);
+    expect(text).toContain(`540 ÷ 1,000 = ${(540 / 1_000) * 100}%`);
+    const se = Math.sqrt((0.53 * 0.47) / 1_000);
+    expect(text).toContain(`≈ ${se.toFixed(4)}`);
+    const margin = 1.96 * se * 100;
+    expect(text).toContain(`± ${margin.toFixed(1)} points`);
+    expect(text).toContain(`from ${(53 - margin).toFixed(1)}% to ${(53 + margin).toFixed(1)}%`);
+    expect(text).toContain(`20 × 0.2% = ${20 * 0.2}%`);
+  });
 });

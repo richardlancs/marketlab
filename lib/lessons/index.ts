@@ -7,6 +7,7 @@ import { COMPANY_NUMBERS_LESSONS } from "./content/company-numbers";
 import { INDICATORS_LESSONS } from "./content/indicators";
 import { INVESTING_BASICS_LESSONS } from "./content/investing-basics";
 import { MEASURING_RESULTS_LESSONS } from "./content/measuring-results";
+import { OPTIONS_LESSONS } from "./content/options";
 import { ORDERS_AND_TRADING_LESSONS } from "./content/orders-and-trading";
 import { STRATEGIES_LESSONS } from "./content/strategies";
 import { plainText } from "./rich-text";
@@ -22,6 +23,7 @@ export const LESSONS: Partial<Record<TermKey, Lesson>> = {
   ...ORDERS_AND_TRADING_LESSONS,
   ...COMPANY_NUMBERS_LESSONS,
   ...INDICATORS_LESSONS,
+  ...OPTIONS_LESSONS,
   ...STRATEGIES_LESSONS,
 };
 

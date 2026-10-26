@@ -8,6 +8,7 @@ import { parseSavedScreen, parseScreenResult, type SavedScreen, type ScreenResul
 import { MAX_SAVED_RUNS, parseSavedRun, type SavedRun, type StoredInfo } from "../backtest/config";
 import { parseSnapshot, type PriceSnapshot } from "../backtest/snapshot";
 import { parseStoredResult, type StoredResult } from "../backtest/stored";
+import { parseMLResult, parseSavedMLRun, type MLResult, type SavedMLRun } from "../ml/types";
 import { isSymbolFormat } from "../market/symbols";
 import * as schema from "./schema";
 import { writeTransaction, type Executor } from "./transaction";
@@ -64,6 +65,19 @@ function toSavedRun(row: { [K in keyof typeof listColumns]: unknown }, parse: (v
   return stored ? { ...run, stored } : run;
 }
 
+function toSavedML(row: { [K in keyof typeof listColumns]: unknown }): SavedMLRun | null {
+  let run: SavedMLRun | null;
+  try {
+    run = parseSavedMLRun({ ...row, config: JSON.parse(row.config as string), summary: JSON.parse(row.summary as string) }, isSymbolFormat);
+  } catch {
+    return null;
+  }
+  if (!run) return null;
+  return typeof row.engine === "string" && typeof row.engineVersion === "string" && typeof row.dataSource === "string" && typeof row.datasetVersion === "string"
+    ? { ...run, stored: { engine: { name: row.engine, version: row.engineVersion }, dataSource: row.dataSource, simulated: row.simulated === true, datasetVersion: row.datasetVersion } }
+    : run;
+}
+
 export function createBacktestRepository(db: Db) {
   return {
     /**
@@ -89,6 +103,33 @@ export function createBacktestRepository(db: Db) {
         .where(and(eq(backtestRun.userId, userId), eq(backtestRun.kind, "historical-screen")))
         .orderBy(desc(backtestRun.createdAt));
       return rows.map((row) => toSavedRun(row, parseSavedScreen)).filter((run): run is SavedScreen => run !== null);
+    },
+
+    /** The user's saved machine-learning runs (lib/ml/types.ts), newest first, without their results. */
+    async listML(userId: string): Promise<SavedMLRun[]> {
+      const rows = await db
+        .select(listColumns)
+        .from(backtestRun)
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.kind, "ml")))
+        .orderBy(desc(backtestRun.createdAt));
+      return rows.map(toSavedML).filter((run): run is SavedMLRun => run !== null);
+    },
+
+    /** One of the user's saved machine-learning runs with its stored result (its prices stay in the database, for the analytics service). */
+    async getML(userId: string, id: string): Promise<{ run: SavedMLRun; result: MLResult | null } | null> {
+      const [row] = await db
+        .select({ ...listColumns, result: backtestRun.result })
+        .from(backtestRun)
+        .where(and(eq(backtestRun.userId, userId), eq(backtestRun.id, id), eq(backtestRun.kind, "ml")));
+      const run = row ? toSavedML(row) : null;
+      if (!run) return null;
+      let result: MLResult | null = null;
+      try {
+        result = row.result ? parseMLResult(JSON.parse(row.result)) : null;
+      } catch {
+        result = null;
+      }
+      return { run, result };
     },
 
     /**

@@ -76,3 +76,52 @@ def run_stock_profiles(db: Database, source: str, symbols: Sequence[str] | None 
         slowest = max(slowest, (time.monotonic() - chunk_start) * 1000)
     summary.ms = int((time.monotonic() - start) * 1000)
     return summary
+
+
+#: The nightly parts, in order: alerts first (the emails and pushes that follow send what they trigger), then the rest.
+NIGHTLY_PARTS = ("alerts", "snapshots", "profiles", "factors")
+
+
+def run_nightly(db: Database, source: str, universe: Sequence[str], budget_ms: int = 20_000, parts: Sequence[str] = NIGHTLY_PARTS) -> dict:
+    """
+    Every nightly calculation, in order, within one time budget: indicator
+    alerts (alerts.py), portfolio snapshots (snapshots.py), stock profiles
+    (run_stock_profiles) and factors (factors.py). Each part is safe to run
+    again and skips what hasn't changed, so a run that stops early is simply
+    continued by the next one. Returns what each part did, or why it failed;
+    `unfinished` lists the parts with work left.
+    """
+    from . import alerts, factors, snapshots
+
+    start = time.monotonic()
+    left = lambda: budget_ms - (time.monotonic() - start) * 1000  # noqa: E731
+    out: dict[str, object] = {}
+    unfinished: list[str] = []
+    for part in parts:
+        if left() < 500:
+            out[part] = "skipped: out of time"
+            unfinished.append(part)
+            continue
+        try:
+            if part == "alerts":
+                result = alerts.evaluate(db, source, int(left()))
+                if result["unfinished"]:
+                    unfinished.append(part)
+            elif part == "snapshots":
+                result = snapshots.run(db, source, int(left()))
+                if result.get("remaining"):
+                    unfinished.append(part)
+            elif part == "profiles":
+                summary = run_stock_profiles(db, source, None, int(min(left(), 15_000)))
+                result = {"computed": len(summary.computed), "unchanged": summary.unchanged, "failed": len(summary.failed), "remaining": len(summary.remaining)}
+                if summary.remaining:
+                    unfinished.append(part)
+            elif part == "factors":
+                result = factors.refresh(db, source, universe)
+            else:
+                result = "unknown part"
+        except Exception as error:  # one part failing mustn't stop the others
+            print(f"[analytics] nightly {part} failed: {error!r}")
+            result = f"failed: {error}"
+        out[part] = result
+    return {"parts": out, "unfinished": unfinished, "ms": int((time.monotonic() - start) * 1000)}

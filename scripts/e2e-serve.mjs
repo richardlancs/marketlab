@@ -15,7 +15,6 @@ const env = {
   ...process.env,
   DATABASE_URL: "file:e2e.db",
   MARKET_DATA_SOURCE: "mock",
-  BACKTEST_ENGINE: "python",
   ANALYTICS_URL: "http://127.0.0.1:8010",
   ANALYTICS_SERVICE_TOKEN: "e2e-only-token",
   BETTER_AUTH_SECRET: "e2e-only-not-a-real-secret-0123456789abcdef",

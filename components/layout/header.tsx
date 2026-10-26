@@ -14,6 +14,7 @@ const pages: NavItem[] = [
   { href: "/watchlist", label: "Watchlist" },
   { href: "/portfolio", label: "Portfolio" },
   { href: "/backtest", label: "Backtest" },
+  { href: "/options", label: "Options" },
   { href: "/leaderboard", label: "Leaderboard" },
   { href: "/learn", label: "Learn" },
 ];
@@ -31,7 +32,7 @@ export function Header() {
        * full-width row under the logo (order-last + basis-full); from xl they
        * sit in the top row.
        */}
-      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
+      <div className="mx-auto flex w-full max-w-7xl flex-wrap items-center gap-x-6 xl:gap-x-4 pr-[max(1rem,env(safe-area-inset-right))] pl-[max(1rem,env(safe-area-inset-left))] sm:px-6 lg:px-8">
         <Link href="/" aria-label="MarketLab home" className="flex h-14 items-center">
           <Logo />
         </Link>

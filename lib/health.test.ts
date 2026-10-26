@@ -41,3 +41,12 @@ describe("assessHealth", () => {
     expect(assessHealth({ ...healthy, newestProfile: null }).checks.analyticsData.status).toBe("warn");
   });
 });
+
+describe("the nightly analytics parts", () => {
+  it("warn when one failed, and are left out when there's no record", () => {
+    const facts = { now: 10, database: { ok: true as const }, analytics: { configured: false as const }, market: { latestClose: 9, fallback: false }, dailyJob: { startedAt: 9, ok: true, unfinished: false }, newestProfile: 9 };
+    expect(assessHealth({ ...facts, nightlyParts: { alerts: { triggered: 1 }, factors: "failed: boom" } }).checks.nightly).toEqual({ status: "warn", detail: "Nightly analytics parts failed: factors." });
+    expect(assessHealth({ ...facts, nightlyParts: { alerts: {}, factors: { status: "unchanged" } } }).checks.nightly.status).toBe("ok");
+    expect(assessHealth(facts).checks.nightly).toBeUndefined();
+  });
+});

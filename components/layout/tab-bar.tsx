@@ -28,6 +28,7 @@ const more: (Tab & { detail: string })[] = [
   { href: "/screener", label: "Screener", detail: "Filter stocks by momentum, risk and value", icon: icon(<path d="M3 5h18l-7 8v6l-4 2v-8z" />) },
   { href: "/watchlist", label: "Watchlist", detail: "Stocks you follow, and your alerts", icon: icon(<path d="m12 3 2.8 5.7 6.2.9-4.5 4.4 1 6.2L12 17.3 6.5 20.2l1-6.2L3 9.6l6.2-.9z" />) },
   { href: "/backtest", label: "Backtest", detail: "Test a strategy on past prices", icon: icon(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></>) },
+  { href: "/options", label: "Options", detail: "Learn how options are priced, with a simulated chain", icon: icon(<><path d="M4 20h16" /><path d="M4 16l5-5 3 3 8-8" /><path d="M14 6h6v6" /></>) },
   { href: "/leaderboard", label: "Leaderboard", detail: "How portfolios compare", icon: icon(<><path d="M8 21h8M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0z" /><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" /></>) },
 ];
 

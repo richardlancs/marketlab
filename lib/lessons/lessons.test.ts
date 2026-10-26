@@ -8,7 +8,10 @@ import { linkedKeys, parseRichText, plainText } from "./rich-text";
 import type { Lesson } from "./types";
 
 /** Pages a lesson may link to (besides other lessons and stock pages). */
-const APP_PAGES = ["/", "/stocks", "/watchlist", "/portfolio", "/backtest", "/screener", "/leaderboard", "/learn"];
+const APP_PAGES = ["/", "/stocks", "/watchlist", "/portfolio", "/backtest", "/screener", "/leaderboard", "/learn", "/options"];
+/** Tabs a lesson may open with a #fragment (a stock page's tabs, and the portfolio's). */
+// Tabs a link may open (components/ui/tabs.tsx ids).
+const PAGE_TABS: Record<string, string[]> = { "/stocks/": ["overview", "trade", "analysis", "company", "news"], "/portfolio": ["holdings", "orders", "performance", "risk", "activity", "compete"], "/backtest": ["strategies", "ml"] };
 const isKnownSymbol = (symbol: string) => CATALOG.some((s) => s.symbol === symbol);
 
 const lessons = Object.entries(LESSONS) as [TermKey, Lesson][];
@@ -103,8 +106,16 @@ describe.each(lessons)("the %s lesson", (term, lesson) => {
     expect(lesson.related).not.toContain(term);
     expect(new Set(lesson.related).size).toBe(lesson.related.length);
     for (const { href } of lesson.inMarketLab) {
-      if (href.startsWith("/backtest#")) expect(parseShareFragment(href.slice("/backtest".length), isKnownSymbol), href).not.toBeNull();
-      else if (href.startsWith("/stocks/")) expect(isKnownSymbol(href.slice("/stocks/".length)), href).toBe(true);
+      // The Backtest page's fragment is either one of its tabs or a shared run's settings.
+      if (href.startsWith("/backtest#")) {
+        if (!PAGE_TABS["/backtest"].includes(href.slice("/backtest#".length))) expect(parseShareFragment(href.slice("/backtest".length), isKnownSymbol), href).not.toBeNull();
+      }
+      else if (href.startsWith("/portfolio#")) expect(PAGE_TABS["/portfolio"], href).toContain(href.slice("/portfolio#".length));
+      else if (href.startsWith("/stocks/")) {
+        const [symbol, tab] = href.slice("/stocks/".length).split("#");
+        expect(isKnownSymbol(symbol), href).toBe(true);
+        if (tab !== undefined) expect(PAGE_TABS["/stocks/"], href).toContain(tab);
+      }
       else if (href.startsWith("/learn/")) expect(termForSlug(href.slice("/learn/".length)), href).toBeDefined();
       else if (href.startsWith("/screener?preset=")) expect(PRESETS.map((p) => p.id), href).toContain(href.slice("/screener?preset=".length));
       else expect(APP_PAGES, href).toContain(href);

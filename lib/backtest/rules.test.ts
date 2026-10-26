@@ -1,24 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { tradingDaysEndingAt } from "../market/calendar";
-import { mulberry32 } from "../random";
-import type { PricePoint } from "../types";
-import { CONFIG_VERSION, parseConfig, parseSavedRun, runConfig, summarize, type BacktestConfig } from "./config";
-import { NO_COSTS, runBacktest } from "./engine";
-import { describeRuleSet, indicatorSeries, indicatorSeriesFromBars, parseRuleSet, RULE_PRESETS, ruleStrategy, type RuleSet } from "./rules";
-import { movingAverageCrossover } from "./strategies";
-
-function series(prices: number[]): PricePoint[] {
-  const days = tradingDaysEndingAt(Date.UTC(2026, 9, 16), prices.length);
-  return prices.map((price, i) => ({ time: days[i] + 20 * 3600_000, price }));
-}
-/** A bumpy random walk, the same every run. */
-function walk(length: number, seed: number): number[] {
-  const rng = mulberry32(seed);
-  const out = [100];
-  for (let i = 1; i < length; i++) out.push(out[i - 1] * (1 + (rng() - 0.5) * 0.06));
-  return out;
-}
-const all = { start: 0, end: Number.MAX_SAFE_INTEGER, initialCash: 1000, costs: NO_COSTS };
+import { CONFIG_VERSION, parseConfig, parseSavedRun } from "./config";
+import { describeRuleSet, indicatorSeries, indicatorSeriesFromBars, parseRuleSet, RULE_PRESETS, type RuleSet } from "./rules";
 
 describe("indicators", () => {
   it("computes simple and exponential averages, NaN while warming up", () => {
@@ -70,36 +52,6 @@ describe("parseRuleSet", () => {
   });
 });
 
-describe("ruleStrategy", () => {
-  it("'Golden cross' trades exactly like the moving-average crossover", () => {
-    const golden = RULE_PRESETS.find((p) => p.name === "Golden cross")!;
-    const points = [{ symbol: "A", points: series(walk(700, 7)) }, { symbol: "B", points: series(walk(700, 8)) }];
-    const weights = { A: 0.5, B: 0.5 };
-    const rules = runBacktest(points, ruleStrategy(weights, golden.entry, golden.exit), all);
-    const classic = runBacktest(points, movingAverageCrossover(weights, 50, 200), all);
-    expect(rules.trades.length).toBeGreaterThan(2);
-    expect(rules.trades).toEqual(classic.trades);
-    expect(rules.equity).toEqual(classic.equity);
-  });
-
-  it("doesn't trade while its indicators are warming up", () => {
-    const preset = RULE_PRESETS.find((p) => p.name === "Price above 200-day average")!;
-    const run = runBacktest([{ symbol: "A", points: series(walk(260, 3)) }], ruleStrategy({ A: 1 }, preset.entry, preset.exit), all);
-    // The average needs 200 closes, which the strategy has on day 200 (it sees up to yesterday).
-    expect(run.trades.every((t) => t.time >= run.equity[200].time)).toBe(true);
-  });
-
-  it("only acts on a cross, not on the level", () => {
-    const crossUp: RuleSet = { combine: "all", conditions: [{ left: { kind: "price" }, op: "crosses-above", right: { kind: "sma", days: 2 } }] };
-    // An exit that can never be true (a value above itself), so the one buy is the only trade.
-    const hold: RuleSet = { combine: "all", conditions: [{ left: { kind: "sma", days: 2 }, op: "above", right: { kind: "sma", days: 2 } }] };
-    // Falls, then rises across its 2-day average on day 3, then keeps rising.
-    const run = runBacktest([{ symbol: "A", points: series([10, 9, 8, 10, 11, 12, 13]) }], ruleStrategy({ A: 1 }, crossUp, hold), all);
-    expect(run.trades).toHaveLength(1);
-    expect(run.trades[0].time).toBe(run.equity[4].time);
-  });
-});
-
 describe("config versions", () => {
   // Exactly as Phase 4 saved them: no `version` field.
   const v1Config = {
@@ -113,13 +65,9 @@ describe("config versions", () => {
   };
   const isKnown = (s: string) => s === "AAPL";
 
-  it("reads a saved Phase 4 run, upgraded to the current version, with the same results", () => {
+  it("reads a saved Phase 4 run, upgraded to the current version and otherwise unchanged", () => {
     const run = parseSavedRun({ id: "r", name: "Old run", createdAt: 1, config: v1Config, summary: { finalValue: 1, totalReturn: 0, cagr: 0, maxDrawdown: 0, benchmarkTotalReturn: 0 } }, isKnown);
     expect(run?.config).toEqual({ ...v1Config, version: CONFIG_VERSION });
-    const history = { AAPL: series(walk(120, 5)) };
-    const market = series(walk(120, 6));
-    const before = summarize(runConfig(v1Config as unknown as BacktestConfig, history, market));
-    expect(summarize(runConfig(run!.config, history, market))).toEqual(before);
   });
 
   it("round-trips a rules config through JSON", () => {
@@ -154,20 +102,4 @@ describe("rules on daily highs, lows and volume", () => {
     expect(rule({ kind: "price" }, { kind: "chandelier", days: 22, multiple: 50 })).toBeNull();
   });
 
-  it("refuses to run rules that need bars on closes alone", () => {
-    const points = Array.from({ length: 40 }, (_, i) => ({ time: (i + 1) * 86_400_000, price: 100 + i }));
-    const config: BacktestConfig = {
-      version: CONFIG_VERSION,
-      holdings: [{ symbol: "A", weight: 1 }],
-      strategy: { kind: "rules", entry: { combine: "all", conditions: [{ left: { kind: "volume" }, op: "above", right: { kind: "volume-average", days: 5 } }] }, exit: { combine: "all", conditions: [{ left: { kind: "price" }, op: "below", right: { kind: "sma", days: 5 } }] } },
-      start: 0,
-      end: 100 * 86_400_000,
-      initialCash: 1000,
-      costs: NO_COSTS,
-      benchmark: "same-stocks",
-    };
-    expect(() => runConfig(config, { A: points }, points)).toThrow(/high, low and volume/);
-    const extra = { A: points.map((p, i) => ({ time: p.time, high: p.price + 1, low: p.price - 1, volume: i % 7 === 0 ? 900 : 100 })) };
-    expect(runConfig(config, { A: points }, points, extra).run.trades.length).toBeGreaterThan(0);
-  });
 });

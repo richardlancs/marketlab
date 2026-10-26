@@ -18,9 +18,13 @@ import { cacheLife } from "next/cache";
 import type { BacktestConfig, BacktestOutcome, RunSummary } from "./config";
 import type { BacktestRun, BacktestTrade, Metrics } from "./engine";
 import type { PriceSnapshot } from "./snapshot";
+import type { SelectionCheck } from "./sweep";
 import { parseStoredResult, type Comparison, type StoredResult } from "./stored";
 
 export class PythonEngineError extends Error {}
+
+/** What every caller shows when the service can't be reached at all, even after a retry. */
+export const SERVICE_DOWN = "The analytics service is starting up or unavailable. Try again in a moment.";
 
 /** The service's own limit, mirrored here so an oversized request fails before it's sent. */
 const MAX_POINTS = 4000;
@@ -68,7 +72,7 @@ const serviceUrl = (path: string) => {
  * used as soon as it's deployed; an unreachable service fails here, fast.
  */
 export async function pythonEngineVersion(): Promise<string> {
-  if (!pythonConfigured()) throw new PythonEngineError("The Python engine is selected but not set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
+  if (!pythonConfigured()) throw new PythonEngineError("The analytics service isn't set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
   return healthVersion(process.env.ANALYTICS_URL as string);
 }
 
@@ -77,48 +81,25 @@ async function healthVersion(base: string): Promise<string> {
   cacheLife("minutes");
   void base; // part of the cache key, so another service URL is asked again
   let body: { engine?: { version?: unknown } } | null = null;
-  try {
-    const response = await fetch(serviceUrl("health"), { signal: AbortSignal.timeout(3000), cache: "no-store" });
-    body = response.ok ? await response.json() : null;
-  } catch (error) {
-    console.error("[analytics] health check failed:", error instanceof Error ? error.message : error);
+  // A quick try, then a patient one: a service waking from idle can take several seconds.
+  for (const wait of [3000, 12_000]) {
+    try {
+      const response = await fetch(serviceUrl("health"), { signal: AbortSignal.timeout(wait), cache: "no-store" });
+      body = response.ok ? await response.json() : null;
+    } catch (error) {
+      console.error("[analytics] health check failed:", error instanceof Error ? error.message : error);
+    }
+    if (typeof body?.engine?.version === "string") break;
   }
-  if (typeof body?.engine?.version !== "string") throw new PythonEngineError("The Python engine couldn't be reached. Try again in a minute.");
+  if (typeof body?.engine?.version !== "string") throw new PythonEngineError(SERVICE_DOWN);
   return body.engine.version;
 }
 
 export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapshot): Promise<PythonResult> {
-  const token = process.env.ANALYTICS_SERVICE_TOKEN;
-  if (!pythonConfigured() || !token) throw new PythonEngineError("The Python engine is selected but not set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
   const series = [...Object.values(snapshot.series), ...(snapshot.market ? [snapshot.market.data] : [])];
   if (series.some((s) => s.times.length > MAX_POINTS)) throw new PythonEngineError(`The Python engine takes at most ${MAX_POINTS} daily prices per stock. Choose a shorter period.`);
 
-  const timeout = Number(process.env.ANALYTICS_TIMEOUT_MS) || 10_000;
-  let response: Response;
-  try {
-    response = await fetch(serviceUrl("v1/backtests"), {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-      body: JSON.stringify({ config, prices: snapshot.series, market: snapshot.market?.data ?? null }),
-      signal: AbortSignal.timeout(timeout),
-      cache: "no-store",
-    });
-  } catch (error) {
-    const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
-    console.error("[analytics] request failed:", error instanceof Error ? error.message : error);
-    throw new PythonEngineError(timedOut ? `The Python engine didn't answer within ${timeout / 1000} seconds. Try again, or a shorter period.` : "The Python engine couldn't be reached. Try again in a minute.");
-  }
-
-  const body = (await response.json().catch(() => null)) as Record<string, unknown> | null;
-  if (!response.ok) {
-    const detail = typeof body?.error === "string" ? body.error : "";
-    const problems = Array.isArray(body?.problems) ? (body.problems as string[]).join("; ") : "";
-    console.error(`[analytics] ${response.status}: ${detail} ${problems}`);
-    if (response.status === 422) throw new PythonEngineError(`The Python engine refused these settings: ${problems || detail}`);
-    if (response.status === 401 || response.status === 503) throw new PythonEngineError("The Python engine isn't accepting requests from this server (its service token is missing or doesn't match).");
-    throw new PythonEngineError(`The Python engine failed (${response.status}). Try again in a minute.`);
-  }
-
+  const body = await post("v1/backtests", { config, prices: snapshot.series, market: snapshot.market?.data ?? null }, "Backtest");
   const run = parseRun(body?.run);
   const benchmark = parseRun(body?.benchmark);
   const engine = body?.engine as { name?: unknown; version?: unknown } | undefined;
@@ -129,31 +110,51 @@ export async function runOnPython(config: BacktestConfig, snapshot: PriceSnapsho
   return { outcome: { run, benchmark }, engine: { name: engine.name, version: engine.version }, warnings };
 }
 
-/** POSTs JSON to the service with its token; returns the parsed body, or throws a PythonEngineError with a message fit to show. */
+/** How long to wait before the one retry, when the service couldn't be reached: long enough for it to wake from idle. */
+const WAKE_DELAY_MS = 1500;
+
+/**
+ * POSTs JSON to the service with its token; returns the parsed body, or
+ * throws a PythonEngineError with a message fit to show. A service that
+ * sleeps when idle can refuse the first connection, or its host can answer
+ * 502/504 while it starts, so those are tried once more after a moment.
+ */
 export async function post(path: string, body: unknown, what: string, timeoutMs?: number): Promise<Record<string, unknown>> {
   const token = process.env.ANALYTICS_SERVICE_TOKEN;
-  if (!pythonConfigured() || !token) throw new PythonEngineError("The Python engine is selected but not set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
+  if (!pythonConfigured() || !token) throw new PythonEngineError("The analytics service isn't set up on this server (ANALYTICS_URL and ANALYTICS_SERVICE_TOKEN).");
   const timeout = timeoutMs ?? (Number(process.env.ANALYTICS_TIMEOUT_MS) || 10_000);
-  let response: Response;
-  try {
-    response = await fetch(serviceUrl(path), {
+  const send = () =>
+    fetch(serviceUrl(path), {
       method: "POST",
       headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(timeout),
       cache: "no-store",
     });
+  let response: Response;
+  try {
+    response = await send().catch(async (error: unknown) => {
+      if (error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError")) throw error;
+      await new Promise((resolve) => setTimeout(resolve, WAKE_DELAY_MS));
+      return send();
+    });
+    if (response.status === 502 || response.status === 504) {
+      await new Promise((resolve) => setTimeout(resolve, WAKE_DELAY_MS));
+      response = await send();
+    }
   } catch (error) {
     const timedOut = error instanceof Error && (error.name === "TimeoutError" || error.name === "AbortError");
     console.error(`[analytics] ${what} failed:`, error instanceof Error ? error.message : error);
-    throw new PythonEngineError(timedOut ? `The Python engine didn't answer within ${timeout / 1000} seconds. Try again in a minute.` : "The Python engine couldn't be reached. Try again in a minute.");
+    throw new PythonEngineError(timedOut ? `The analytics service didn't answer within ${timeout / 1000} seconds. Try again in a minute.` : SERVICE_DOWN);
   }
   const data = (await response.json().catch(() => null)) as Record<string, unknown> | null;
   if (!response.ok) {
     const detail = typeof data?.error === "string" ? data.error : "";
     console.error(`[analytics] ${what} ${response.status}: ${detail}`);
+    const problems = Array.isArray(data?.problems) ? (data.problems as unknown[]).filter((p) => typeof p === "string").join("; ") : "";
+    if (response.status === 422 && problems) throw new PythonEngineError(`The analytics service refused these settings: ${problems}`);
     // The service's own messages for these are written for users (a full list, a run it can't reproduce, the database being down).
-    if ([404, 409, 422, 503].includes(response.status) && detail) throw new PythonEngineError(detail);
+    if ([404, 409, 422, 429, 503].includes(response.status) && detail) throw new PythonEngineError(detail);
     if (response.status === 401) throw new PythonEngineError("The Python engine isn't accepting requests from this server (its service token is missing or doesn't match).");
     throw new PythonEngineError(`The Python engine failed (${response.status}). Try again in a minute.`);
   }
@@ -195,4 +196,28 @@ export async function reproducePythonRun(runId: string, ownerId: string): Promis
     throw new PythonEngineError("The Python engine sent back an answer MarketLab couldn't read.");
   }
   return { reproduced, comparison: { matches: c.matches, largestDifference: c.largestDifference, differences: c.differences.filter((d): d is string => typeof d === "string") } };
+}
+
+export interface PythonSweep {
+  /** Each point's metrics, in the order sent (null where its settings couldn't run). */
+  metrics: (Metrics | null)[];
+  benchmark: Metrics;
+  check: SelectionCheck | null;
+}
+
+const isMetrics = (m: unknown): m is Metrics => {
+  const v = m as Record<string, unknown> | null;
+  return !!v && ["finalValue", "totalReturn", "cagr", "maxDrawdown", "volatility", "exposure"].every((k) => isNumber(v[k])) && (v.sharpe === null || isNumber(v.sharpe));
+};
+
+/** Runs every point of a sweep on the snapshot's prices (the base config's window and stocks). */
+export async function sweepOnPython(base: BacktestConfig, points: (BacktestConfig | null)[], snapshot: PriceSnapshot): Promise<PythonSweep> {
+  const data = await post("v1/backtests/sweep", { base, points, prices: snapshot.series, market: snapshot.market?.data ?? null }, "Sweep", 30_000);
+  const metrics = data.metrics as unknown[] | undefined;
+  const c = data.check as SelectionCheck | null | undefined;
+  const checkOk = c === null || (!!c && ["trials", "best", "expectedByLuck", "probability"].every((k) => isNumber(c[k as keyof SelectionCheck])));
+  if (!Array.isArray(metrics) || metrics.length !== points.length || !metrics.every((m) => m === null || isMetrics(m)) || !isMetrics(data.benchmark) || !checkOk) {
+    throw new PythonEngineError("The analytics service sent back a sweep MarketLab couldn't read.");
+  }
+  return { metrics: metrics as (Metrics | null)[], benchmark: data.benchmark, check: c ?? null };
 }

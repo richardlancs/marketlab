@@ -1,13 +1,15 @@
 // @vitest-environment node
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { CONFIG_VERSION, runConfig, type BacktestConfig } from "./config";
+import { CONFIG_VERSION, type BacktestConfig, type BacktestOutcome } from "./config";
+import { runBacktest } from "./engine";
 import { canonicalJson, checksumOf, describeSnapshot, makeSnapshot, parseSnapshot } from "./snapshot";
+import { buyAndHold, movingAverageCrossover } from "./strategies";
 import { compareResults } from "./stored";
 
 // The engines and the Python client are server modules; here they're plain code.
 vi.mock("server-only", () => ({}));
 vi.mock("next/cache", () => ({ cacheLife: () => {}, cacheTag: () => {} }));
-const { compute, configuredEngine, engineFor } = await import("./engines");
+const { compute } = await import("./engines");
 const { PythonEngineError, reproducePythonRun, runOnPython, savePythonRun } = await import("./python-client");
 
 const DAY = 86_400_000;
@@ -15,6 +17,15 @@ const T0 = Date.UTC(2026, 0, 5, 20);
 const points = (n: number, f: (i: number) => number) => Array.from({ length: n }, (_, i) => ({ time: T0 + i * DAY, price: f(i) }));
 const history = { AAPL: points(80, (i) => 100 + i + (i % 5)), KO: points(80, (i) => 50 + (i % 7)) };
 const market = { symbol: "SPX", name: "S&P 500", history: points(80, (i) => 5000 + 3 * i) };
+
+/** A real outcome to send back from a mocked service: the Learn demos' engine, on the same prices. */
+function outcomeOf(cfg: BacktestConfig, prices: Record<string, { time: number; price: number }[]>): BacktestOutcome {
+  const series = cfg.holdings.map((h) => ({ symbol: h.symbol, points: prices[h.symbol] }));
+  const options = { start: cfg.start, end: cfg.end, initialCash: cfg.initialCash, costs: cfg.costs };
+  const weights = Object.fromEntries(cfg.holdings.map((h) => [h.symbol, h.weight]));
+  const run = runBacktest(series, cfg.strategy.kind === "moving-average" ? movingAverageCrossover(weights, cfg.strategy.fast, cfg.strategy.slow) : buyAndHold(weights), options);
+  return { run, benchmark: runBacktest(series, buyAndHold(weights), { ...options, start: run.equity[0].time, end: run.equity.at(-1)!.time }) };
+}
 
 const config = (overrides: Partial<BacktestConfig> = {}): BacktestConfig => ({
   version: CONFIG_VERSION,
@@ -60,37 +71,6 @@ describe("price snapshots", () => {
     expect(parseSnapshot({ ...snap, version: 2 })).toBeNull();
     expect(parseSnapshot({ ...snap, series: { AAPL: { times: [1], prices: [] } } })).toBeNull();
   });
-
-  it("give the same result as the engine on the full history", async () => {
-    const snap = makeSnapshot(config(), history, market, "mock", T0);
-    const fromSnapshot = await compute(config(), snap, "typescript");
-    expect(fromSnapshot.outcome).toEqual(runConfig(config(), history, market.history));
-  });
-});
-
-describe("choosing an engine", () => {
-  it("defaults to TypeScript, and ignores unknown values", () => {
-    vi.stubEnv("BACKTEST_ENGINE", "");
-    expect(configuredEngine()).toBe("typescript");
-    vi.stubEnv("BACKTEST_ENGINE", "fortran");
-    vi.spyOn(console, "warn").mockImplementation(() => {});
-    expect(configuredEngine()).toBe("typescript");
-  });
-
-  it("sends every strategy to Python when it's selected", () => {
-    expect(engineFor(config(), "python")).toBe("python");
-    expect(engineFor(config({ strategy: { kind: "buy-and-hold" } }), "python")).toBe("python");
-    expect(engineFor(config({ strategy: { kind: "rebalancing", frequency: "monthly" } }), "python")).toBe("python");
-    expect(engineFor(config({ strategy: { kind: "dollar-cost-averaging", installments: 6 } }), "python")).toBe("python");
-    expect(engineFor(config(), "typescript")).toBe("typescript");
-  });
-
-  it("labels TypeScript results, and explains a crossover that never warmed up", async () => {
-    const snap = makeSnapshot(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), history, market, "mock", T0);
-    const result = await compute(config({ strategy: { kind: "moving-average", fast: 50, slow: 100 } }), snap, "typescript");
-    expect(result.engine).toEqual({ name: "typescript", version: "1.2.0" });
-    expect(result.warnings[0]).toMatch(/never traded/);
-  });
 });
 
 describe("the Python client", () => {
@@ -104,12 +84,12 @@ describe("the Python client", () => {
 
   it("refuses when it isn't set up", async () => {
     vi.stubEnv("ANALYTICS_URL", "");
-    await expect(runOnPython(config(), snap)).rejects.toThrow(/not set up/);
+    await expect(runOnPython(config(), snap)).rejects.toThrow(/isn't set up/);
   });
 
   it("sends the token and the server's prices, and reads a good answer", async () => {
     configured();
-    const run = runConfig(config(), { AAPL: history.AAPL }, []);
+    const run = outcomeOf(config(), history);
     const fetchMock = vi.fn(async () => new Response(JSON.stringify({ engine: { name: "python", version: "1.0.0" }, run: run.run, benchmark: run.benchmark, warnings: [] })));
     vi.stubGlobal("fetch", fetchMock);
     const result = await runOnPython(config(), snap);
@@ -132,20 +112,20 @@ describe("the Python client", () => {
     await expect(runOnPython(config(), snap)).rejects.toThrow(message);
   });
 
-  it("explains a timeout and an unreachable service, and never falls back", async () => {
+  it("explains a timeout and an unreachable service (after one retry)", async () => {
     configured();
     quiet();
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(Object.assign(new Error("timed out"), { name: "TimeoutError" }))));
-    await expect(compute(config(), snap, "python")).rejects.toThrow(PythonEngineError);
+    await expect(compute(config(), snap)).rejects.toThrow(PythonEngineError);
     await expect(runOnPython(config(), snap)).rejects.toThrow(/didn't answer within 10 seconds/);
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("fetch failed"))));
-    await expect(runOnPython(config(), snap)).rejects.toThrow(/couldn't be reached/);
+    await expect(runOnPython(config(), snap)).rejects.toThrow(/starting up or unavailable/);
   });
 });
 
 describe("saving and reproducing through the Python service", () => {
   const snap = makeSnapshot(config(), history, market, "mock", T0);
-  const outcome = runConfig(config(), { AAPL: history.AAPL }, []);
+  const outcome = outcomeOf(config(), history);
   const result = {
     outcome,
     note: null,
@@ -178,7 +158,7 @@ describe("saving and reproducing through the Python service", () => {
 });
 
 describe("comparing a reproduced result with the stored one", () => {
-  const outcome = runConfig(config(), history, market.history);
+  const outcome = outcomeOf(config(), history);
 
   it("finds identical results identical", () => {
     expect(compareResults(outcome, structuredClone(outcome))).toEqual({ matches: true, largestDifference: 0, differences: [] });

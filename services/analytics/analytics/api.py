@@ -35,7 +35,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import engine, jobs, portfolio, saved, screens, store, walkforward
+from . import engine, factors, fundamentals, jobs, ml, options, overfitting, performance, plan, portfolio, saved, screens, snapshots, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -470,6 +470,47 @@ def run_backtest(body: BacktestRequest) -> BacktestResponse:
     )
 
 
+class SweepRequest(Model):
+    """A parameter sweep: the base settings, and the same settings with each grid point's values (null where they aren't valid)."""
+
+    base: ConfigModel
+    points: Annotated[list[ConfigModel | None], Field(min_length=1, max_length=200)]
+    prices: Annotated[dict[str, SeriesModel], Field(min_length=1, max_length=5)]
+    market: SeriesModel | None = None
+
+
+@app.post("/v1/backtests/sweep", dependencies=[Depends(require_token)])
+def run_sweep(body: SweepRequest) -> dict:
+    """
+    Runs every point of a sweep on the same prices, keeping each one's
+    metrics (not its daily values), plus the benchmark (the same for every
+    point) and how much to trust the best result (overfitting.py).
+    """
+    try:
+        prices = {symbol: engine.to_series(symbol, s.times, s.prices) for symbol, s in body.prices.items()}
+        market = engine.to_series("Market", body.market.times, body.market.prices) if body.market else None
+        extras = saved.extras_of({symbol: s.model_dump() for symbol, s in body.prices.items()})
+        base = engine.run_config(to_engine_config(body.base), prices, market, extras)
+    except engine.InputError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    metrics: list[dict | None] = []
+    for point in body.points:
+        if point is None:
+            metrics.append(None)
+            continue
+        try:
+            run = engine.run_config(to_engine_config(point), prices, market, extras).run
+            metrics.append(MetricsModel(**run.metrics.__dict__).model_dump(by_alias=True))
+        except engine.InputError:
+            metrics.append(None)  # e.g. averages longer than the date range
+    return {
+        "engine": {"name": engine.ENGINE_NAME, "version": engine.ENGINE_VERSION},
+        "metrics": metrics,
+        "benchmark": MetricsModel(**base.benchmark.metrics.__dict__).model_dump(by_alias=True),
+        "check": overfitting.selection_check([m["sharpe"] if m else None for m in metrics], len(base.run.equity)),
+    }
+
+
 @app.post("/v1/saved-runs", dependencies=[Depends(require_token)])
 def save_run(body: SaveRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
     """
@@ -608,6 +649,340 @@ class WalkForwardRequest(Model):
     slow: AxisModel
     train_years: Annotated[int, Field(ge=1, le=3)] = 2
     test_months: Literal[3, 6, 12] = 6
+
+
+class TradeIn(Model):
+    time: int
+    symbol: Symbol
+    side: Literal["buy", "sell"]
+    shares: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    price: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+
+
+class EventIn(Model):
+    time: int
+    kind: Literal["dividend", "split"]
+    symbol: Symbol
+    shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    cash: Annotated[float, Field(allow_inf_nan=False)]
+
+
+class HoldingIn(Model):
+    symbol: Symbol
+    shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class AccountIn(Model):
+    """The parts of a simulated account (lib/trading.ts) its history needs."""
+
+    cash: Annotated[float, Field(allow_inf_nan=False)]
+    holdings: Annotated[list[HoldingIn], Field(max_length=200)]
+    trades: Annotated[list[TradeIn], Field(max_length=1000)]
+    events: Annotated[list[EventIn], Field(max_length=2000)] = []
+
+
+class ClosesIn(Model):
+    times: Annotated[list[int], Field(min_length=1, max_length=engine.MAX_POINTS)]
+    prices: Annotated[list[float], Field(min_length=1, max_length=engine.MAX_POINTS)]
+
+
+class PerformanceRequest(Model):
+    account: AccountIn
+    history: Annotated[dict[Symbol, ClosesIn], Field(max_length=200)]
+    """Each relevant stock's closes as traded (not adjusted)."""
+    index: ClosesIn
+    """The index's days in the chosen range: the days the portfolio is valued on."""
+    owner_id: OwnerId | None = None
+    """The account's id, verified by the Next.js server: its nightly snapshots are used for past closes."""
+
+
+@app.post("/v1/portfolio/performance", dependencies=[Depends(require_token)])
+def portfolio_performance(body: PerformanceRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """A portfolio's value on each of the index's days, next to the index, with both sides' measures (performance.py)."""
+    account = body.account.model_dump()
+    history = {s: list(zip(c.times, c.prices)) for s, c in body.history.items()}
+    stored = snapshots.stored_values(db, body.owner_id, body.index.times[0], body.index.times[-1]) if body.owner_id else None
+    return performance.performance(account, history, list(zip(body.index.times, body.index.prices)), stored)
+
+
+class CompanyFactsRequest(Model):
+    ciks: Annotated[list[Annotated[int, Field(ge=1, le=9_999_999_999)]], Field(min_length=1, max_length=3)]
+    """The company's SEC numbers to try in turn (a predecessor's after the current one)."""
+    user_agent: Annotated[str, Field(min_length=1, max_length=200)]
+    """Who's asking, as the SEC requires (SEC_USER_AGENT on the Next.js server)."""
+
+
+@app.post("/v1/fundamentals/company", dependencies=[Depends(require_token)])
+def company_facts(body: CompanyFactsRequest) -> dict:
+    """A company's reported numbers from the SEC, parsed (fundamentals.py): the first CIK with any, or null; `failed` when the SEC couldn't be read."""
+    try:
+        for cik in body.ciks:
+            facts = fundamentals.fetch_company_facts(cik, body.user_agent)
+            if facts is not None:
+                return {"facts": facts}
+    except fundamentals.FetchError as error:
+        # Not an HTTP error: the service is fine, the SEC isn't, and the caller tries again another day.
+        print(f"[analytics] company facts: {error}")
+        return {"facts": None, "failed": True}
+    return {"facts": None}
+
+
+class FactorRefreshRequest(Model):
+    source: Source
+    universe: Annotated[list[Symbol], Field(min_length=10, max_length=500)]
+    """The stocks the factors are built from (MarketLab's catalog)."""
+
+
+@app.post("/v1/analytics/factors/refresh", dependencies=[Depends(require_token)])
+def refresh_factors(body: FactorRefreshRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Rebuilds the factor returns and every stock's exposures from the stored prices, if any have changed (factors.py)."""
+    try:
+        return factors.refresh(db, body.source, body.universe)
+    except factors.FactorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+class HoldingValue(Model):
+    symbol: Symbol
+    value: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+
+
+class PortfolioFactorsRequest(Model):
+    source: Source
+    holdings: Annotated[list[HoldingValue], Field(min_length=1, max_length=200)]
+
+
+@app.post("/v1/analytics/portfolio/factors", dependencies=[Depends(require_token)])
+def portfolio_factors(body: PortfolioFactorsRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """A portfolio's factor exposures, holding today's weights over the past year (factors.py)."""
+    try:
+        return {"factors": factors.portfolio_exposures(db, body.source, [(h.symbol, h.value) for h in body.holdings])}
+    except factors.FactorError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+class PlanRequest(Model):
+    source: Source
+    holdings: Annotated[list[HoldingValue], Field(max_length=30)]
+    cash: Annotated[float, Field(ge=0, le=1e12, allow_inf_nan=False)] = 0.0
+    monthly: Annotated[float, Field(ge=-1e7, le=1e7, allow_inf_nan=False)] = 0.0
+    """Added at each month's end; negative for a withdrawal."""
+    years: Annotated[int, Field(ge=1, le=plan.MAX_YEARS)] = 10
+    target: Annotated[float, Field(gt=0, le=1e12, allow_inf_nan=False)] | None = None
+    inflation: bool = False
+
+
+@app.post("/v1/analytics/plan", dependencies=[Depends(require_token)])
+def goal_plan(body: PlanRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The goal planner (plan.py): the portfolio's projection with monthly contributions or withdrawals, a target and inflation."""
+    values: dict[str, float] = {}
+    for h in body.holdings:
+        values[h.symbol] = values.get(h.symbol, 0.0) + h.value
+    bars = store.load_bars(db, body.source, list(values))
+    checksum = store.input_checksum(store.series_index(db, body.source, list(values)))
+    try:
+        result = plan.plan(
+            bars, values, body.cash, monthly=body.monthly, years=body.years, target=body.target, inflation=body.inflation,
+            seed_text=f"{checksum}:{sorted(values.items())}:{body.cash}:{body.monthly}:{body.years}:{body.inflation}",
+        )
+    except ValueError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"plan": result}
+
+
+class ChainRequest(Model):
+    source: Source
+    symbol: Symbol
+
+
+@app.post("/v1/options/chain", dependencies=[Depends(require_token)])
+def option_chain(body: ChainRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """A simulated option chain for a stock (options.py), priced from its stored prices: its last close and past-year volatility."""
+    bars = store.load_bars(db, body.source, [body.symbol]).get(body.symbol)
+    if bars is None or bars.empty:
+        raise HTTPException(status_code=409, detail=f"There are no stored prices for {body.symbol} yet.")
+    rows = db.query("SELECT dividend_yield FROM price_series WHERE source = ? AND symbol = ?", [body.source, body.symbol])
+    q = float(rows[0]["dividend_yield"] or 0.0) if rows else 0.0
+    try:
+        vol = options.volatility_of(bars["adj_close"].tolist())
+        return {"chain": options.chain(float(bars["close"].iloc[-1]), vol, int(bars.index[-1]), q=q)}
+    except options.OptionError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+Positive = Annotated[float, Field(gt=0, le=1e7, allow_inf_nan=False)]
+Rate = Annotated[float, Field(ge=-0.05, le=0.5, allow_inf_nan=False)]
+
+
+class PriceRequest(Model):
+    kind: Literal["call", "put"]
+    spot: Positive
+    strike: Positive
+    days: Annotated[int, Field(ge=0, le=3650)]
+    volatility: Annotated[float, Field(gt=0, le=5, allow_inf_nan=False)]
+    rate: Rate = options.RISK_FREE
+    dividend_yield: Annotated[float, Field(ge=0, le=0.5, allow_inf_nan=False)] = 0.0
+
+
+@app.post("/v1/options/price", dependencies=[Depends(require_token)])
+def option_price(body: PriceRequest) -> dict:
+    """Black-Scholes price and Greeks for one option."""
+    try:
+        return options.black_scholes(body.kind, body.spot, body.strike, body.days / 365, body.volatility, body.rate, body.dividend_yield)
+    except options.OptionError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+
+
+class ImpliedVolRequest(Model):
+    kind: Literal["call", "put"]
+    price: Positive
+    spot: Positive
+    strike: Positive
+    days: Annotated[int, Field(ge=1, le=3650)]
+    rate: Rate = options.RISK_FREE
+    dividend_yield: Annotated[float, Field(ge=0, le=0.5, allow_inf_nan=False)] = 0.0
+
+
+@app.post("/v1/options/implied-volatility", dependencies=[Depends(require_token)])
+def implied_volatility(body: ImpliedVolRequest) -> dict:
+    """The volatility at which Black-Scholes gives this price."""
+    try:
+        vol = options.implied_volatility(body.kind, body.price, body.spot, body.strike, body.days / 365, body.rate, body.dividend_yield)
+    except options.OptionError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    return {"volatility": vol}
+
+
+class LegIn(Model):
+    kind: Literal["call", "put", "stock"]
+    side: Literal["long", "short"]
+    quantity: Annotated[float, Field(gt=0, le=1e6, allow_inf_nan=False)]
+    strike: Positive | None = None
+    premium: Annotated[float, Field(ge=0, le=1e7, allow_inf_nan=False)] | None = None
+    price: Positive | None = None
+
+    @model_validator(mode="after")
+    def complete(self):
+        if self.kind == "stock" and self.price is None:
+            raise ValueError("a stock leg needs its price")
+        if self.kind != "stock" and (self.strike is None or self.premium is None):
+            raise ValueError("an option leg needs its strike and premium")
+        return self
+
+
+class PayoffRequest(Model):
+    spot: Positive
+    legs: Annotated[list[LegIn], Field(min_length=1, max_length=6)]
+
+
+@app.post("/v1/options/payoff", dependencies=[Depends(require_token)])
+def option_payoff(body: PayoffRequest) -> dict:
+    """Profit at expiry across stock prices for a strategy's legs, with breakevens and the most it can make or lose."""
+    return options.payoff([leg.model_dump() for leg in body.legs], body.spot)
+
+
+class MLSettingsModel(Model):
+    """The machine-learning sandbox's settings (ml.py)."""
+
+    version: Literal[1] = 1
+    symbols: Annotated[list[Symbol], Field(min_length=1, max_length=ml.LIMITS["maxSymbols"])]
+    features: Annotated[list[Literal[tuple(ml.FEATURES)]], Field(min_length=1, max_length=len(ml.FEATURES))]  # type: ignore[valid-type]
+    model: Literal["logistic", "random-forest", "gradient-boosting"]
+    start: int
+    end: int
+    train_years: Annotated[int, Field(ge=1, le=3)] = 2
+    test_months: Annotated[int, Field(ge=1, le=6)] = 3
+    cost_bps: Annotated[float, Field(ge=0, le=100, allow_inf_nan=False)] = 10.0
+    seed: Annotated[int, Field(ge=0, le=1_000_000)] = 7
+
+    def settings(self) -> ml.Settings:
+        return ml.Settings(
+            symbols=list(dict.fromkeys(self.symbols)), features=list(dict.fromkeys(self.features)), model=self.model, start=self.start, end=self.end,
+            train_years=self.train_years, test_months=self.test_months, cost_bps=self.cost_bps, seed=self.seed,
+        )
+
+
+class MLRunRequest(Model):
+    source: Source
+    settings: MLSettingsModel
+
+
+def _ml(db: database.Database, source: str, settings: MLSettingsModel) -> tuple[dict, dict]:
+    try:
+        snap = ml.snapshot(db, source, settings.settings())
+        result = ml.run(ml.bars_of(snap), settings.settings())
+    except ml.MLError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    result["provenance"] = ml.provenance(snap)
+    return snap, result
+
+
+@app.post("/v1/ml/run", dependencies=[Depends(require_token)])
+def ml_run(body: MLRunRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Trains and walk-forward tests a model on the stored prices (ml.py). Nothing is saved."""
+    _snap, result = _ml(db, body.source, body.settings)
+    return {"result": result}
+
+
+class MLSaveRequest(Model):
+    owner_id: OwnerId
+    run: SavedRunInfo
+    source: Source
+    settings: MLSettingsModel
+
+
+@app.post("/v1/ml/saved", dependencies=[Depends(require_token)])
+def ml_save(body: MLSaveRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Runs the sandbox on the stored prices and saves the result, with the exact prices it used, for `ownerId`."""
+    snap, result = _ml(db, body.source, body.settings)
+    dataset = result["provenance"]["dataset"]
+    summary = ml.summary_of(result)
+    ok = database.save_run(
+        db, body.owner_id, run_id=body.run.id, name=body.run.name, created_at=body.run.created_at,
+        config_json=json.dumps(body.settings.model_dump(by_alias=True)), summary_json=json.dumps(summary),
+        result_json=json.dumps(result, allow_nan=False), snapshot_json=json.dumps(snap, allow_nan=False),
+        checksum=dataset["checksum"], source=body.source, simulated=dataset["simulated"], as_of=dataset["asOf"],
+        engine="python-ml", engine_version=ml.ML_VERSION, dataset_version=dataset["datasetVersion"], kind="ml",
+    )
+    if not ok:
+        if not db.query("SELECT 1 FROM user WHERE id = ?", [body.owner_id]):
+            raise HTTPException(status_code=404, detail="That account doesn't exist.")
+        raise HTTPException(status_code=409, detail=f"You can save up to {database.MAX_SAVED_RUNS} runs. Delete one to make room.")
+    return {"summary": summary, "result": result}
+
+
+@app.post("/v1/ml/saved/{run_id}/reproduce", dependencies=[Depends(require_token)])
+def ml_reproduce(run_id: Annotated[str, Path(min_length=1, max_length=64)], body: OwnerRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Reads one of the owner's saved sandbox runs, trains and tests it again from its saved prices alone, and compares."""
+    row = database.load_saved_run(db, body.owner_id, run_id)
+    if row is None or row["kind"] != "ml":
+        raise HTTPException(status_code=404, detail="That saved run doesn't exist.")
+    stored = json.loads(row["result"])
+    snap = json.loads(row["snapshot"])
+    try:
+        settings = MLSettingsModel.model_validate(json.loads(row["config"])).settings()
+        reproduced = ml.run(ml.bars_of(snap), settings)
+    except ml.MLError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
+    reproduced["provenance"] = ml.provenance(snap)
+    comparison = ml.compare(stored, reproduced)
+    was, now = stored["provenance"]["method"], reproduced["provenance"]["method"]
+    if was != now:
+        comparison["differences"] = [f"Calculated with version {was['version']} (scikit-learn {was['scikitLearn']}); reproduced with {now['version']} (scikit-learn {now['scikitLearn']}).", *comparison["differences"]][:5]
+    return {"reproduced": reproduced, "comparison": comparison}
+
+
+class NightlyRequest(Model):
+    source: Source
+    universe: Annotated[list[Symbol], Field(min_length=10, max_length=500)]
+    budget_ms: Annotated[int, Field(ge=1000, le=50_000)] = 20_000
+    parts: list[Literal["alerts", "snapshots", "profiles", "factors"]] | None = None
+
+
+@app.post("/v1/jobs/nightly", dependencies=[Depends(require_token)])
+def nightly(body: NightlyRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The nightly calculations (jobs.run_nightly): indicator alerts, portfolio snapshots, stock profiles and factors, within a time budget."""
+    return jobs.run_nightly(db, body.source, body.universe, body.budget_ms, body.parts or jobs.NIGHTLY_PARTS)
 
 
 @app.post("/v1/backtests/walk-forward", dependencies=[Depends(require_token)])

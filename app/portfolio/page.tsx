@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { BookSwitcher } from "@/components/account/book-switcher";
 import { StorageLabel } from "@/components/account/storage-label";
 import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
+import { FactorCard } from "@/components/portfolio/factor-card";
 import { LeaderboardCard } from "@/components/portfolio/leaderboard-card";
 import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PerformanceCard } from "@/components/portfolio/performance-card";
@@ -46,7 +47,16 @@ export default function PortfolioPage() {
           },
           { id: "orders", label: "Orders", content: <OpenOrders />, empty: "No orders yet. Place a limit or stop order from any stock's page." },
           { id: "performance", label: "Performance", content: <PerformanceCard /> },
-          { id: "risk", label: "Risk", content: <RiskAnalysis /> },
+          {
+            id: "risk",
+            label: "Risk",
+            content: (
+              <div className="flex flex-col gap-4 lg:gap-6">
+                <RiskAnalysis />
+                <FactorCard />
+              </div>
+            ),
+          },
           { id: "activity", label: "Activity", content: <TradeHistory /> },
           {
             id: "compete",

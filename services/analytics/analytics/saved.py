@@ -144,15 +144,15 @@ def reproduce(db: database.Database, owner_id: str, run_id: str, to_config) -> d
     """
     Reads a saved run and its snapshot from the database (the owner's only),
     calculates it again from the saved prices, and compares. `to_config`
-    turns the stored settings into an engine.Config (validating them).
+    turns the stored settings into an engine.Config (validating them). Runs
+    saved by the retired TypeScript engine are reproduced here too: the
+    engines followed the same rules, and any difference is reported.
     """
     row = database.load_saved_run(db, owner_id, run_id)
     if row is None or row["kind"] != "backtest":
         raise NotFound("That saved run doesn't exist.")
     if not row["result"] or not row["snapshot"]:
         raise NotReproducible("This run was saved before MarketLab kept results and their input prices, so it can't be reproduced.")
-    if row["engine"] != engine.ENGINE_NAME:
-        raise NotReproducible(f"This run was calculated by the {row['engine']} engine, so it's reproduced there.")
     stored = json.loads(row["result"])
     snapshot = json.loads(row["snapshot"])
     outcome = outcome_from_snapshot(to_config(json.loads(row["config"])), snapshot)

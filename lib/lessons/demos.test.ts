@@ -2,16 +2,25 @@ import { describe, expect, it } from "vitest";
 import { mulberry32 } from "../random";
 import {
   afterCosts,
+  arithmeticExp,
+  arithmeticLog,
   beta,
+  blackScholes,
+  breakevens,
   compoundPath,
   crossoverReturns,
   equalMix,
+  factorContributions,
+  FACTORS,
+  impliedVolatility,
   lumpSumVersusMonthly,
   metricsOf,
   normal,
+  normalCdf,
   orderFill,
   pathBetween,
   pricePath,
+  profitAtExpiry,
   rebalanceDrift,
   recoveryNeeded,
   relatedPaths,
@@ -147,5 +156,97 @@ describe("the overfitting sweep", () => {
     const results = crossoverReturns(pricePath(9, 400), [5, 10, 20], 50);
     expect(results.map((r) => r.fast)).toEqual([5, 10, 20]);
     for (const r of results) expect(Number.isFinite(r.totalReturn)).toBe(true);
+  });
+});
+
+describe("arithmetic exp and log", () => {
+  it("match Math.exp and Math.log closely", () => {
+    for (const x of [-30, -5, -1, -0.25, 0, 0.01, 0.5, 1, 3, 20]) expect(arithmeticExp(x) / Math.exp(x)).toBeCloseTo(1, 12);
+    for (const x of [1e-6, 0.01, 0.5, 0.99, 1, 1.5, 2, 10, 1e6]) expect(arithmeticLog(x)).toBeCloseTo(Math.log(x), 12);
+    expect(arithmeticLog(0)).toBe(-Infinity);
+    expect(arithmeticExp(1000)).toBe(Infinity);
+  });
+
+  it("give the normal curve's known values", () => {
+    expect(normalCdf(0)).toBeCloseTo(0.5, 7);
+    expect(normalCdf(1.96)).toBeCloseTo(0.975, 4);
+    expect(normalCdf(-1)).toBeCloseTo(0.158655, 6);
+    expect(normalCdf(3) + normalCdf(-3)).toBeCloseTo(1, 10);
+  });
+});
+
+describe("Black-Scholes", () => {
+  const inputs = { spot: 100, strike: 100, years: 0.25, volatility: 0.2, rate: 0.04 };
+  it("prices the lessons' example and its Greeks", () => {
+    const call = blackScholes("call", inputs);
+    expect(call.price).toBeCloseTo(4.4852, 3);
+    expect(call.delta).toBeCloseTo(0.5596, 3);
+    expect(call.gamma).toBeCloseTo(0.03945, 4);
+    expect(call.theta).toBeCloseTo(-0.02726, 4);
+    expect(call.vega).toBeCloseTo(0.1972, 3);
+    expect(call.rho).toBeCloseTo(0.1287, 3);
+    const put = blackScholes("put", inputs);
+    expect(put.price).toBeCloseTo(3.4902, 3);
+    expect(put.delta).toBeCloseTo(call.delta - 1, 10);
+  });
+
+  it("obeys put-call parity, and is worth its payoff at expiry", () => {
+    for (const spot of [80, 100, 125]) {
+      const at = { ...inputs, spot, volatility: 0.35 };
+      const parity = blackScholes("call", at).price - blackScholes("put", at).price;
+      expect(parity).toBeCloseTo(spot - 100 * Math.exp(-0.04 * 0.25), 6);
+    }
+    expect(blackScholes("call", { ...inputs, spot: 110, years: 0 }).price).toBe(10);
+    expect(blackScholes("put", { ...inputs, spot: 110, years: 0 }).price).toBe(0);
+  });
+
+  it("finds the volatility behind a price", () => {
+    const rest = { spot: 100, strike: 100, years: 0.25, rate: 0.04 };
+    const solved = impliedVolatility("call", 5.5, rest);
+    expect(solved?.volatility).toBeCloseTo(0.2514, 3);
+    expect(impliedVolatility("put", blackScholes("put", { ...inputs, volatility: 0.42 }).price, rest)?.volatility).toBeCloseTo(0.42, 6);
+    expect(impliedVolatility("call", 0.5, rest)).toBeNull();
+  });
+});
+
+describe("option payoffs", () => {
+  const prices = Array.from({ length: 81 }, (_, i) => 60 + i);
+  it("are the payoff less the premium, mirrored for the seller", () => {
+    const call = { kind: "call" as const, strike: 105, premium: 3, quantity: 1 };
+    expect(profitAtExpiry([call], 115)).toBe(7);
+    expect(profitAtExpiry([call], 90)).toBe(-3);
+    expect(profitAtExpiry([{ ...call, quantity: -1 }], 115)).toBe(-7);
+    expect(breakevens([call], prices)).toEqual([108]);
+  });
+
+  it("combine into spreads and straddles", () => {
+    const spread = [
+      { kind: "call" as const, strike: 100, premium: 4.49, quantity: 1 },
+      { kind: "call" as const, strike: 110, premium: 1.14, quantity: -1 },
+    ];
+    expect(profitAtExpiry(spread, 130)).toBeCloseTo(6.65, 10);
+    expect(profitAtExpiry(spread, 80)).toBeCloseTo(-3.35, 10);
+    expect(breakevens(spread, prices)[0]).toBeCloseTo(103.35, 10);
+    const straddle = [
+      { kind: "call" as const, strike: 100, premium: 4.49, quantity: 1 },
+      { kind: "put" as const, strike: 100, premium: 3.49, quantity: 1 },
+    ];
+    const [low, high] = breakevens(straddle, prices);
+    expect(low).toBeCloseTo(92.02, 10);
+    expect(high).toBeCloseTo(107.98, 10);
+    const covered = [{ kind: "stock" as const, price: 100, quantity: 1 }, { ...spread[1] }];
+    expect(profitAtExpiry(covered, 120)).toBeCloseTo(11.14, 10);
+    expect(profitAtExpiry(covered, 90)).toBeCloseTo(-8.86, 10);
+  });
+});
+
+describe("factor contributions", () => {
+  it("add each exposure × factor return, plus alpha", () => {
+    const exposures = { Market: 1.2, Size: -0.3, Value: -0.5, Momentum: 0.4, "Low volatility": -0.2 };
+    const returns = { Market: 0.1, Size: -0.02, Value: -0.04, Momentum: 0.06, "Low volatility": -0.03 };
+    const { parts, total } = factorContributions(exposures, returns, 0.014);
+    expect(parts.map((p) => p.factor)).toEqual([...FACTORS]);
+    expect(parts[0].contribution).toBeCloseTo(0.12, 10);
+    expect(total).toBeCloseTo(0.19, 10);
   });
 });

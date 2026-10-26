@@ -3,7 +3,8 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "node scripts/dev.mjs",
+    "dev:web": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
@@ -16,8 +17,7 @@
     "analytics:install": "cd services/analytics && uv sync --extra dev --locked",
     "analytics:dev": "cd services/analytics && uv run --extra dev --env-file ../../.env.local uvicorn main:app --host 127.0.0.1 --port 8000",
     "test:python": "cd services/analytics && uv run --extra dev pytest -q",
-    "test:e2e": "playwright test",
-    "test:parity": "vitest run lib/backtest/parity.test.ts && npm run test:python -- tests/test_parity.py"
+    "test:e2e": "playwright test"
   },
   "dependencies": {
     "@libsql/client": "0.18.0",

@@ -1,7 +1,9 @@
 /**
  * Alerts, checked against each daily close after the alert was made, like
  * orders (lib/orders.ts). An alert triggers once and then stays in the list,
- * marked, until removed.
+ * marked, until removed. Price alerts are checked here (lib/processing.ts);
+ * indicator alerts each night by the analytics service
+ * (services/analytics/analytics/alerts.py).
  *
  * - Price alerts: "tell me when KO closes above $70".
  * - Indicator alerts, on split-adjusted closes (so a split never looks like a crash):
@@ -11,8 +13,7 @@
  *   - 52-week range: the close is above every close of the previous 252 sessions (or below every one).
  */
 import { formatCurrency } from "./format";
-import { indicatorSeries } from "./backtest/rules";
-import { MAX_ALERTS, parseAlertCondition, type Account, type AlertCondition, type PriceAlert } from "./trading";
+import { MAX_ALERTS, parseAlertCondition, type Account, type PriceAlert } from "./trading";
 
 export const alertTriggers = (alert: Pick<PriceAlert, "direction" | "price">, close: number) =>
   alert.direction === "above" ? close >= alert.price : close <= alert.price;
@@ -31,42 +32,6 @@ export function describeAlert(alert: Pick<PriceAlert, "direction" | "price" | "c
       return `${up ? "rises" : "falls"} ${c.percent}% or more in a day`;
     case "range-52w":
       return `makes a new 52-week ${up ? "high" : "low"}`;
-  }
-}
-
-/**
- * Whether an indicator condition is met at session `i` of `closes`
- * (split-adjusted, oldest first, every session up to and including i).
- * `cache` keeps each symbol's indicator series between alerts and days.
- */
-export function conditionMet(condition: AlertCondition, direction: PriceAlert["direction"], closes: readonly number[], i: number, cache: Map<string, number[]>): boolean {
-  if (i < 1) return false;
-  const up = direction === "above";
-  const series = (key: string, make: () => number[]) => {
-    let s = cache.get(key);
-    if (!s) cache.set(key, (s = make()));
-    return s;
-  };
-  switch (condition.kind) {
-    case "rsi": {
-      const rsi = series(`rsi:${condition.days}`, () => indicatorSeries({ kind: "rsi", days: condition.days }, closes));
-      const [before, now] = [rsi[i - 1], rsi[i]];
-      return up ? before <= condition.level && now > condition.level : before >= condition.level && now < condition.level;
-    }
-    case "sma-cross": {
-      // The average after each close, including it (what charts show for that day).
-      const sma = series(`sma:${condition.days}`, () => indicatorSeries({ kind: "sma", days: condition.days }, closes));
-      return up ? closes[i - 1] <= sma[i - 1] && closes[i] > sma[i] : closes[i - 1] >= sma[i - 1] && closes[i] < sma[i];
-    }
-    case "move": {
-      const change = closes[i] / closes[i - 1] - 1;
-      return up ? change >= condition.percent / 100 : change <= -condition.percent / 100;
-    }
-    case "range-52w": {
-      if (i < 252) return false;
-      const past = closes.slice(i - 252, i);
-      return up ? closes[i] > Math.max(...past) : closes[i] < Math.min(...past);
-    }
   }
 }
 

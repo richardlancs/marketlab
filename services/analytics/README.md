@@ -1,11 +1,17 @@
 # MarketLab analytics (Python)
 
-A FastAPI service that does MarketLab's numerical work. Only the Next.js server calls it, with a shared token.
+A FastAPI service that does all of MarketLab's numerical work. Only the Next.js server calls it, with a shared token. See [What runs where](../../docs/how-it-works.md#what-runs-where).
 
-- **Backtests:** every strategy, with the same rules as MarketLab's TypeScript engine (`lib/backtest/engine.ts`), when `BACKTEST_ENGINE=python`. That covers buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation and risk parity. Parameter sweeps stay on TypeScript.
-- **Walk-forward tests** of the crossover: choose settings on the past, test them on the next window.
-- **Stored analytics:** each stock's risk and technical profile, calculated nightly from the price store. These feed the stock pages and the Screener.
-- **Portfolio analysis:** risk, stress tests, a Monte Carlo projection and optimisation (SciPy).
+- **Backtests:** every strategy (buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation, risk parity), and parameter sweeps with the deflated Sharpe ratio of the best result. It's MarketLab's only backtest engine.
+- **Walk-forward tests** of the crossover, and **historical screens**.
+- **Stored analytics:** each stock's risk and technical profile and its factor exposures, calculated nightly from the price store. These feed the stock pages and the Screener.
+- **Portfolios:** performance against an index, risk, stress tests, a Monte Carlo projection, the goal planner and optimisation (SciPy), and factor exposures (statsmodels).
+- **The options lab:** Black-Scholes prices and Greeks, implied volatility, a simulated chain and strategy payoffs.
+- **The machine-learning sandbox:** small scikit-learn models tested walk-forward against luck and buy and hold.
+- **SEC company numbers:** fetched by company number and parsed.
+- **Nightly jobs:** indicator alerts, portfolio snapshots, stock profiles and factors, in one time-boxed runner.
+
+Modules:
 
 - The engine: pure functions on plain data, with no FastAPI involved, so it works in notebooks and tests. Each part is its own module:
   - `analytics/data.py`: validates prices and aligns them into trading sessions;
@@ -14,26 +20,33 @@ A FastAPI service that does MarketLab's numerical work. Only the Next.js server 
   - `analytics/execution.py`: fills at the session's close, with commission and slippage;
   - `analytics/accounting.py`: cash, shares and a ledger row per session;
   - `analytics/metrics.py`: returns, drawdown, volatility, Sharpe and exposure;
-  - `analytics/engine.py`: runs them in order and is the public interface (`run_config`, `Config`, `Outcome`).
+  - `analytics/engine.py`: runs them in order and is the public interface (`run_config`, `Config`, `Outcome`);
+  - `analytics/overfitting.py`: the deflated Sharpe ratio, for sweeps and the sandbox.
 - Analytics built on the price store:
   - `analytics/store.py`: reads stored daily bars and writes `analytics_result` rows, with checksums and `ANALYTICS_VERSION`;
   - `analytics/technicals.py`: standard indicators as of a close (SMA, EMA, RSI, MACD, Bollinger, ATR);
   - `analytics/profiles.py`: a stock's risk and technical profile;
-  - `analytics/jobs.py`: recalculates stale profiles in time-boxed batches;
+  - `analytics/factors.py`: factor returns from MarketLab's universe, and exposures by regression;
   - `analytics/portfolio.py`: portfolio risk, stress tests, Monte Carlo and optimisation;
+  - `analytics/plan.py`: the goal planner;
+  - `analytics/performance.py`: a portfolio's value history rebuilt from its trades, and its performance;
   - `analytics/walkforward.py`: walk-forward testing;
   - `analytics/screens.py`: historical screening, a stock screen applied every month from the prices known then (see [Historical screening](#historical-screening)).
+- `analytics/options.py`: Black-Scholes, implied volatility, the simulated chain and payoffs.
+- `analytics/ml.py`: the machine-learning sandbox, with snapshots for saving and reproducing.
+- `analytics/fundamentals.py`: SEC company facts, fetched and parsed.
+- Nightly: `analytics/jobs.py` (the runner, and stock profiles in time-boxed batches), `analytics/alerts.py` (indicator alerts), `analytics/snapshots.py` (portfolio snapshots).
 - `analytics/api.py`: the HTTP layer: Pydantic models, authentication and limits.
-- `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing Python-engine runs (see [Database access](#database-access)).
+- `analytics/db.py`, `analytics/saved.py`: MarketLab's database, for saving and reproducing runs (see [Database access](#database-access)).
 - `main.py`: the entry point (`main:app`) for uvicorn and Vercel.
-- `tests/`:
-  - `test_engine.py`: the engine's rules;
-  - `test_timing.py`: the timing rule and no look-ahead, warm-up, missing and duplicate data, costs, and the ledger;
-  - `test_api.py`: authentication, validation and limits;
-  - `test_parity.py`: results compared with the TypeScript engine on fixed datasets;
+- `tests/` (with `tests/fixtures/`, fixed inputs and expected results):
+  - `test_engine.py`, `test_timing.py`: the engine's rules, the timing rule and no look-ahead, warm-up, missing and duplicate data, costs, and the ledger;
+  - `test_golden.py`: 23 fixed cases across every strategy, with exact results (from the former TypeScript engine, which this one matched to the last digit);
+  - `test_api.py`, `test_sweep.py`: authentication, validation and limits; sweeps and the overfitting check;
   - `test_saved.py`: saving and reproducing through the database (a throwaway SQLite file built from `drizzle/*.sql`), and the Turso HTTP client;
-  - `test_analytics.py`: indicators, profiles, the stored-analytics job, portfolio analysis and walk-forward tests;
-  - `test_screens.py`: historical screening (no look-ahead, scheduling, warm-up, ties, missing prices, the books, and saving and reproducing).
+  - `test_analytics.py`, `test_screens.py`: indicators, profiles, portfolio analysis, walk-forward tests and historical screening;
+  - `test_performance.py`, `test_fundamentals.py`, `test_alerts.py`: against cases made by MarketLab's TypeScript code (accounts from real orders, SEC inputs, alert triggers), so moving each calculation here changed nothing;
+  - `test_factors.py`, `test_plan.py`, `test_options.py`, `test_ml.py`, `test_nightly.py`: the Phase 16 tools and the nightly runner.
 
 ## Setup
 
@@ -45,31 +58,42 @@ npm run analytics:install      # = cd services/analytics && uv sync --extra dev 
 
 ## Running it locally
 
-The service needs `ANALYTICS_SERVICE_TOKEN`. Without it, it refuses every `/v1` request. Put the same value in the project's `.env.local`, which both apps read:
+`npm run dev` (in the project root) starts this service alongside Next.js, on `127.0.0.1:8000` with a throwaway token for that session. To run it on its own:
 
 ```bash
 # .env.local (placeholders: use your own random value)
-BACKTEST_ENGINE=python
 ANALYTICS_URL=http://127.0.0.1:8000
 ANALYTICS_SERVICE_TOKEN=<openssl rand -base64 32>
 ```
 
 ```bash
 npm run analytics:dev          # uvicorn on http://127.0.0.1:8000 (reads ../../.env.local)
-npm run dev                    # Next.js, in another terminal
+npm run dev:web                # Next.js only, in another terminal
 curl http://127.0.0.1:8000/health
 ```
-
-Then run a backtest on `/backtest`. The line under the results says "Calculated by the Python engine 1.3.0".
 
 ## Tests
 
 ```bash
 npm run test:python            # all Python tests
-npm run test:parity            # TypeScript checks its fixture results, then Python checks against them
 ```
 
 ## API
+
+Phase 16 endpoints, briefly (each validates its input; see `analytics/api.py` for the models):
+
+| Endpoint | What it does |
+|---|---|
+| `POST /v1/backtests/sweep` | Every point of a parameter sweep on one set of prices: each point's metrics, the benchmark, and the deflated Sharpe check |
+| `POST /v1/portfolio/performance` | A portfolio's value history from its trades, against an index, using its nightly snapshots for past closes |
+| `POST /v1/analytics/plan` | The goal planner |
+| `POST /v1/analytics/factors/refresh` | Rebuild the factors and every stock's exposures, if prices changed |
+| `POST /v1/analytics/portfolio/factors` | A portfolio's factor exposures at today's weights |
+| `POST /v1/options/chain` · `/price` · `/implied-volatility` · `/payoff` | The options lab |
+| `POST /v1/ml/run` · `/v1/ml/saved` · `/v1/ml/saved/{id}/reproduce` | The machine-learning sandbox, and saving and reproducing its runs |
+| `POST /v1/fundamentals/company` | A company's SEC numbers, fetched by CIK and parsed |
+| `POST /v1/jobs/nightly` | The nightly runner: indicator alerts, portfolio snapshots, stock profiles, factors |
+
 
 Every `/v1` request needs `Authorization: Bearer <ANALYTICS_SERVICE_TOKEN>`. Errors are JSON, as `{ "error": "...", "problems"?: [...] }`.
 
@@ -101,7 +125,7 @@ JSON in camelCase, matching MarketLab's TypeScript types. Unknown fields are ref
 }
 ```
 
-Response, with the same shapes as the TypeScript engine's `BacktestOutcome`:
+Response, with the same shapes as MarketLab's `BacktestOutcome` type (`lib/backtest/config.ts`):
 
 ```jsonc
 {
@@ -156,7 +180,7 @@ Reads that owner's saved run and its snapshot from the database, recalculates fr
 
 **Errors:**
 - 404 for a missing run, or someone else's;
-- 409 for a run saved before results were kept, or one calculated by the TypeScript engine (the Next.js server reproduces those itself);
+- 409 for a run saved before results were kept (runs saved by the former TypeScript engine are reproduced here, and any difference is reported);
 - 503 when the database is down.
 
 ### `POST /v1/analytics/stock-profiles`
@@ -293,7 +317,7 @@ How the code enforces it:
 
 The long average needs `slow` earlier sessions. Until then nothing is decided and the money stays in cash.
 
-- **`within-period` (the default, and what MarketLab uses):** the first `slow` sessions of the chosen period are the warm-up. They're held in cash and still count in every metric, just as in the TypeScript engine. If the period is too short, a warning says the strategy never traded.
+- **`within-period` (the default, and what MarketLab uses):** the first `slow` sessions of the chosen period are the warm-up. They're held in cash and still count in every metric. If the period is too short, a warning says the strategy never traded.
 - **`pre-start` (API option):** up to `slow` sessions *before* the start date are used as earlier history, if the prices sent include them. They're never measured: equity, trades, metrics and the benchmark all start on the start date. Nothing is invented. If fewer earlier sessions exist, it uses those, and a warning says how many measured sessions the warm-up took.
 
 ### A worked example
@@ -319,7 +343,7 @@ One stock, $1,000, a 2/4-session crossover, a $1 commission and 10 bps slippage.
 
 To print this yourself, see [Using the engine directly](#using-the-engine-directly-notebooks).
 
-## Simulation rules (shared with the TypeScript engine)
+## Simulation rules
 
 - **Signal timing:** see [The timing rule](#the-timing-rule).
 - **Costs:** a fixed commission per order, and slippage in basis points that fills buys above the close and sells below it.

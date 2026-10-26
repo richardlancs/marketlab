@@ -405,8 +405,10 @@ function SavedRunBar({ view, onRerun, onReproduce }: { view: Extract<View, { kin
           {!r.ok
             ? r.message
             : r.comparison.matches
-              ? `Reproduced from the saved prices (dataset ${view.result.provenance.dataset.datasetVersion}) with the ${engine.name === "python" ? "Python" : "TypeScript"} engine ${r.reproduced.provenance.engine.version}: the same result ✓${r.comparison.largestDifference > 0 ? ` (largest difference ${r.comparison.largestDifference.toExponential(1)})` : ", identical"}.`
-              : r.reproduced.provenance.engine.version !== engine.version
+              ? `Reproduced from the saved prices (dataset ${view.result.provenance.dataset.datasetVersion}) with the Python engine ${r.reproduced.provenance.engine.version}: the same result ✓${r.comparison.largestDifference > 0 ? ` (largest difference ${r.comparison.largestDifference.toExponential(1)})` : ", identical"}${engine.name === "typescript" ? `, though this run was saved by the TypeScript engine ${engine.version}, since retired` : ""}.`
+              : engine.name === "typescript"
+                ? `Reproduced with the Python engine ${r.reproduced.provenance.engine.version}; this run was saved by the TypeScript engine ${engine.version}, since retired, and the results differ: ${r.comparison.differences.join("; ")}.`
+                : r.reproduced.provenance.engine.version !== engine.version
                 ? `Reproduced with engine ${r.reproduced.provenance.engine.version}, which differs from the ${engine.version} this run was saved with: ${r.comparison.differences.join("; ")}.`
                 : `Reproduced, but the result differs: ${r.comparison.differences.join("; ")}.`}
         </p>

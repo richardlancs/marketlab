@@ -44,9 +44,9 @@ export async function GET() {
   const [latestJob, newestProfile] = database.ok
     ? await Promise.all([within(jobs.latest("daily")).catch(() => null), within(prices.newestResult("stock-profile", priceSource())).catch(() => null)])
     : [null, null];
-  const summary = latestJob?.summary as { unfinished?: boolean; analytics?: { unfinished?: boolean } } | null;
+  const summary = latestJob?.summary as { unfinished?: boolean; analytics?: { unfinished?: boolean; parts?: Record<string, unknown> } } | null;
   const dailyJob = latestJob && { startedAt: latestJob.startedAt, ok: latestJob.ok, unfinished: Boolean(summary?.unfinished || summary?.analytics?.unfinished) };
 
-  const { status, checks } = assessHealth({ now, database, analytics, market, dailyJob, newestProfile });
+  const { status, checks } = assessHealth({ now, database, analytics, market, dailyJob, newestProfile, nightlyParts: summary?.analytics?.parts ?? null });
   return Response.json({ status, checks, time: new Date(now).toISOString() }, { status: status === "down" ? 503 : 200, headers: { "Cache-Control": "no-store" } });
 }

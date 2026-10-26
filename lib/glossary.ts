@@ -8,7 +8,7 @@
  * this order, and each lesson's "Next" link follows it.
  */
 
-export const GROUPS = ["Investing basics", "Measuring results", "Orders and trading", "Company numbers", "Indicators", "Strategies"] as const;
+export const GROUPS = ["Investing basics", "Measuring results", "Orders and trading", "Company numbers", "Indicators", "Options", "Strategies"] as const;
 
 export interface Term {
   title: string;
@@ -84,6 +84,18 @@ export const GLOSSARY = {
     title: "Beta",
     short: "How much a stock tends to move when the whole market moves.",
     more: "A beta of 1.5 means it has typically moved about 1.5% for every 1% the market moved, up or down. Below 1 is calmer than the market. It measures market-linked swings only, not a company's own surprises.",
+    group: "Measuring results",
+  },
+  factors: {
+    title: "Factor investing",
+    short: "Explaining returns by a few broad forces that move many stocks at once: the market, size, value, momentum and low volatility.",
+    more: "Each factor is the return of a simple long-short portfolio, like cheap stocks minus expensive ones. A stock's factor betas, from a regression of its daily returns on the factors', show what kind of bet it really is: two stocks with the same market beta can behave very differently.",
+    group: "Measuring results",
+  },
+  alpha: {
+    title: "Alpha",
+    short: "The part of a return that its factor exposures don't explain: what's left after accounting for the risks taken.",
+    more: "A fund that made 12% when its market and other factor exposures account for 10% has an alpha of about 2% a year. Alpha is what investors pay managers for, but most measured alpha is noise: check its t-statistic before believing it.",
     group: "Measuring results",
   },
   benchmark: {
@@ -218,6 +230,30 @@ export const GLOSSARY = {
     more: "A close near the upper band is high compared with the last month's range, and one near the lower band is low. Narrow bands mean a calm stretch, which often comes before a bigger move, in either direction.",
     group: "Indicators",
   },
+  callsAndPuts: {
+    title: "Calls and puts",
+    short: "Options: contracts giving the right, but not the obligation, to buy (a call) or sell (a put) a stock at a set price, the strike, until a set date, the expiry.",
+    more: "The buyer pays the seller a premium up front. A call pays off if the stock ends above the strike, and a put if it ends below. A buyer can lose at most the premium; a seller keeps the premium but can lose far more.",
+    group: "Options",
+  },
+  optionGreeks: {
+    title: "The Greeks",
+    short: "How an option's price reacts to the stock price (delta and gamma), to time passing (theta), to volatility (vega) and to interest rates (rho).",
+    more: "A call with a delta of 0.5 gains about 50 cents when the stock rises $1. Theta is the cost of waiting a day, and vega the effect of one point more volatility. They come from a pricing model like Black-Scholes, and they change as the stock moves.",
+    group: "Options",
+  },
+  impliedVolatility: {
+    title: "Implied volatility",
+    short: "The volatility that makes a pricing model like Black-Scholes match an option's market price: the market's own estimate of future swings.",
+    more: "Everything else in the formula is known, so the price pins down the volatility. High implied volatility means options are expensive, usually because traders expect big moves, as before earnings. Historical volatility, by contrast, measures swings that already happened.",
+    group: "Options",
+  },
+  optionStrategies: {
+    title: "Option strategies",
+    short: "Combining options with each other or with shares to shape the payoff: covered calls, protective puts, spreads and straddles.",
+    more: "Each combination trades one thing for another. A covered call earns a premium but caps the upside; a protective put limits the loss at a cost; a spread is cheaper but caps the gain; a straddle bets on a big move in either direction.",
+    group: "Options",
+  },
   buyAndHold: {
     title: "Buy and hold",
     short: "Buy good investments and keep them for years, whatever the market does in between.",
@@ -258,6 +294,12 @@ export const GLOSSARY = {
     title: "Overfitting",
     short: "Tuning settings until they fit past ups and downs that won't repeat.",
     more: "Try enough settings and one will look brilliant by luck. The test is whether neighboring settings also do well, and whether it holds up on a period you didn't tune it on.",
+    group: "Strategies",
+  },
+  machineLearning: {
+    title: "Machine learning in trading",
+    short: "Models that learn patterns from data, such as recent returns and indicators, to predict what a price does next.",
+    more: "A model is shown features and what happened afterward, and learns a rule. Markets are mostly noise, so the honest test is whether it beats a lucky guess on data it never trained on, after trading costs. Most models don't.",
     group: "Strategies",
   },
 } as const satisfies Record<string, Term>;

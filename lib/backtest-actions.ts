@@ -8,11 +8,9 @@
  * than taken from the browser.
  */
 import { MAX_RUN_NAME, MAX_SAVED_RUNS, parseConfig, parseSavedRun, summarize, type BacktestConfig, type SavedRun } from "./backtest/config";
-import type { EngineName } from "./backtest/engines";
 import { PythonEngineError, reproducePythonRun, savePythonRun } from "./backtest/python-client";
-import { runFromSnapshot, runFull, runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
-import { checksumOf } from "./backtest/snapshot";
-import { compareResults, type Comparison, type StoredResult } from "./backtest/stored";
+import { runFull, runOnServer, sweepOnServer, type RunResult, type SweepOutcome } from "./backtest/server";
+import type { Comparison, StoredResult } from "./backtest/stored";
 import type { Axis } from "./backtest/sweep";
 import { walkForwardOnServer, type WalkForwardResult } from "./analytics/server";
 import { backtests } from "./db";
@@ -48,28 +46,23 @@ export async function saveBacktestAction(name: unknown, config: unknown): Promis
     stored: { engine: stored.provenance.engine, dataSource: stored.provenance.dataset.source, simulated: stored.provenance.dataset.simulated, datasetVersion: stored.provenance.dataset.datasetVersion },
   };
 
-  // A Python-engine run is saved by the Python service: it recalculates the
-  // result from the snapshot itself and writes it, with the snapshot, to the
-  // database, for the owner checked here.
-  if (stored.provenance.engine.name === "python") {
-    try {
-      const saved = await savePythonRun({
-        ownerId: owner.id,
-        run: { id: run.id, name: run.name, createdAt: run.createdAt },
-        config: parsed,
-        snapshot,
-        dataset: stored.provenance.dataset,
-        note: stored.note,
-        assumptions: { ...stored.provenance.assumptions },
-      });
-      return { ok: true, run: { ...run, summary: saved.summary } };
-    } catch (error) {
-      return { ok: false, message: error instanceof PythonEngineError ? error.message : "Couldn't save the run. Try again in a minute." };
-    }
+  // Saved by the Python service: it recalculates the result from the
+  // snapshot itself and writes it, with the snapshot, to the database, for
+  // the owner checked here.
+  try {
+    const saved = await savePythonRun({
+      ownerId: owner.id,
+      run: { id: run.id, name: run.name, createdAt: run.createdAt },
+      config: parsed,
+      snapshot,
+      dataset: stored.provenance.dataset,
+      note: stored.note,
+      assumptions: { ...stored.provenance.assumptions },
+    });
+    return { ok: true, run: { ...run, summary: saved.summary } };
+  } catch (error) {
+    return { ok: false, message: error instanceof PythonEngineError ? error.message : "Couldn't save the run. Try again in a minute." };
   }
-
-  if (!(await backtests.save(owner.id, run, { result: stored, snapshot, checksum: checksumOf(snapshot) }))) return { ok: false, message: `You can save up to ${MAX_SAVED_RUNS} runs. Delete one to make room.` };
-  return { ok: true, run };
 }
 
 export async function deleteBacktestAction(id: unknown): Promise<{ ok: boolean }> {
@@ -200,23 +193,14 @@ export async function reproduceSavedRunAction(id: unknown): Promise<ReproduceRes
   if (!found.stored) return { ok: false, message: "This run was saved before MarketLab kept results and their input prices, so it can't be reproduced. Re-run it with current prices instead." };
   const config = parseConfig(found.run.config, isSymbolFormat);
   if (!config) return { ok: false, message: INVALID };
-  const engine = found.stored.result.provenance.engine.name;
-  if (engine !== "typescript" && engine !== "python") return { ok: false, message: `This run was calculated by an engine this server doesn't have (${engine}).` };
   if (!(await allow("backtest", 60, 60))) return { ok: false, message: TOO_MANY };
-  // A Python-engine run is reproduced by the Python service, which reads the
-  // run and its saved prices from the database itself (the owner's only).
-  if (engine === "python") {
-    try {
-      const { reproduced, comparison } = await reproducePythonRun(found.run.id, owner.id);
-      return { ok: true, reproduced, comparison };
-    } catch (error) {
-      return { ok: false, message: error instanceof PythonEngineError ? error.message : "Couldn't reproduce the run. Try again in a minute." };
-    }
+  // The Python service reads the run and its saved prices from the database
+  // itself (the owner's only), calculates it again and compares. Runs saved
+  // by the retired TypeScript engine are reproduced there too.
+  try {
+    const { reproduced, comparison } = await reproducePythonRun(found.run.id, owner.id);
+    return { ok: true, reproduced, comparison };
+  } catch (error) {
+    return { ok: false, message: error instanceof PythonEngineError ? error.message : "Couldn't reproduce the run. Try again in a minute." };
   }
-  // Fresh, not from the cache: otherwise a recent run would just be handed back to itself.
-  const result = await runFromSnapshot(config, found.stored.snapshot, engine as EngineName, { fresh: true });
-  if (!result.ok) return { ok: false, message: result.message };
-  const { ok: _ok, ...reproduced } = result;
-  void _ok;
-  return { ok: true, reproduced, comparison: compareResults(found.stored.result.outcome, reproduced.outcome) };
 }

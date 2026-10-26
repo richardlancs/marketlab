@@ -2,6 +2,7 @@
 
 The details behind each feature. For setup, see the [README](../README.md).
 
+- [What runs where](#what-runs-where)
 - [Market data](#market-data)
 - [Orders, dividends and alerts](#orders-dividends-and-alerts)
 - [Accounts and guests](#accounts-and-guests)
@@ -13,6 +14,31 @@ The details behind each feature. For setup, see the [README](../README.md).
 - [Installing and push notifications](#installing-and-push-notifications)
 - [Phones and accessibility](#phones-and-accessibility)
 - [Competitions and badges](#competitions-and-badges)
+
+## What runs where
+
+MarketLab is two services in one Vercel project: the Next.js app, and a private Python analytics service (`services/analytics`) that only the Next.js server can call, with a shared token.
+
+```
+Browser ──▶ Next.js (pages, Server Actions, API routes)
+              │  accounts, trading, orders, price alerts, guests, email, push
+              │  market data, the price store sync, caching
+              │
+              └──▶ Python analytics service (FastAPI, pandas, SciPy, statsmodels, scikit-learn)
+                      backtests, sweeps, walk-forward tests, historical screens
+                      portfolio performance, risk, projection and the goal planner
+                      stock profiles and factor exposures
+                      the options lab, the machine-learning sandbox
+                      SEC company numbers (fetched and parsed)
+                      nightly: indicator alerts, portfolio snapshots, profiles, factors
+              both ──▶ Turso (SQLite)
+```
+
+**In Next.js:** everything that changes an account (trades, orders, dividends and splits, price alerts), because a visit catches the account up as well as the nightly job, with the same rules as live trading (`lib/trading.ts`, `lib/processing.ts`).
+
+**In Python:** the numerical work. There's one copy of each calculation: no TypeScript backtest engine to keep in step. The only TypeScript engine left is the small one the Learn demos run in the browser (`lib/backtest/engine.ts`), checked against the same golden results as the Python engine. Price-dependent ratios such as P/E are worked out in Next.js, next to today's price.
+
+**When the service is down or waking up:** calls are retried once (a service that sleeps when idle can refuse the first connection), cards show "Try again" and retry once by themselves, and nothing falls back to another calculation.
 
 ## Market data
 
@@ -145,10 +171,10 @@ These are calculated by the Python analytics service ([its README](../services/a
 
 **Company numbers (SEC filings)**
 - What each company reported in its 10-K and 10-Q filings, from the SEC's free "company facts" API. The data is public, so it shows on the public site even though prices there are simulated.
-- `lib/market/fundamentals.ts` parses it (pure, tested):
+- The analytics service fetches each company's facts file from the SEC by its company number (CIK; Next.js keeps the ticker-to-CIK map) and parses it (`services/analytics/analytics/fundamentals.py`):
   - five fiscal years of revenue, gross profit, operating income, net income, diluted EPS, equity and free cash flow;
-  - the last four quarters added up, working out quarters reported only year-to-date;
-  - ratios at today's price: P/E (market value ÷ trailing net income), price to sales, margins, revenue growth, return on equity, free-cash-flow yield.
+  - the last four quarters added up, working out quarters reported only year-to-date.
+- Ratios at today's price are worked out in Next.js, next to the price (`lib/market/fundamentals.ts`): P/E (market value ÷ trailing net income), price to sales, margins, revenue growth, return on equity, free-cash-flow yield.
 - Companies tag the same line differently, so each line tries a list of XBRL tags. Only US-dollar figures are used: Spotify (euros) has none. Exxon's ticker now belongs to a new holding company with no reports yet, so its predecessor's filings are used until there are.
 - The facts files are several megabytes each, so the parsed numbers are stored (`company_facts`, `lib/fundamentals.ts`). The daily job refreshes about 30 a run, so each company about weekly. A stock with nothing stored is fetched on its page and cached for a day.
 - Shown in the stock page's "Company numbers" card. On the public site the valuation ratios use the simulated price, and the card says so.
@@ -191,7 +217,25 @@ These are calculated by the Python analytics service ([its README](../services/a
 - **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation heatmap and sector exposure.
 - **Stress tests:** the market's worst falls in the data, replayed on today's weights, plus beta-scaled hypothetical shocks.
 - **Projection:** a 10-year Monte Carlo of 2,000 paths from month-long blocks of the portfolio's own daily returns.
+- **Goal planner** (under the projection; `app/api/portfolio/plan`, `services/analytics/analytics/plan.py`): the same simulated futures, with money added or taken out at each month's end, over 1 to 40 years, with an optional target and inflation (2.5% a year: monthly amounts rise with prices, and results are in today's dollars). It shows the chance of reaching the target, the middle and bad-case (1 in 10) outcomes, and for withdrawals, the chance the money runs out and when.
 - **Optimise:** least-risk, best-Sharpe and risk-parity weightings of the same stocks, and the efficient frontier. These come from SciPy, long-only, with shrunk estimates.
+
+**Factor analysis: "What drives it"** (stock pages' Risk & technicals tab; the portfolio's Risk tab; `services/analytics/analytics/factors.py`)
+- Five factors, each a daily return series built from MarketLab's own universe, the same way on simulated and real prices:
+  - **Market:** the S&P 500's return;
+  - **Size:** small companies minus big ones, by market value;
+  - **Value:** cheap minus expensive, by earnings yield (from the price store's P/E, or the SEC numbers);
+  - **Momentum:** 12-1 month winners minus losers, re-sorted monthly from the prices known then;
+  - **Low volatility:** the calmest minus the jumpiest by past-year volatility, re-sorted monthly.
+- Each long-short factor holds the top and bottom 30%, equally weighted. Size and value sort on today's market values and earnings, so their groups don't change over time: fine for describing exposures, not for testing a strategy.
+- Exposures: an ordinary least-squares regression (statsmodels, with heteroskedasticity-robust standard errors) of the last 252 daily returns on the five factors. The card shows each beta (faint when it's within two standard errors of zero), R², annualised alpha, and a sentence in plain words. A portfolio's are calculated at today's weights.
+- The factors and every stock's exposures are rebuilt nightly, and only when a stored price has changed (`analytics_result`, kinds `factor-returns` and `stock-factors`).
+
+**Options lab (`/options`)** (`services/analytics/analytics/options.py`; learning only, with no option trading)
+- A **simulated** chain for each stock: European options at 17 strikes around today's price and the next six monthly expiries (third Fridays), priced with Black-Scholes-Merton from the stock's own past-year volatility, a 4% risk-free rate and its dividend yield. Real chains differ: a volatility smile, early exercise, bid-ask spreads.
+- The Greeks for any option in the chain, explained in words (delta, gamma, theta per day, vega and rho per percentage point).
+- A strategy builder (buy a call or put, covered call, protective put, bull call spread, straddle) drawing profit at expiry, with breakevens, the most it can make and lose (or "Unlimited"), and the net premium.
+- A calculator for any inputs, and an implied-volatility solver (Brent's method on the Black-Scholes price).
 
 ## Backtests
 
@@ -209,7 +253,7 @@ Each run uses up to five stocks, with trading costs and a benchmark.
 - **Trades:** round trips, win rate, average win and loss, holding period, turnover, and costs paid (commission plus slippage).
 
 **Overfitting checks**
-- **Sweeps:** a sweep reports the deflated Sharpe ratio of its best cell (`lib/backtest/overfitting.ts`): how likely it is to be real, given how many settings were tried.
+- **Sweeps:** a sweep reports the deflated Sharpe ratio of its best cell (`services/analytics/analytics/overfitting.py`): how likely it is to be real, given how many settings were tried.
 - **Walk-forward test:** a crossover sweep over both averages offers one. It picks the best pair on each past window, tests it on the next unseen one, and compares the result with fixed settings and with buy and hold.
 
 **How a run works.** The browser sends only the settings. The server (`lib/backtest/server.ts`):
@@ -219,21 +263,12 @@ Each run uses up to five stocks, with trading costs and a benchmark.
 
 Results are cached by the settings, the dataset's checksum and the engine's version.
 
-**Two engines.** `BACKTEST_ENGINE` chooses between:
-- `typescript`: `lib/backtest/engine.ts`;
-- `python`: [`services/analytics`](../services/analytics/README.md).
+**One engine.** Every backtest and sweep runs on the Python analytics service ([`services/analytics`](../services/analytics/README.md)). Every result names the engine and its version, and a failure shows an error; there's no other engine to fall back to. Until Phase 16 there was a TypeScript engine too, kept identical to the Python one. Its exact results on 23 fixed cases are now the Python engine's golden tests (`services/analytics/tests/test_golden.py`), and runs saved with it still open and are reproduced by the Python engine, which reports any difference.
 
-With `python`:
-- every strategy runs on Python; parameter sweeps stay on TypeScript;
-- every result names its engine and version;
-- a Python failure shows an error and never falls back to TypeScript.
-
-Both engines give identical results on fixed datasets (`npm run test:parity`).
-
-**Timing rule.** For each trading session D, both engines:
-1. decide from closes through the previous session (D−1);
-2. fill the orders at D's close;
-3. value the portfolio at D's close.
+**Timing rule.** For each trading session D, the engine:
+1. decides from closes through the previous session (D−1);
+2. fills the orders at D's close;
+3. values the portfolio at D's close.
 
 A missing day is skipped for every stock, never filled in. The Python README has a worked example and the no-look-ahead tests.
 
@@ -252,22 +287,35 @@ A missing day is skipped for every stock, never filled in. The Python README has
 
 **Never mixed:** real and simulated prices are never combined in one run.
 
+**Machine-learning sandbox** (the Backtest page's Machine learning tab; `services/analytics/analytics/ml.py`). Pick up to five stocks, features (recent returns, RSI, the MACD histogram, gaps to the 50- and 200-day averages, volatility, volume) and a model (logistic regression, random forest or gradient boosting, from scikit-learn). It predicts whether each stock rises over the next five sessions:
+- trained walk-forward only: train on the past one to three years, predict the next three months, slide forward; the five sessions before each test window are left out of training, as their labels overlap it;
+- trades on it every five sessions (equal weights in the stocks predicted to rise, cash otherwise), after trading costs;
+- compared with the same model trained on shuffled labels three times (pure luck), always guessing the most common answer, and buying and holding; the deflated Sharpe ratio of its returns over buy and hold says how likely it is to really beat holding.
+
+Runs are seeded, and saved runs keep the exact prices they used, so they can be reproduced like backtests (saved with `kind = 'ml'`).
+
 **Settings versions:** settings carry a `version`. Older settings are upgraded when read; newer ones are refused rather than misread.
 
 Rules that use a chandelier stop or volume need each day's high, low and volume. Only those runs load them, and their snapshots keep them, so every other snapshot is unchanged.
 
-**Python engine 1.2.0** adds the strategies above (all bit-identical with TypeScript on the parity fixtures). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
+**Python engine 1.2.0** added the strategies above (all bit-identical with the former TypeScript engine on the golden cases). **Engine 1.1.0 fix.** It fixes a bug in both engines: selling out could leave a sliver of a share that still counted as held. Crossover and rule strategies then never bought that stock again, and exposure was overstated. Runs saved under 1.0.0 may differ when reproduced.
 
 ## The daily job
 
 `/api/cron/daily` (`lib/maintenance.ts`) runs on weekdays at 21:30 UTC, after the New York close. It:
 - loads fresh market data;
-- catches up every account, in batches of about 50 seconds;
+- catches up every account, in batches of about 50 seconds (fills, dividends and splits, price alerts);
+- stores the latest prices, then has the analytics service run its nightly parts (`POST /v1/jobs/nightly`, called again while it has work left, within a slot that leaves time for the rest):
+  1. **indicator alerts** (RSI, average crosses, big moves, 52-week highs and lows), on closes adjusted for splits only, triggered at the first close since they were made;
+  2. **portfolio snapshots:** each portfolio's value at the close, into `portfolio_value`, backfilled once from each account's trades; the Performance tab uses them for past closes, so the record stays exact after old trades drop off an account;
+  3. **stock profiles** (see [Research tools](#research-tools));
+  4. **factors:** the factor returns and every stock's exposures;
+- sends alert emails and push notifications, including alerts the nightly parts just triggered (see [Email](#email) and [Installing and push notifications](#installing-and-push-notifications));
 - runs the monthly competitions (see [Competitions and badges](#competitions-and-badges));
-- sends alert emails and push notifications (see [Email](#email) and [Installing and push notifications](#installing-and-push-notifications));
 - refreshes company numbers that are a week old, for up to 10 seconds;
-- with the time left, stores the latest prices and recalculates stored analytics (see [Research tools](#research-tools));
 - deletes guests unused for 180 days, old rate-limit counters, and snapshots no saved run uses.
+
+Every nightly part skips what hasn't changed and is safe to run twice, so a run that stops early is continued by the next. `/api/health` reports each part's outcome from the last run.
 
 Only requests carrying `CRON_SECRET` are accepted.
 

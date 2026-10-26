@@ -16,6 +16,8 @@ export const LESSON_SLUGS = {
   sharpe: "sharpe-ratio",
   correlation: "correlation",
   beta: "beta",
+  factors: "factor-investing",
+  alpha: "alpha",
   benchmark: "benchmark",
   exposure: "time-invested",
   monteCarlo: "monte-carlo",
@@ -38,6 +40,10 @@ export const LESSON_SLUGS = {
   rsi: "rsi",
   macd: "macd",
   bollingerBands: "bollinger-bands",
+  callsAndPuts: "calls-and-puts",
+  optionGreeks: "option-greeks",
+  impliedVolatility: "implied-volatility",
+  optionStrategies: "option-strategies",
   buyAndHold: "buy-and-hold",
   dollarCostAveraging: "dollar-cost-averaging",
   rebalancing: "rebalancing",
@@ -45,6 +51,7 @@ export const LESSON_SLUGS = {
   momentum: "momentum-rotation",
   riskParity: "risk-parity",
   overfitting: "overfitting",
+  machineLearning: "machine-learning",
 } as const satisfies Record<TermKey, string>;
 
 const BY_SLUG = new Map<string, TermKey>(Object.entries(LESSON_SLUGS).map(([key, slug]) => [slug, key as TermKey]));

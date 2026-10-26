@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // The Python service's virtualenv (uv), which holds some packages' own JavaScript.
+    "services/analytics/.venv/**",
   ]),
 ]);
 

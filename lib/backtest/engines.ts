@@ -1,30 +1,23 @@
 /**
- * The backtest engines, behind one function: the TypeScript engine
- * (./engine.ts, in this server) or the Python analytics service
- * (services/analytics, through ./python-client.ts). Both follow the same
- * simulation rules and give the same results (checked by the parity tests).
+ * The backtest engine: the Python analytics service (services/analytics,
+ * through ./python-client.ts). It runs every strategy and every sweep.
+ * There's no fallback: if the service can't be reached, a run says so.
  *
- * BACKTEST_ENGINE=typescript|python picks one, server-side only, TypeScript
- * by default. The Python service implements buy and hold and the
- * moving-average crossover; every other strategy, and every parameter sweep,
- * stays on TypeScript, and each result says which engine calculated it.
+ * MarketLab once had a TypeScript engine as well, kept identical to the
+ * Python one; runs saved by it still open (their result is stored), and are
+ * reproduced by the Python engine.
  */
 import "server-only";
-import { runConfig, type BacktestConfig, type BacktestOutcome } from "./config";
+import type { BacktestConfig, BacktestOutcome } from "./config";
 import { PythonEngineError, runOnPython } from "./python-client";
-import { extrasOf, toPoints, type PriceSnapshot } from "./snapshot";
+import type { PriceSnapshot } from "./snapshot";
 
+/** "typescript" only appears on runs saved before the TypeScript engine was retired. */
 export type EngineName = "typescript" | "python";
 export interface EngineInfo {
   name: EngineName;
   version: string;
 }
-
-/** The TypeScript engine's version: bump it when its results would change for the same inputs. */
-export const TYPESCRIPT_ENGINE: EngineInfo = { name: "typescript", version: "1.2.0" };
-
-/** The strategies the Python service runs. */
-const PYTHON_STRATEGIES: ReadonlySet<BacktestConfig["strategy"]["kind"]> = new Set(["buy-and-hold", "moving-average", "dollar-cost-averaging", "rebalancing", "rules", "momentum-rotation", "risk-parity"]);
 
 /**
  * The simulation rules and data policy every result was calculated under,
@@ -41,45 +34,15 @@ export const ASSUMPTIONS = {
   calendar: "Only days every series has are used; a missing day is skipped for all of them.",
 } as const;
 
-export function configuredEngine(): EngineName {
-  const value = process.env.BACKTEST_ENGINE ?? "typescript";
-  if (value === "typescript" || value === "python") return value;
-  console.warn(`[backtest] BACKTEST_ENGINE="${value}" isn't "typescript" or "python"; using typescript.`);
-  return "typescript";
-}
-
-/** The engine that runs this config: Python when it's selected and supports the strategy, otherwise TypeScript. */
-export function engineFor(config: BacktestConfig, preferred: EngineName = configuredEngine()): EngineName {
-  return preferred === "python" && PYTHON_STRATEGIES.has(config.strategy.kind) ? "python" : "typescript";
-}
-
 export interface Computed {
   outcome: BacktestOutcome;
   engine: EngineInfo;
   warnings: string[];
 }
 
-/** The same warning the Python engine gives, for results from either engine. */
-function warningsFor(config: BacktestConfig, outcome: BacktestOutcome): string[] {
-  const days = outcome.run.equity.length;
-  if (config.strategy.kind === "moving-average" && days <= config.strategy.slow) {
-    return [`The ${config.strategy.slow}-day average needs ${config.strategy.slow} days of prices before the first signal; this range has ${days}, so the strategy never traded.`];
-  }
-  return [];
-}
-
-/**
- * Runs a backtest on a snapshot's prices with the given engine. Throws
- * PythonEngineError if the Python engine fails: it never falls back.
- */
-export async function compute(config: BacktestConfig, snapshot: PriceSnapshot, engine: EngineName): Promise<Computed> {
-  if (engine === "python") {
-    const result = await runOnPython(config, snapshot);
-    if (result.engine.name !== "python") throw new PythonEngineError("The analytics service didn't identify itself as the Python engine.");
-    return { outcome: result.outcome, engine: { name: "python", version: result.engine.version }, warnings: result.warnings };
-  }
-  const history = Object.fromEntries(Object.entries(snapshot.series).map(([symbol, data]) => [symbol, toPoints(data)]));
-  const extra = Object.fromEntries(Object.entries(snapshot.series).flatMap(([symbol, data]) => (extrasOf(data) ? [[symbol, extrasOf(data)!]] : [])));
-  const outcome = runConfig(config, history, snapshot.market ? toPoints(snapshot.market.data) : [], Object.keys(extra).length ? extra : undefined);
-  return { outcome, engine: TYPESCRIPT_ENGINE, warnings: warningsFor(config, outcome) };
+/** Runs a backtest on a snapshot's prices. Throws PythonEngineError if the service fails. */
+export async function compute(config: BacktestConfig, snapshot: PriceSnapshot): Promise<Computed> {
+  const result = await runOnPython(config, snapshot);
+  if (result.engine.name !== "python") throw new PythonEngineError("The analytics service didn't identify itself as the Python engine.");
+  return { outcome: result.outcome, engine: { name: "python", version: result.engine.version }, warnings: result.warnings };
 }

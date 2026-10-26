@@ -206,12 +206,13 @@ export const backtestRun = sqliteTable(
     simulated: integer("simulated", { mode: "boolean" }),
     datasetVersion: text("dataset_version"),
     /**
-     * What kind of run (migration 0012): a backtest of chosen stocks, or a
-     * historical screen (services/analytics/analytics/screens.py), whose
-     * config, result and snapshot have their own shapes. Both count towards
-     * MAX_SAVED_RUNS.
+     * What kind of run (migration 0012): a backtest of chosen stocks, a
+     * historical screen (services/analytics/analytics/screens.py), or a
+     * machine-learning sandbox run (.../ml.py), whose config, result and
+     * snapshot have their own shapes. All count towards MAX_SAVED_RUNS. (The
+     * column is plain text, so a new kind needs no migration.)
      */
-    kind: text("kind", { enum: ["backtest", "historical-screen"] }).notNull().default("backtest"),
+    kind: text("kind", { enum: ["backtest", "historical-screen", "ml"] }).notNull().default("backtest"),
   },
   (table) => [
     index("backtest_run_user_idx").on(table.userId, table.createdAt),
@@ -251,6 +252,25 @@ export const accountEvent = sqliteTable(
     sharesAfter: integer("shares_after"),
   },
   (table) => [primaryKey({ columns: [table.userId, table.id] }), index("account_event_user_time_idx").on(table.userId, table.time)],
+);
+
+/**
+ * Each simulated portfolio's value at each daily close (migration 0015),
+ * written by the analytics service's nightly job after the accounts are
+ * brought up to date (services/analytics/analytics/snapshots.py), and
+ * backfilled once from each account's trades. A record that stays exact
+ * even after old trades drop off an account's history.
+ */
+export const portfolioValue = sqliteTable(
+  "portfolio_value",
+  {
+    userId: userId(),
+    /** The close (ms). */
+    time: integer("time").notNull(),
+    value: real("value").notNull(),
+    cash: real("cash").notNull(),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.time] })],
 );
 
 /** Limit and stop orders: open ones, and recently closed ones to show what happened. */

@@ -8,14 +8,15 @@
  *    can never apply anything twice.
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
  *    own, and other leftovers (including saved price snapshots no run uses).
- * 3. Emails alert digests to users who asked for them (lib/alert-emails.ts),
+ * 3. Stores the latest prices and has the analytics service run its nightly
+ *    parts (lib/analytics/server.ts): indicator alerts, portfolio snapshots,
+ *    stock profiles and factors, within a slot of the time left.
+ * 4. Emails alert digests to users who asked for them (lib/alert-emails.ts),
  *    and sends push notifications to devices signed up for them (lib/alert-pushes.ts).
- * 4. Runs the monthly competitions (lib/season-job.ts): records standings,
+ * 5. Runs the monthly competitions (lib/season-job.ts): records standings,
  *    closes a finished season, sends season notifications.
- * 5. Refreshes a few companies' reported numbers from the SEC
+ * 6. Refreshes a few companies' reported numbers from the SEC
  *    (lib/fundamentals.ts), each about once a week.
- * 6. Stores the latest prices and has the analytics service recalculate
- *    what changed (lib/analytics/server.ts), with whatever time is left.
  *
  * Accounts go in batches, within a time budget: whatever doesn't fit waits
  * for the next run (or for its owner's next visit, which catches up too).
@@ -28,6 +29,9 @@ const DAY = 24 * 60 * 60 * 1000;
 export const GUEST_LIFETIME = 180 * DAY;
 /** The most time the job spends on company numbers. */
 const FUNDAMENTALS_SLOT = 10_000;
+/** The most time the analytics step gets, and the time it leaves for the steps after it. */
+const ANALYTICS_SLOT = 30_000;
+const ANALYTICS_RESERVE = 8_000;
 
 export interface DailyDeps {
   now(): number;
@@ -113,7 +117,18 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
   // After the guests: their saved runs (and so their snapshots' last references) went with them.
   const snapshotsDeleted = outOfTime() ? 0 : await deps.deleteOrphanSnapshots(500);
 
-  // Alert emails and pushes: right after catching up, which is when alerts trigger.
+  // Analytics before the alert emails and pushes: its indicator-alert check triggers alerts they then send.
+  // A slot of the time left, so the steps after it still run; anything unfinished continues tomorrow.
+  let analytics: unknown;
+  if (deps.refreshAnalytics) {
+    try {
+      analytics = outOfTime() ? "skipped: out of time" : await deps.refreshAnalytics(Math.min(start + budgetMs - ANALYTICS_RESERVE, deps.now() + ANALYTICS_SLOT));
+    } catch (error) {
+      analytics = `failed: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  // Alert emails and pushes: right after catching up and the indicator-alert check, which is when alerts trigger.
   let alertEmails: unknown;
   if (deps.sendAlertEmails) {
     try {
@@ -149,16 +164,6 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
       fundamentals = outOfTime() ? "skipped: out of time" : await deps.refreshFundamentals(Math.min(start + budgetMs, deps.now() + FUNDAMENTALS_SLOT));
     } catch (error) {
       fundamentals = `failed: ${error instanceof Error ? error.message : String(error)}`;
-    }
-  }
-
-  // Last, with the time that's left: analytics can always catch up tomorrow, or on a page visit.
-  let analytics: unknown;
-  if (deps.refreshAnalytics) {
-    try {
-      analytics = outOfTime() ? "skipped: out of time" : await deps.refreshAnalytics(start + budgetMs);
-    } catch (error) {
-      analytics = `failed: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 

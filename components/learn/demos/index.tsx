@@ -1,6 +1,8 @@
 import type { DemoKey } from "@/lib/lessons";
 import { CompanySizeDemo, DiversificationDemo } from "./company";
+import { FactorDemo } from "./factors";
 import { BenchmarkDemo, BetaDemo, DrawdownDemo, GrowthDemo, SharpeDemo, VolatilityDemo } from "./measuring";
+import { ImpliedVolatilityDemo, OptionGreeksDemo, OptionPayoffDemo, OptionStrategiesDemo } from "./options";
 import { DollarCostAveragingDemo, MovingAverageDemo, OverfittingDemo, RebalancingDemo, RsiDemo } from "./strategies";
 import { DividendDemo, OrdersDemo, SplitDemo, TradingCostsDemo } from "./trading";
 
@@ -23,6 +25,11 @@ const DEMOS: Record<DemoKey, () => React.ReactNode> = {
   dollarCostAveraging: DollarCostAveragingDemo,
   rebalancing: RebalancingDemo,
   overfitting: OverfittingDemo,
+  factors: FactorDemo,
+  optionPayoff: OptionPayoffDemo,
+  optionGreeks: OptionGreeksDemo,
+  impliedVolatility: ImpliedVolatilityDemo,
+  optionStrategies: OptionStrategiesDemo,
 };
 
 /** A lesson's interactive demo. */

@@ -17,7 +17,7 @@
  * after `processedThrough`, then moves that forward. So two tabs, or a retry,
  * can't pay a dividend twice.
  */
-import { alertTriggers, conditionMet } from "./alerts";
+import { alertTriggers } from "./alerts";
 import { isOpen, ORDER_MAX_AGE, triggers } from "./orders";
 import {
   MAX_CLOSED_ORDERS,
@@ -34,8 +34,7 @@ import type { CorporateAction, PricePoint } from "./types";
 export interface MarketData {
   /**
    * Daily closes as traded (not adjusted), by symbol, covering the closes since
-   * `processedThrough`, and as much history before as indicator alerts need
-   * (up to a year; the full series is fine).
+   * `processedThrough` (more history is fine).
    */
   raw: Record<string, PricePoint[]>;
   /** Dividends and splits by symbol, over the same period. */
@@ -44,13 +43,13 @@ export interface MarketData {
   latest: number;
 }
 
-/** Every symbol processing needs prices for: held, in an open order, or in an untriggered alert. */
+/** Every symbol processing needs prices for: held, in an open order, or in an untriggered price alert. */
 export function symbolsToProcess(account: Account): string[] {
   return [
     ...new Set([
       ...account.holdings.map((h) => h.symbol),
       ...(account.orders ?? []).filter(isOpen).map((o) => o.symbol),
-      ...(account.alerts ?? []).filter((a) => a.triggeredAt === undefined).map((a) => a.symbol),
+      ...(account.alerts ?? []).filter((a) => a.triggeredAt === undefined && !a.condition).map((a) => a.symbol),
     ]),
   ];
 }
@@ -79,19 +78,6 @@ export function processAccount(account: Account, data: MarketData): Account {
   }
   for (const list of Object.values(data.actions)) for (const a of list) if (a.time > since && a.time <= data.latest) days.add(a.time);
 
-  // Each symbol's closes scaled for later splits (not dividends), built on first use, for indicator alerts.
-  const adjusted = new Map<string, { closes: number[]; index: Map<number, number>; cache: Map<string, number[]> }>();
-  const adjustedHistory = (symbol: string) => {
-    let entry = adjusted.get(symbol);
-    if (!entry) {
-      const points = [...(data.raw[symbol] ?? [])].filter((p) => p.time <= data.latest).sort((a, b) => a.time - b.time);
-      const splits = (data.actions[symbol] ?? []).filter((x) => x.kind === "split");
-      const closes = points.map((p) => splits.reduce((price, x) => (x.kind === "split" && p.time < x.time ? price / x.ratio : price), p.price));
-      entry = { closes, index: new Map(points.map((p, i) => [p.time, i])), cache: new Map() };
-      adjusted.set(symbol, entry);
-    }
-    return entry;
-  };
 
   let current: Account = { ...account, events: [...(account.events ?? [])], orders: [...(account.orders ?? [])], alerts: [...(account.alerts ?? [])] };
   const events = current.events as AccountEvent[];
@@ -153,15 +139,12 @@ export function processAccount(account: Account, data: MarketData): Account {
       }
     }
 
-    // 3. Alerts: prices against the close; indicators against the split-adjusted history up to it.
+    // 3. Price alerts against the close. Indicator alerts are checked each night by the analytics
+    // service (services/analytics/analytics/alerts.py), which writes their triggers itself.
     current.alerts = (current.alerts as PriceAlert[]).map((a) => {
-      if (a.triggeredAt !== undefined || a.createdAt >= day) return a;
+      if (a.condition || a.triggeredAt !== undefined || a.createdAt >= day) return a;
       const close = closeAt.get(a.symbol)?.get(day);
-      if (close === undefined) return a;
-      if (!a.condition) return alertTriggers(a, close) ? { ...a, triggeredAt: day, triggerPrice: close } : a;
-      const history = adjustedHistory(a.symbol);
-      const i = history.index.get(day);
-      return i !== undefined && conditionMet(a.condition, a.direction, history.closes, i, history.cache) ? { ...a, triggeredAt: day, triggerPrice: close } : a;
+      return close !== undefined && alertTriggers(a, close) ? { ...a, triggeredAt: day, triggerPrice: close } : a;
     });
   }
 

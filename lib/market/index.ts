@@ -18,7 +18,8 @@ import { isTiingoBlocked, marketMode } from "./mode";
 import type { Listing, MarketDataProvider } from "./provider";
 import { isSymbolFormat, normalizeSymbol } from "./symbols";
 import { parseFilings, parseTickerMap, type Filing } from "./filings";
-import { parseCompanyFacts, type CompanyFacts } from "./fundamentals";
+import { post } from "../backtest/python-client";
+import { isCompanyFacts, type CompanyFacts } from "./fundamentals";
 import { createTiingoProvider, fetchTiingoNews, type NewsItem } from "./tiingo";
 import { INDICES, STOCK_SYMBOLS } from "./universe";
 
@@ -271,12 +272,12 @@ export async function fetchCompanyFacts(input: string): Promise<CompanyFacts | n
   const map = await cachedTickerMap(userAgent);
   if (Object.keys(map).length === 0) return "failed";
   const ciks = [map[symbol], PREDECESSORS[symbol]].filter((cik): cik is number => cik !== undefined);
+  if (ciks.length === 0) return null;
+  // The analytics service fetches the (large) facts file from the SEC itself and parses it.
   try {
-    for (const cik of ciks) {
-      const facts = await companyFactsOf(cik, userAgent);
-      if (facts) return facts;
-    }
-    return null;
+    const data = await post("v1/fundamentals/company", { ciks, userAgent }, "Company facts", 30_000);
+    if (data.failed === true) return "failed";
+    return isCompanyFacts(data.facts) ? data.facts : null;
   } catch (error) {
     console.error(`[fundamentals] Couldn't load company facts for ${symbol}:`, error instanceof Error ? error.message : error);
     return "failed";
@@ -291,16 +292,6 @@ export async function fetchCompanyFacts(input: string): Promise<CompanyFacts | n
 const PREDECESSORS: Record<string, number> = {
   XOM: 34088, // Exxon Mobil Corporation, before ExxonMobil Holdings Corp (2026)
 };
-
-async function companyFactsOf(cik: number, userAgent: string): Promise<CompanyFacts | null> {
-  try {
-    return parseCompanyFacts(await secJson(`https://data.sec.gov/api/xbrl/companyfacts/CIK${String(cik).padStart(10, "0")}.json`, userAgent));
-  } catch (error) {
-    // A company that files nothing in XBRL has no facts file at all.
-    if (error instanceof Error && error.message.endsWith("HTTP 404")) return null;
-    throw error;
-  }
-}
 
 /** A stock's recent SEC filings, or null if there are none to show (no SEC_USER_AGENT, unknown company, SEC unavailable). */
 export async function getFilings(input: string): Promise<Filing[] | null> {

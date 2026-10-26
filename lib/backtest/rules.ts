@@ -1,14 +1,15 @@
 /**
  * Custom strategies built from rules, like "buy when RSI(14) is below 30 and
  * the price is above its 200-day average; sell when RSI(14) is above 70".
+ * This module defines, validates and describes them, and calculates the
+ * indicators (for the rule builder and the Learn demos); the Python analytics
+ * service runs the strategies.
  *
  * A rule is plain data (JSON), read by the fixed set of functions below. It is
  * never turned into code, so a saved or shared config can't run anything: the
  * only things it can do are the kinds listed here. Everything is validated
  * like the rest of a config, because saved runs come back from storage.
  */
-import type { DailyExtras, Strategy } from "./engine";
-import type { Weights } from "./strategies";
 
 export type Indicator =
   | { kind: "price" }
@@ -350,72 +351,6 @@ export const indicatorSeriesFromBars = (indicator: Indicator, bars: readonly Bar
   return bars.map(stream);
 };
 
-const keyOf = (indicator: Indicator) => JSON.stringify(indicator);
-
-/**
- * A strategy that judges each stock on its own: while out of a stock, buy it
- * at its weight when the entry rules hold; while in it, sell it when the exit
- * rules hold. Like every strategy, it only sees closes up to yesterday. A
- * condition with an indicator still warming up counts as false, so nothing
- * trades until there's enough history.
- */
-export function ruleStrategy(weights: Weights, entry: RuleSet, exit: RuleSet): Strategy {
-  const indicators = new Map<string, Indicator>();
-  for (const c of [...entry.conditions, ...exit.conditions]) for (const i of [c.left, c.right]) indicators.set(keyOf(i), i);
-  // Per stock and indicator: the running state, and its value after each close seen so far.
-  const state = new Map<string, Map<string, { stream: Stream; values: number[] }>>();
-
-  const valuesFor = (symbol: string, closes: number[], extras: DailyExtras | undefined) => {
-    let perSymbol = state.get(symbol);
-    if (!perSymbol) {
-      perSymbol = new Map([...indicators].map(([key, indicator]) => [key, { stream: streamFor(indicator), values: [] as number[] }]));
-      state.set(symbol, perSymbol);
-    }
-    for (const entry of perSymbol.values()) {
-      for (let i = entry.values.length; i < closes.length; i++) {
-        const bar = extras ? { close: closes[i], high: extras.high[i], low: extras.low[i], volume: extras.volume[i] } : { close: closes[i], high: closes[i], low: closes[i], volume: Number.NaN };
-        entry.values.push(entry.stream(bar));
-      }
-    }
-    return perSymbol;
-  };
-
-  const holds = (rules: RuleSet, values: Map<string, { values: number[] }>, t: number) => {
-    const at = (indicator: Indicator, i: number) => (i < 0 ? Number.NaN : (values.get(keyOf(indicator))?.values[i] ?? Number.NaN));
-    const check = (c: Condition) => {
-      const l = at(c.left, t);
-      const r = at(c.right, t);
-      switch (c.op) {
-        case "above":
-          return l > r;
-        case "below":
-          return l < r;
-        case "crosses-above":
-          return at(c.left, t - 1) <= at(c.right, t - 1) && l > r;
-        case "crosses-below":
-          return at(c.left, t - 1) >= at(c.right, t - 1) && l < r;
-      }
-    };
-    return rules.combine === "all" ? rules.conditions.every(check) : rules.conditions.some(check);
-  };
-
-  return ({ closes, shares, bars }) => {
-    const target: Weights = {};
-    let changed = false;
-    for (const [symbol, weight] of Object.entries(weights)) {
-      const series = closes[symbol];
-      const values = valuesFor(symbol, series, bars?.[symbol]);
-      const t = series.length - 1; // yesterday
-      const inMarket = shares[symbol] > 0;
-      const next = inMarket ? !holds(exit, values, t) : holds(entry, values, t);
-      target[symbol] = next ? weight : 0;
-      if (next !== inMarket) changed = true;
-    }
-    return changed ? { type: "target", weights: target } : null;
-  };
-}
-
-/** Starting points for the rule builder. "Golden cross" behaves like the moving-average crossover strategy. */
 export const RULE_PRESETS: { name: string; entry: RuleSet; exit: RuleSet }[] = [
   {
     name: "RSI oversold bounce",

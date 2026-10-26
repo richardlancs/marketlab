@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { BacktestWorkbench } from "@/components/backtest/backtest-workbench";
+import { MLSandbox } from "@/components/backtest/ml-sandbox";
+import { Tabs } from "@/components/ui/tabs";
 import { DataSource } from "@/components/market/data-source";
 import { getMarket } from "@/lib/market";
 
@@ -24,9 +26,14 @@ export default async function BacktestPage() {
           See how a strategy would have done over past prices, compared with a simple benchmark. Past results don&apos;t predict future ones.
         </p>
       </div>
-      <div style={{ animationDelay: "60ms" }} className="mt-8 animate-fade-up">
-        <BacktestWorkbench firstDate={firstDate} lastDate={lastDate} />
-      </div>
+      <Tabs
+        className="mt-6"
+        label="Backtest tools"
+        tabs={[
+          { id: "strategies", label: "Strategies", content: <BacktestWorkbench firstDate={firstDate} lastDate={lastDate} /> },
+          { id: "ml", label: "Machine learning", content: <MLSandbox lastDate={lastDate} /> },
+        ]}
+      />
     </main>
   );
 }

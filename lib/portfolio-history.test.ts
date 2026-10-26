@@ -1,118 +1,23 @@
 import { describe, expect, it } from "vitest";
-import { summarizePortfolio } from "./portfolio";
-import { firstTradeTime, holdingsTimeline, portfolioValueSeries, rebase, relevantSymbols } from "./portfolio-history";
-import { placeOrder, type Account } from "./trading";
-import type { PricePoint } from "./types";
+import { firstTradeTime, rebase, relevantSymbols } from "./portfolio-history";
+import type { Account } from "./trading";
 
-const DAY = 86_400_000;
-// Closes on days 0..4, at 20:00 each day.
-const times = [0, 1, 2, 3, 4].map((d) => d * DAY + 20 * 3600_000);
-const prices = (values: number[]): PricePoint[] => values.map((price, i) => ({ time: times[i], price }));
-const history = { A: prices([10, 11, 12, 13, 14]), B: prices([50, 50, 40, 40, 60]) };
+// The history itself is calculated by the analytics service, and checked there
+// (services/analytics/tests/test_performance.py) against accounts made by this
+// app's trading code.
 
 const start: Account = { cash: 1000, holdings: [{ symbol: "A", shares: 10, averageCost: 9 }], watchlist: [], trades: [] };
+const trade = (time: number, symbol: string, side: "buy" | "sell") => ({ id: `${time}`, time, symbol, side, shares: 1, price: 10 });
 
-/** Replays orders forward, the way the app made them: each filled at that day's close, stamped an hour later. */
-function replay(orders: { day: number; symbol: string; side: "buy" | "sell"; shares: number }[]): { account: Account; states: Account[] } {
-  let account = start;
-  const states: Account[] = [];
-  for (let day = 0; day < times.length; day++) {
-    for (const o of orders.filter((x) => x.day === day)) {
-      const result = placeOrder(account, { ...o, price: history[o.symbol as "A" | "B"][day].price, id: `${day}${o.symbol}`, time: times[day] + 3600_000 });
-      if (!result.ok) throw new Error(result.message);
-      account = result.account;
-    }
-    states.push(account);
-  }
-  return { account, states };
-}
-
-describe("portfolio history", () => {
-  it("with no trades, values today's holdings at each day's price", () => {
-    expect(portfolioValueSeries(start, history, times).map((p) => p.price)).toEqual([1100, 1110, 1120, 1130, 1140]);
-  });
-
-  it("matches a forward replay of the same trades, day by day", () => {
-    const { account, states } = replay([
-      { day: 1, symbol: "B", side: "buy", shares: 4 },
-      { day: 3, symbol: "A", side: "sell", shares: 6 },
-      { day: 3, symbol: "B", side: "buy", shares: 2 },
-    ]);
-    const timeline = holdingsTimeline(account, times);
-    timeline.forEach((state, day) => {
-      expect(state.cash).toBeCloseTo(states[day].cash, 2);
-      for (const h of states[day].holdings) expect(state.shares[h.symbol]).toBe(h.shares);
-    });
-  });
-
-  it("ends at today's value (the same number the portfolio card shows)", () => {
-    const { account } = replay([{ day: 2, symbol: "B", side: "buy", shares: 5 }]);
-    const last = portfolioValueSeries(account, history, times).at(-1)?.price;
-    const quotes = [
-      { symbol: "A", name: "A", price: 14, change: 0 },
-      { symbol: "B", name: "B", price: 60, change: 0 },
-    ];
-    expect(last).toBeCloseTo(summarizePortfolio(account.holdings, quotes, account.cash).totalValue, 6);
-  });
-
-  it("counts a trade made after a close on that close's day, not the next one", () => {
-    const { account } = replay([{ day: 2, symbol: "B", side: "buy", shares: 5 }]);
-    const timeline = holdingsTimeline(account, times);
-    expect(timeline[1].shares.B ?? 0).toBe(0);
-    expect(timeline[2].shares.B).toBe(5);
-  });
-
-  it("stays exact from the oldest kept trade when older ones were dropped", () => {
-    const { account, states } = replay([
-      { day: 1, symbol: "B", side: "buy", shares: 4 },
-      { day: 3, symbol: "B", side: "sell", shares: 2 },
-    ]);
-    // Drop the oldest trade, as the 500-trade limit would.
-    const truncated = { ...account, trades: account.trades.slice(0, 1) };
-    const timeline = holdingsTimeline(truncated, times);
-    for (const day of [3, 4]) expect(timeline[day].cash).toBeCloseTo(states[day].cash, 2);
-  });
-
-  it("carries the last price over gaps, and refuses a symbol with no prices", () => {
-    const gappy = { A: [history.A[0], history.A[3]] };
-    expect(portfolioValueSeries(start, gappy, times).map((p) => p.price)).toEqual([1100, 1100, 1100, 1130, 1130]);
-    expect(() => portfolioValueSeries(start, {}, times)).toThrow(/A/);
-  });
-
+describe("portfolio history helpers", () => {
   it("lists the symbols to load and the first trade", () => {
-    const { account } = replay([{ day: 1, symbol: "B", side: "buy", shares: 1 }, { day: 2, symbol: "B", side: "sell", shares: 1 }]);
+    const account: Account = { ...start, trades: [trade(3, "B", "sell"), trade(2, "B", "buy")] };
     expect(relevantSymbols(account)).toEqual(["A", "B"]);
-    expect(firstTradeTime(account)).toBe(times[1] + 3600_000);
+    expect(firstTradeTime(account)).toBe(2);
     expect(firstTradeTime(start)).toBeNull();
   });
 
   it("rebases a series to start at 100", () => {
     expect(rebase([50, 75, 25])).toEqual([100, 150, 50]);
-  });
-});
-
-describe("portfolio history with dividends and splits", () => {
-  it("undoes a split and a dividend, so the chart doesn't show a fake drop", async () => {
-    const { processAccount } = await import("./processing");
-    // A splits 2-for-1 on day 2 (its traded price halves), and pays $1 a share on day 3.
-    const raw = { A: prices([10, 11, 6, 6, 7]) };
-    const account = processAccount(
-      { ...start, processedThrough: times[0] },
-      {
-        raw,
-        actions: {
-          A: [
-            { symbol: "A", time: times[2], kind: "split", ratio: 2 },
-            { symbol: "A", time: times[3], kind: "dividend", amount: 1 },
-          ],
-        },
-        latest: times[4],
-      },
-    );
-    expect(account.holdings[0].shares).toBe(20);
-    expect(account.cash).toBe(1020);
-    const values = portfolioValueSeries(account, raw, times).map((p) => p.price);
-    // 10 × $10, 10 × $11, then 20 × $6, 20 × $6 + $20 dividend, 20 × $7 + $20, all plus $1,000 cash.
-    expect(values).toEqual([1100, 1110, 1120, 1140, 1160]);
   });
 });

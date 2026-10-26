@@ -8,6 +8,7 @@ import { OpenOrders } from "@/components/portfolio/open-orders";
 import { PositionCard } from "@/components/stocks/position-card";
 import { RangeBar } from "@/components/stocks/range-bar";
 import { StockAnalysis } from "@/components/stocks/stock-analysis";
+import { StockFactors } from "@/components/stocks/stock-factors";
 import { StockFundamentals } from "@/components/stocks/stock-fundamentals";
 import { StockNews } from "@/components/stocks/stock-news";
 import { StockStats } from "@/components/stocks/stock-stats";
@@ -148,9 +149,14 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
             label: "Risk & technicals",
             // Calculated by the analytics service from stored prices; the page doesn't wait for it.
             content: (
-              <Suspense fallback={<AnalysisSkeleton />}>
-                <StockAnalysis symbol={stock.symbol} />
-              </Suspense>
+              <div className="flex flex-col gap-4 lg:gap-6">
+                <Suspense fallback={<AnalysisSkeleton />}>
+                  <StockAnalysis symbol={stock.symbol} />
+                </Suspense>
+                <Suspense fallback={null}>
+                  <StockFactors symbol={stock.symbol} />
+                </Suspense>
+              </div>
             ),
           },
           {

@@ -28,6 +28,8 @@ Migration 0007 (Phase 12) adds:
 
 The first daily job after deploying fills the store: about 130,000 rows for the mock market, a few seconds of work.
 
+Migration 0015 adds `portfolio_value`: each portfolio's value at each close, written by the analytics service's nightly job (and backfilled once). Apply it before deploying code that writes it: the nightly job and the Performance tab read it.
+
 Migration 0014 adds the competitions: `season`, `season_entry`, `season_standing`, `badge`, and `user.season_of` (season portfolios are hidden user rows). Apply it before deploying code that reads them: the portfolio page and the daily job do.
 
 Migration 0013 adds `push_subscription` (each device that gets push notifications) and `price_alert.pushed_at`. Apply it before deploying code that sends pushes: the daily job reads both.
@@ -36,7 +38,7 @@ Migration 0012 adds `backtest_run.kind` (`backtest` by default, or `historical-s
 
 Migration 0011 adds `company_facts`, the stored SEC company numbers. The daily job fills it about 30 companies a run. Without `SEC_USER_AGENT` it stays empty and the Company numbers card is hidden.
 
-The Python service now includes SciPy. Its bundle is about 170 MB, within Vercel's 500 MB limit for Python functions.
+The Python service includes SciPy, statsmodels and scikit-learn. Its dependencies come to about 225 MB, within Vercel's 500 MB limit for Python functions; CI fails above 400 MB.
 
 ## Environment variables
 
@@ -48,7 +50,6 @@ Set them in Project → Settings → Environment Variables, separately for Produ
 | `BETTER_AUTH_URL` | `https://<production host>` |
 | `BETTER_AUTH_ALLOWED_HOSTS` | Production: `<production host>`. Preview: also add `marketlab-*-<team>.vercel.app`. |
 | `DATABASE_URL`, `DATABASE_AUTH_TOKEN` | That environment's Turso database. |
-| `BACKTEST_ENGINE` | `python` or `typescript`. |
 | `ANALYTICS_SERVICE_TOKEN` | A random value per environment. Don't set `ANALYTICS_URL`: the binding provides it. |
 | `CRON_SECRET` | Production only: lets Vercel Cron run the daily job. |
 | `SEC_USER_AGENT` | `MarketLab <contact email>`, to show SEC filings and company numbers. |
@@ -104,4 +105,3 @@ turso db tokens create marketlab-restored     # then set DATABASE_URL / DATABASE
 ## Rolling back
 
 - **A bad deploy:** Vercel → Deployments → Instant Rollback.
-- **Turning the Python engine off without touching routing:** set `BACKTEST_ENGINE=typescript`.

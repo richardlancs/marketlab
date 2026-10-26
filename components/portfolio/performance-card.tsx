@@ -11,6 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { rebase } from "@/lib/portfolio-history";
 import type { Timeframe } from "@/lib/types";
+import { ServiceError } from "@/components/ui/service-data";
 import { usePortfolioPerformance, type IndexChoice } from "./use-portfolio-performance";
 
 /** The measures that make sense for a portfolio over a range ("Final value" of a rebased line wouldn't). */
@@ -70,7 +71,7 @@ export function PerformanceCard() {
     return (
       <Card aria-labelledby="performance">
         {header(null, null)}
-        <p className="mt-4 text-sm text-muted">{data.message}</p>
+        <ServiceError message={data.message} onRetry={data.retry} className="mt-4" />
       </Card>
     );
   }

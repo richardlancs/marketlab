@@ -67,4 +67,9 @@ export type DemoKey =
   | "rsi"
   | "dollarCostAveraging"
   | "rebalancing"
-  | "overfitting";
+  | "overfitting"
+  | "factors"
+  | "optionPayoff"
+  | "optionGreeks"
+  | "impliedVolatility"
+  | "optionStrategies";

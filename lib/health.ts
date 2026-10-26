@@ -20,6 +20,8 @@ export interface HealthFacts {
   dailyJob: { startedAt: number; ok: boolean; unfinished: boolean } | null;
   /** The newest stored stock profile's close, or null if there are none. */
   newestProfile: number | null;
+  /** What each of the analytics service's nightly parts did in the last daily job (alerts, snapshots, profiles, factors), if it ran. */
+  nightlyParts?: Record<string, unknown> | null;
 }
 
 const HOUR = 3_600_000;
@@ -48,6 +50,13 @@ export function assessHealth(f: HealthFacts): { status: "ok" | "degraded" | "dow
   if (f.newestProfile === null) checks.analyticsData = { status: "warn", detail: "No stored stock profiles yet." };
   else if (latest !== null && latest - f.newestProfile > PROFILE_MAX_LAG) checks.analyticsData = { status: "fail", detail: `Stored analytics stop at ${new Date(f.newestProfile).toISOString()}.` };
   else checks.analyticsData = { status: "ok", detail: `Stored analytics through ${new Date(f.newestProfile).toISOString()}.` };
+
+  if (f.nightlyParts) {
+    const failed = Object.entries(f.nightlyParts).filter(([, v]) => typeof v === "string" && v.startsWith("failed")).map(([k]) => k);
+    checks.nightly = failed.length
+      ? { status: "warn", detail: `Nightly analytics parts failed: ${failed.join(", ")}.` }
+      : { status: "ok", detail: `Nightly analytics ran: ${Object.keys(f.nightlyParts).join(", ")}.` };
+  }
 
   const statuses = Object.values(checks).map((c) => c.status);
   return { status: statuses.includes("fail") ? "down" : statuses.includes("warn") ? "degraded" : "ok", checks };

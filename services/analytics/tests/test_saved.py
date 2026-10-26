@@ -138,10 +138,16 @@ def test_explains_runs_it_cant_reproduce(store):
     store.execute("INSERT INTO backtest_run (id, user_id, name, config, summary, created_at) VALUES ('old', 'owner-1', 'Old', '{}', '{}', 1)")
     response = client.post("/v1/saved-runs/old/reproduce", json={"ownerId": "owner-1"}, headers=AUTH)
     assert response.status_code == 409 and "before MarketLab kept results" in response.json()["error"]
+
+
+def test_reproduces_runs_saved_by_the_retired_typescript_engine(store):
     client.post("/v1/saved-runs", json=save_body("ts-run"), headers=AUTH)
-    store.execute("UPDATE backtest_run SET engine = 'typescript' WHERE id = 'ts-run'")
+    store.execute("UPDATE backtest_run SET engine = 'typescript', engine_version = '1.2.0' WHERE id = 'ts-run'")
     response = client.post("/v1/saved-runs/ts-run/reproduce", json={"ownerId": "owner-1"}, headers=AUTH)
-    assert response.status_code == 409 and "typescript" in response.json()["error"]
+    assert response.status_code == 200
+    body = response.json()
+    assert body["reproduced"]["provenance"]["engine"]["name"] == "python"
+    assert body["comparison"]["matches"] is True
 
 
 class TestTursoClient:

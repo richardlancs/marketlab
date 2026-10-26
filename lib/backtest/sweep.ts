@@ -1,16 +1,16 @@
 /**
  * Parameter sweeps: run the same backtest over a grid of settings (say, every
  * short average from 10 to 50 days against every long one from 100 to 250)
- * and compare the results. Pure, so it runs in a Web Worker, on the main
- * thread as a fallback, and in tests.
+ * and compare the results. This module defines what can be varied and builds
+ * the grid of settings; the Python analytics service runs it
+ * (./server.ts, sweepOnServer).
  *
  * A sweep shows how sensitive a strategy is to its settings. It doesn't find
  * the "best" ones: the setting that did best in the past is usually just the
  * one that fit the past's noise (overfitting), and rarely stays best.
  */
-import type { PricePoint } from "../types";
-import { parseConfig, runBenchmark, runStrategy, type BacktestConfig } from "./config";
-import type { ExtraPoint, Metrics } from "./engine";
+import { parseConfig, type BacktestConfig } from "./config";
+import type { Metrics } from "./engine";
 import { indicatorName, type Indicator, type RuleSet } from "./rules";
 
 export const SWEEP_LIMITS = { maxValuesPerAxis: 15, maxRuns: 200 };
@@ -107,10 +107,25 @@ export interface SweepPoint {
   metrics: Metrics | null;
 }
 
+/**
+ * How much to trust the best of the tries (the deflated Sharpe ratio,
+ * calculated by the analytics service): trying many settings finds luck as
+ * well as skill.
+ */
+export interface SelectionCheck {
+  trials: number;
+  best: number;
+  /** The best Sharpe ratio pure luck would be expected to reach with this many tries (annualised). */
+  expectedByLuck: number;
+  /** How likely the best result's true Sharpe ratio is above zero, allowing for the tries (0–1). */
+  probability: number;
+}
+
 export interface SweepResult {
   axes: { param: SweepParam; values: number[] }[];
   points: SweepPoint[];
   benchmark: Metrics;
+  check: SelectionCheck | null;
 }
 
 /** The grid of configs to run, or an explanation of why the sweep is too big or malformed. */
@@ -138,54 +153,4 @@ export function buildGrid(base: BacktestConfig, axes: Axis[]): { axes: SweepResu
     metrics: null,
   }));
   return { axes: resolved, points };
-}
-
-/**
- * Checks the grid and runs the benchmark, which is the same for every point
- * (same stocks, days and money), so it only runs once. Then each point runs
- * with `runPoint`, in one go (`runSweep`) or in batches.
- */
-export function prepareSweep(
-  base: BacktestConfig,
-  axes: Axis[],
-  history: Record<string, PricePoint[]>,
-  market: PricePoint[],
-  extra?: Record<string, ExtraPoint[]>,
-): { axes: SweepResult["axes"]; points: SweepPoint[]; benchmark: Metrics } | { error: string } {
-  const grid = buildGrid(base, axes);
-  if ("error" in grid) return grid;
-  try {
-    return { ...grid, benchmark: runBenchmark(base, runStrategy(base, history, extra), history, market).metrics };
-  } catch (error) {
-    return { error: error instanceof Error ? error.message : "That backtest couldn't be run." };
-  }
-}
-
-/** Runs one point, keeping only its metrics (not its daily values), so results stay small enough to send from a worker. */
-export function runPoint(point: SweepPoint, history: Record<string, PricePoint[]>, extra?: Record<string, ExtraPoint[]>): void {
-  if (!point.config) return;
-  try {
-    point.metrics = runStrategy(point.config, history, extra).metrics;
-  } catch {
-    point.metrics = null; // e.g. averages longer than the date range
-  }
-}
-
-/** The whole sweep at once. `onProgress` is called after every `every` runs. */
-export function runSweep(
-  base: BacktestConfig,
-  axes: Axis[],
-  history: Record<string, PricePoint[]>,
-  market: PricePoint[],
-  onProgress?: (done: number, total: number) => void,
-  every = 10,
-  extra?: Record<string, ExtraPoint[]>,
-): SweepResult | { error: string } {
-  const sweep = prepareSweep(base, axes, history, market, extra);
-  if ("error" in sweep) return sweep;
-  sweep.points.forEach((point, i) => {
-    runPoint(point, history, extra);
-    if (onProgress && ((i + 1) % every === 0 || i === sweep.points.length - 1)) onProgress(i + 1, sweep.points.length);
-  });
-  return sweep;
 }

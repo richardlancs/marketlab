@@ -6,7 +6,6 @@ import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
 import type { BacktestConfig } from "@/lib/backtest/config";
 import type { Metrics } from "@/lib/backtest/engine";
-import { selectionCheck } from "@/lib/backtest/overfitting";
 import { SWEEP_LIMITS, sweepableParams, type Axis, type SweepResult } from "@/lib/backtest/sweep";
 import { formatPercent } from "@/lib/format";
 import type { SweepState } from "./use-sweep";
@@ -189,12 +188,7 @@ export function SweepResults({ result, measure, onOpen }: { result: SweepResult;
     cells: Array.from({ length: width }, (_, c) => valueOf(r * width + c)),
   }));
   const invalid = result.points.filter((p) => !p.metrics).length;
-  const span = result.points.find((p) => p.config)?.config;
-  const sessions = span ? Math.round(((span.end - span.start) / (365.25 * 86_400_000)) * 252) : 0;
-  const check = selectionCheck(
-    result.points.map((p) => p.metrics?.sharpe ?? null),
-    sessions,
-  );
+  const check = result.check;
 
   return (
     <div className="space-y-3">

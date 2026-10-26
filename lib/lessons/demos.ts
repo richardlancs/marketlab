@@ -238,3 +238,171 @@ export function afterCosts(start: number, grossReturn: number, trades: number, c
   if (trades === 0) value = gross;
   return { gross, net: value, cost: gross - value };
 }
+
+// Options and factors. Black-Scholes needs exp, log and the normal curve, so
+// these are built from arithmetic too (see the top of this file): series
+// that give the same bits in every browser and in Node.
+
+const LN2 = 0.6931471805599453;
+
+/** e^x from arithmetic only: x = k·ln 2 + r, then a Taylor series for e^r, times 2^k. */
+export function arithmeticExp(x: number): number {
+  if (Number.isNaN(x)) return NaN;
+  if (x > 700) return Infinity;
+  if (x < -700) return 0;
+  const k = Math.round(x / LN2);
+  const r = x - k * LN2;
+  let term = 1;
+  let sum = 1;
+  for (let i = 1; i < 25; i++) {
+    term *= r / i;
+    sum += term;
+  }
+  let scale = 1;
+  for (let i = 0; i < Math.abs(k); i++) scale *= k > 0 ? 2 : 0.5;
+  return sum * scale;
+}
+
+/** The natural log from arithmetic only: halve or double into [√½, √2), then the series 2·(z + z³/3 + z⁵/5 + …). */
+export function arithmeticLog(x: number): number {
+  if (Number.isNaN(x) || x < 0) return NaN;
+  if (x === 0) return -Infinity;
+  if (x === Infinity) return Infinity;
+  let k = 0;
+  while (x >= Math.SQRT2) {
+    x /= 2;
+    k++;
+  }
+  while (x < Math.SQRT1_2) {
+    x *= 2;
+    k--;
+  }
+  const z = (x - 1) / (x + 1);
+  const z2 = z * z;
+  let term = z;
+  let sum = 0;
+  for (let i = 1; i < 60; i += 2) {
+    sum += term / i;
+    term *= z2;
+  }
+  return 2 * sum + k * LN2;
+}
+
+/** The bell curve's height at x (mean 0, standard deviation 1). */
+export const normalDensity = (x: number) => 0.3989422804014327 * arithmeticExp((-x * x) / 2);
+
+/** The chance a standard normal number is below x (Abramowitz and Stegun 26.2.17, accurate to about 1e-7). */
+export function normalCdf(x: number): number {
+  const t = 1 / (1 + 0.2316419 * Math.abs(x));
+  const tail = normalDensity(x) * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
+  return x >= 0 ? 1 - tail : tail;
+}
+
+export type OptionKind = "call" | "put";
+
+export interface OptionInputs {
+  spot: number;
+  strike: number;
+  /** Time to expiry in years. */
+  years: number;
+  /** Yearly volatility: 0.2 = 20%. */
+  volatility: number;
+  /** Yearly interest rate: 0.04 = 4%. */
+  rate: number;
+}
+
+export interface OptionValue {
+  price: number;
+  /** Price change per $1 move in the stock. */
+  delta: number;
+  /** Delta's change per $1 move in the stock. */
+  gamma: number;
+  /** Price change per calendar day that passes. */
+  theta: number;
+  /** Price change per 1 percentage point of volatility. */
+  vega: number;
+  /** Price change per 1 percentage point of interest rate. */
+  rho: number;
+}
+
+/** The value at expiry of one share's worth of option. */
+export const intrinsicValue = (kind: OptionKind, spot: number, strike: number) => Math.max(0, kind === "call" ? spot - strike : strike - spot);
+
+/** Black-Scholes price and Greeks for a European option on a stock with no dividends, per share. */
+export function blackScholes(kind: OptionKind, { spot, strike, years, volatility, rate }: OptionInputs): OptionValue {
+  if (years <= 0 || volatility <= 0) {
+    const itm = kind === "call" ? spot > strike : spot < strike;
+    return { price: intrinsicValue(kind, spot, strike), delta: itm ? (kind === "call" ? 1 : -1) : 0, gamma: 0, theta: 0, vega: 0, rho: 0 };
+  }
+  const root = Math.sqrt(years);
+  const d1 = (arithmeticLog(spot / strike) + (rate + (volatility * volatility) / 2) * years) / (volatility * root);
+  const d2 = d1 - volatility * root;
+  const discounted = strike * arithmeticExp(-rate * years);
+  const density = normalDensity(d1);
+  const gamma = density / (spot * volatility * root);
+  const vega = (spot * density * root) / 100;
+  const decay = (-spot * density * volatility) / (2 * root);
+  if (kind === "call") {
+    const n2 = normalCdf(d2);
+    return { price: spot * normalCdf(d1) - discounted * n2, delta: normalCdf(d1), gamma, theta: (decay - rate * discounted * n2) / 365, vega, rho: (years * discounted * n2) / 100 };
+  }
+  const n2 = normalCdf(-d2);
+  return { price: discounted * n2 - spot * normalCdf(-d1), delta: normalCdf(d1) - 1, gamma, theta: (decay + rate * discounted * n2) / 365, vega, rho: (-years * discounted * n2) / 100 };
+}
+
+/**
+ * The volatility at which Black-Scholes gives `price`, found by bisection:
+ * try the middle of a range, keep the half the answer must be in, repeat.
+ * Returns null when no volatility from 1% to 300% gives that price. `steps`
+ * are the guesses, for showing the search.
+ */
+export function impliedVolatility(kind: OptionKind, price: number, inputs: Omit<OptionInputs, "volatility">): { volatility: number; steps: { volatility: number; price: number }[] } | null {
+  let low = 0.01;
+  let high = 3;
+  const at = (volatility: number) => blackScholes(kind, { ...inputs, volatility }).price;
+  if (price < at(low) || price > at(high)) return null;
+  const steps: { volatility: number; price: number }[] = [];
+  for (let i = 0; i < 60; i++) {
+    const mid = (low + high) / 2;
+    const p = at(mid);
+    steps.push({ volatility: mid, price: p });
+    if (p > price) high = mid;
+    else low = mid;
+  }
+  return { volatility: (low + high) / 2, steps };
+}
+
+/** One part of an option position: options bought (quantity > 0) or sold (< 0), or shares bought at `price`. */
+export type Leg = { kind: OptionKind; strike: number; premium: number; quantity: number } | { kind: "stock"; price: number; quantity: number };
+
+/** A position's profit per share at expiry, if the stock ends at `spot`: what the legs pay, less what they cost. */
+export const profitAtExpiry = (legs: readonly Leg[], spot: number) =>
+  legs.reduce((sum, leg) => sum + leg.quantity * (leg.kind === "stock" ? spot - leg.price : intrinsicValue(leg.kind, spot, leg.strike) - leg.premium), 0);
+
+/**
+ * The prices where a position's profit at expiry crosses zero, on a grid of
+ * stock prices. Payoffs are straight between strikes, so with whole-dollar
+ * strikes on a whole-dollar grid the crossings are exact.
+ */
+export function breakevens(legs: readonly Leg[], prices: readonly number[]): number[] {
+  const found: number[] = [];
+  const values = prices.map((p) => profitAtExpiry(legs, p));
+  values.forEach((v, i) => {
+    if (v === 0 && (i === 0 || values[i - 1] !== 0)) found.push(prices[i]);
+    else if (i > 0 && values[i - 1] * v < 0) found.push(prices[i - 1] + ((prices[i] - prices[i - 1]) * -values[i - 1]) / (v - values[i - 1]));
+  });
+  return found;
+}
+
+export const FACTORS = ["Market", "Size", "Value", "Momentum", "Low volatility"] as const;
+export type Factor = (typeof FACTORS)[number];
+
+/**
+ * A year's return split into each factor's part (exposure × the factor's
+ * return) and alpha, the part left over. Adding the parts is a simplification:
+ * real returns compound day by day.
+ */
+export function factorContributions(exposures: Record<Factor, number>, factorReturns: Record<Factor, number>, alpha: number) {
+  const parts = FACTORS.map((factor) => ({ factor, contribution: exposures[factor] * factorReturns[factor] }));
+  return { parts, total: parts.reduce((sum, p) => sum + p.contribution, alpha) };
+}

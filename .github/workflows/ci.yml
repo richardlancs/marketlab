@@ -1,6 +1,6 @@
-# Checks every push and pull request: the same commands as `npm run check`,
-# `npm run test:python` and `npm run test:parity` locally. Deploys still go
-# through Vercel's Git integration; branch protection on main requires these.
+# Checks every push and pull request: the same commands as `npm run check`
+# and `npm run test:python` locally. Deploys still go through Vercel's Git
+# integration; branch protection on main requires these.
 name: CI
 
 on:
@@ -57,6 +57,16 @@ jobs:
       - run: uv python install 3.12
       - run: uv sync --extra dev --locked --python 3.12
       - run: uv run --extra dev pytest -q
+      # Vercel refuses a Python function over 500 MB: fail well before that,
+      # measuring the production dependencies alone, as Vercel installs them.
+      - name: Bundle size
+        run: |
+          uv export --locked --no-dev --no-hashes --format requirements-txt > /tmp/requirements.txt
+          uv venv /tmp/prod --python 3.12 -q
+          uv pip install -q --python /tmp/prod/bin/python -r /tmp/requirements.txt
+          size=$(du -sm /tmp/prod/lib/python3.12/site-packages | cut -f1)
+          echo "Python dependencies: ${size} MB (budget 400 MB; Vercel's limit is 500 MB)"
+          if [ "$size" -gt 400 ]; then echo "::error::The Python dependencies are ${size} MB, over the 400 MB budget."; exit 1; fi
 
   audit:
     name: Dependency audit

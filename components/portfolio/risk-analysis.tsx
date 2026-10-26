@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
+import { GoalPlanner } from "./goal-planner";
+import { ServiceError, useServiceData } from "@/components/ui/service-data";
 import type { PortfolioAnalysis, Weighting } from "@/lib/analytics/portfolio";
 import { formatCompactCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
 import type { TermKey } from "@/lib/glossary";
 
-type Result = { status: "loading" } | { status: "empty" } | { status: "error"; message: string } | { status: "ok"; analysis: PortfolioAnalysis; totalValue: number };
+type Analysis = { empty: true } | { empty?: false; analysis: PortfolioAnalysis; totalValue: number };
 
 const TABS = ["Risk", "Stress tests", "Projection", "Optimise"] as const;
 type Tab = (typeof TABS)[number];
@@ -24,29 +26,16 @@ const num = (v: number | null | undefined, digits = 2) => (v === null || v === u
  */
 export function RiskAnalysis() {
   const { account } = useAccount();
-  const key = account ? JSON.stringify([account.cash, account.holdings.map((h) => [h.symbol, h.shares])]) : null;
-  const [result, setResult] = useState<{ key: string; value: Result } | null>(null);
+  // The holdings and cash, so a trade loads it again.
+  const holdings = account ? [account.cash, account.holdings.map((h) => [h.symbol, h.shares])] : null;
+  const state = useServiceData<Analysis>(holdings ? { url: `/api/portfolio/analysis?h=${encodeURIComponent(JSON.stringify(holdings))}` } : null);
   const [tab, setTab] = useState<Tab>("Risk");
-
-  useEffect(() => {
-    if (key === null) return;
-    let cancelled = false;
-    fetch("/api/portfolio/analysis", { cache: "no-store" })
-      .then(async (response) => {
-        const data = await response.json().catch(() => null);
-        if (!response.ok) throw new Error(data?.error ?? "Couldn't load the analysis. Check your connection and try again.");
-        return data;
-      })
-      .then(
-        (data) => !cancelled && setResult({ key, value: data.empty ? { status: "empty" } : { status: "ok", analysis: data.analysis, totalValue: data.totalValue } }),
-        (error: Error) => !cancelled && setResult({ key, value: { status: "error", message: error.message } }),
-      );
-    return () => {
-      cancelled = true;
-    };
-  }, [key]);
-
-  const value: Result = result && result.key === key ? result.value : result?.value.status === "ok" ? result.value : { status: "loading" };
+  const value =
+    state.status === "ok"
+      ? state.data.empty
+        ? ({ status: "empty" } as const)
+        : ({ status: "ok", analysis: state.data.analysis, totalValue: state.data.totalValue } as const)
+      : state;
 
   return (
     <Card aria-labelledby="risk-analysis">
@@ -74,12 +63,17 @@ export function RiskAnalysis() {
 
       {value.status === "loading" && <div aria-busy className="mt-4 h-48 animate-pulse rounded-lg bg-foreground/[0.06]" />}
       {value.status === "empty" && <p className="mt-3 text-sm text-muted">Buy a stock or two, and this shows how risky the mix is, how it might fare in a crash, and other ways to weight it.</p>}
-      {value.status === "error" && <p className="mt-3 text-sm text-muted">{value.message}</p>}
+      {value.status === "error" && <ServiceError message={value.message} onRetry={state.retry} />}
       {value.status === "ok" && (
         <div role="tabpanel" className="mt-4">
           {tab === "Risk" && <RiskView a={value.analysis} />}
           {tab === "Stress tests" && <StressView a={value.analysis} totalValue={value.totalValue} />}
-          {tab === "Projection" && <ProjectionView a={value.analysis} totalValue={value.totalValue} />}
+          {tab === "Projection" && (
+            <>
+              <ProjectionView a={value.analysis} totalValue={value.totalValue} />
+              <GoalPlanner />
+            </>
+          )}
           {tab === "Optimise" && <OptimiseView a={value.analysis} />}
           <p className="mt-4 text-xs text-muted">
             As of the {formatDate(value.analysis.asOf)} close, for today&apos;s holdings{value.analysis.leftOut.length > 0 && ` (without ${value.analysis.leftOut.join(", ")}: not enough price history)`}. Based on past prices; not a

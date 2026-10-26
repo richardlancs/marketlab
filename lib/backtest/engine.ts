@@ -1,6 +1,8 @@
 /**
- * The backtesting engine: replays a strategy over past daily prices and
- * measures how it would have done. Pure functions, no I/O.
+ * A small backtesting engine for the Learn demos, which replay a strategy in
+ * the browser, plus the result types every backtest uses. The backtests
+ * themselves run in the Python analytics service (services/analytics), which
+ * follows the same rules. Pure functions, no I/O.
  *
  * Rules of the simulation:
  * - Each day, the strategy sees closes up to *yesterday* only, decides what it

@@ -57,12 +57,13 @@ describe("the daily job", () => {
     expect(cutoff).toBeGreaterThan(1_000_000 - GUEST_LIFETIME - 100);
   });
 
-  it("refreshes analytics last, with the time that's left, and survives its failure", async () => {
+  it("gives analytics a slot that leaves time for the steps after it, and survives its failure", async () => {
     const { deps } = world([]);
     deps.refreshAnalytics = vi.fn(async (deadline: number) => ({ computed: 5, deadline }));
     const summary = await runDaily(deps, { budgetMs: 30_000 });
     const [deadline] = vi.mocked(deps.refreshAnalytics).mock.calls[0];
-    expect(deadline).toBe(1_000_001 + 30_000);
+    // The budget less the reserve for the later steps (the slot itself is longer than that).
+    expect(deadline).toBe(1_000_001 + 30_000 - 8_000);
     expect(summary.analytics).toMatchObject({ computed: 5 });
 
     deps.refreshAnalytics = vi.fn(async () => {
@@ -71,14 +72,14 @@ describe("the daily job", () => {
     expect((await runDaily(deps)).analytics).toBe("failed: service down");
   });
 
-  it("sends alert emails after catching up, and survives their failure", async () => {
+  it("sends alert emails after catching up and the analytics' alert check, and survives their failure", async () => {
     const { deps } = world(["a"]);
     const order: string[] = [];
     deps.catchUp = vi.fn(async () => void order.push("catch up"));
     deps.sendAlertEmails = vi.fn(async () => (order.push("emails"), { sent: 2, failed: 0 }));
     deps.refreshAnalytics = vi.fn(async () => (order.push("analytics"), {}));
     expect((await runDaily(deps)).alertEmails).toEqual({ sent: 2, failed: 0 });
-    expect(order).toEqual(["catch up", "emails", "analytics"]);
+    expect(order).toEqual(["catch up", "analytics", "emails"]);
     deps.sendAlertEmails = vi.fn(async () => {
       throw new Error("smtp down");
     });
@@ -99,13 +100,13 @@ describe("the daily job", () => {
     expect((await runDaily(deps)).alertPushes).toBe("failed: push service down");
   });
 
-  it("gives company numbers a short slot before analytics, and survives their failure", async () => {
+  it("gives company numbers a short slot, after analytics, and survives their failure", async () => {
     const { deps } = world([]);
     const order: string[] = [];
     deps.refreshFundamentals = vi.fn(async () => (order.push("fundamentals"), { updated: 4 }));
     deps.refreshAnalytics = vi.fn(async () => (order.push("analytics"), {}));
     const summary = await runDaily(deps, { budgetMs: 50_000 });
-    expect(order).toEqual(["fundamentals", "analytics"]);
+    expect(order).toEqual(["analytics", "fundamentals"]);
     expect(summary.fundamentals).toEqual({ updated: 4 });
     const [deadline] = vi.mocked(deps.refreshFundamentals!).mock.calls[0];
     expect(deadline).toBeLessThan(1_000_000 + 10_100);

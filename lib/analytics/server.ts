@@ -22,6 +22,7 @@ import { CATALOG } from "../market/catalog";
 import { isCurrent } from "../market/fundamentals";
 import { INDICES } from "../market/universe";
 import { parseScreenResult, summarizeScreen, type ScreenConfig, type ScreenResult, type ScreenSettings } from "./history";
+import { parseFactorExposures, type FactorExposures } from "./factors";
 import { parseStockProfile, type StockProfile } from "./profile";
 import { buildRows, type ScreenerRow } from "./screener";
 
@@ -87,34 +88,80 @@ export async function runStockProfiles(symbols: string[] | null, budgetMs = 8000
 export interface RefreshSummary {
   pricesChanged: number;
   priceFailures: string[];
-  computed: number;
-  unchanged: number;
+  /** What each nightly part did (services/analytics/analytics/jobs.py run_nightly), from its last call. */
+  parts: Record<string, unknown>;
+  /** True if time ran out with work left (prices or a part); the next run continues it. */
   unfinished: boolean;
   skipped?: string;
 }
 
-/** The daily job's analytics step: store the latest prices, then recalculate what changed, until `deadline` (ms). */
+/**
+ * The daily job's analytics step: store the latest prices, then have the
+ * analytics service run its nightly parts (indicator alerts, portfolio
+ * snapshots, stock profiles, factors), calling it again while it has work
+ * left, until `deadline` (ms).
+ */
 export async function refreshAnalytics(deadline: number, now: () => number = Date.now): Promise<RefreshSummary> {
   const symbols = [...INDICES.map((i) => i.symbol), ...CATALOG.map((s) => s.symbol)];
-  // Leave time for at least one calculation call after storing prices (an unchanged pass takes a few seconds).
-  const synced = await syncPrices(symbols, deadline - 6000, now);
-  const summary: RefreshSummary = { pricesChanged: synced.changed, priceFailures: synced.failed, computed: 0, unchanged: 0, unfinished: synced.skipped.length > 0 };
+  // Leave time for at least one call after storing prices.
+  const synced = await syncPrices(symbols, deadline - 8000, now);
+  const summary: RefreshSummary = { pricesChanged: synced.changed, priceFailures: synced.failed, parts: {}, unfinished: synced.skipped.length > 0 };
   if (!pythonConfigured()) return { ...summary, skipped: "The analytics service isn't configured (ANALYTICS_URL, ANALYTICS_SERVICE_TOKEN)." };
-  let pending: string[] | null = null;
+  let parts: string[] | undefined;
   for (;;) {
     const left = deadline - now();
     if (left < 4000) {
       summary.unfinished = true;
       break;
     }
-    // The call can overrun its budget by up to one batch (a few seconds), so keep that much in hand.
-    const job: JobResult = await runStockProfiles(pending, Math.min(8000, left - 3000));
-    summary.computed += job.computed;
-    summary.unchanged += job.unchanged;
-    if (job.remaining.length === 0) break;
-    pending = job.remaining;
+    // The service stops within its budget; keep a few seconds in hand for the network and a slow last step.
+    const budgetMs = Math.min(25_000, left - 3000);
+    const data = await post("/v1/jobs/nightly", { source: priceSource(), universe: CATALOG.map((s) => s.symbol), budgetMs, parts }, "Nightly analytics", budgetMs + 8000);
+    Object.assign(summary.parts, (data.parts as Record<string, unknown>) ?? {});
+    const unfinished = Array.isArray(data.unfinished) ? (data.unfinished as string[]) : [];
+    if (unfinished.length === 0) break;
+    parts = unfinished;
   }
   return summary;
+}
+
+/**
+ * Makes sure the factors exist: they're built from every stock's stored
+ * prices, so on a fresh database that means storing them all and running the
+ * nightly calculations now (as the screener does), within about 25 seconds.
+ */
+export async function ensureFactors(): Promise<void> {
+  if (await prices.result("factor-returns", "all", priceSource(), (v) => v)) return;
+  await refreshAnalytics(Date.now() + 25_000);
+}
+
+export type FactorStatus = { status: "ok"; exposures: FactorExposures } | { status: "unavailable"; reason: string };
+
+/**
+ * A stock's factor exposures, as of the last nightly calculation; if there
+ * aren't any yet, they're calculated now (all stocks at once: a few seconds).
+ * Cached for an hour; a failure only for a minute.
+ */
+export async function getStockFactors(symbol: string): Promise<FactorStatus> {
+  "use cache";
+  cacheTag("market", `factors:${symbol}`);
+  try {
+    let stored = await prices.result("stock-factors", symbol, priceSource(), parseFactorExposures);
+    if (!stored && pythonConfigured()) {
+      await ensureFactors();
+      stored = await prices.result("stock-factors", symbol, priceSource(), parseFactorExposures);
+    }
+    if (!stored) {
+      cacheLife("minutes");
+      return { status: "unavailable", reason: pythonConfigured() ? "There isn't enough price history for this stock's factor exposures yet." : "The analytics service isn't running." };
+    }
+    cacheLife("hours");
+    return { status: "ok", exposures: stored.result };
+  } catch (error) {
+    console.error(`[analytics] Factors for ${symbol} failed:`, error instanceof Error ? error.message : error);
+    cacheLife("minutes");
+    return { status: "unavailable", reason: error instanceof Error && error.message ? error.message : "Factor analysis is unavailable right now. Try again in a minute." };
+  }
 }
 
 async function storedProfile(symbol: string) {

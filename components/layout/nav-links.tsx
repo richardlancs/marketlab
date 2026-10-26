@@ -9,7 +9,7 @@ export interface NavItem {
 }
 
 const linkClass =
-  "shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent";
+  "shrink-0 rounded-full px-3 py-1.5 font-medium transition-colors focus-visible:outline-2 focus-visible:outline-accent xl:px-2";
 
 /** "/" matches only itself; any other link also matches the pages under it (/stocks → /stocks/AAPL). */
 function isActive(href: string, pathname: string) {

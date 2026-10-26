@@ -1,9 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { tradingDaysEndingAt } from "../market/calendar";
 import type { PricePoint } from "../types";
-import { parseConfig, runConfig, type BacktestConfig } from "./config";
+import { parseConfig, type BacktestConfig } from "./config";
 import { alignSeries, computeMetrics, NO_COSTS, runBacktest, type Strategy, type StrategyContext } from "./engine";
-import { buyAndHold, dollarCostAveraging, movingAverageCrossover, rebalancing } from "./strategies";
+import { buyAndHold, movingAverageCrossover } from "./strategies";
 
 /** Daily points on consecutive weekdays ending Oct 16, 2026. */
 function series(prices: number[]): PricePoint[] {
@@ -93,40 +93,6 @@ describe("strategies", () => {
     expect(run.trades.map((t) => `${t.side} ${t.price}`)).toEqual(["buy 102", "sell 112", "buy 122"]);
   });
 
-  it("dollar-cost averaging buys at the start of each month until the cash is spent", () => {
-    const points = series(Array(70).fill(50)); // about 3 months of weekdays
-    const run = runBacktest([{ symbol: "A", points }], dollarCostAveraging({ A: 1 }, 3), all);
-    expect(run.trades).toHaveLength(3);
-    for (const trade of run.trades.slice(1)) expect(new Date(trade.time).getUTCDate()).toBeLessThanOrEqual(3); // first weekday of a month
-    expect(run.trades.reduce((sum, t) => sum + t.shares * t.price, 0)).toBeCloseTo(1000);
-  });
-
-  it("rebalancing sells winners and buys losers at the start of each month", () => {
-    const days = 45;
-    const a = series(Array.from({ length: days }, (_, i) => 100 + i * 2)); // rising
-    const b = series(Array(days).fill(100)); // flat
-    const weights = { A: 0.5, B: 0.5 };
-    const monthly = runBacktest(
-      [
-        { symbol: "A", points: a },
-        { symbol: "B", points: b },
-      ],
-      rebalancing(weights, "monthly"),
-      all,
-    );
-    const firstRebalance = monthly.trades.filter((t) => t.time !== a[0].time);
-    expect(firstRebalance.map((t) => `${t.side} ${t.symbol}`).slice(0, 2)).toEqual(["sell A", "buy B"]);
-
-    const quarterly = runBacktest(
-      [
-        { symbol: "A", points: a },
-        { symbol: "B", points: b },
-      ],
-      rebalancing(weights, "quarterly"),
-      all,
-    );
-    expect(quarterly.trades).toHaveLength(2); // only the initial purchases within ~2 months
-  });
 });
 
 describe("computeMetrics", () => {
@@ -184,19 +150,6 @@ describe("config", () => {
     expect(parseConfig(config, symbols)).toBeNull();
   });
 
-  it("runs the strategy and its benchmark over the same days", () => {
-    const history = { AAPL: series([100, 101, 103, 102, 105, 108]), MSFT: series([50, 50, 51, 52, 52, 53]) };
-    const market = series([10, 10.1, 10.2, 10.1, 10.3, 10.4]);
-    const config: BacktestConfig = { ...valid, strategy: { kind: "buy-and-hold" }, start: 0, end: Number.MAX_SAFE_INTEGER, costs: NO_COSTS };
-
-    const vsMarket = runConfig(config, history, market);
-    expect(vsMarket.benchmark.equity.map((p) => p.time)).toEqual(vsMarket.run.equity.map((p) => p.time));
-    expect(vsMarket.benchmark.metrics.totalReturn).toBeCloseTo(0.04);
-
-    // Buy and hold against itself: identical.
-    const vsSelf = runConfig({ ...config, benchmark: "same-stocks" }, history, market);
-    expect(vsSelf.benchmark.metrics.finalValue).toBeCloseTo(vsSelf.run.metrics.finalValue);
-  });
 });
 
 describe("saved runs in the browser", () => {

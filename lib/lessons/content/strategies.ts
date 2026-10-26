@@ -393,8 +393,9 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         text: "Opens a crossover backtest on Apple. Under the results, use Test a range of settings to sweep both averages and see whether good results form a broad area or a lone spike.",
       },
       { label: "Backtest", href: "/backtest", text: "Change the start and end dates to check settings you chose on one period against another." },
+      { label: "Machine learning sandbox", href: "/backtest#ml", text: "The Machine learning tab tests models walk-forward against a shuffled-label baseline, so you can see how often an apparent edge is luck." },
     ],
-    related: ["maCrossover", "sharpe", "benchmark"],
+    related: ["maCrossover", "sharpe", "machineLearning", "benchmark"],
     quiz: [
       {
         kind: "Terminology",
@@ -624,6 +625,104 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 3,
         explanation: "Risk parity spreads risk between assets in the hope they don't all fall together. In 2022, rising interest rates pushed both stocks and bonds down.",
+      },
+    ],
+  },
+  machineLearning: {
+    why: [
+      "Machine learning has transformed image recognition, translation and search, and some of the most successful investment firms use it. The tools are now free, so it's natural to ask: can a model learn from past prices to predict the next move?",
+      "Sometimes, a little. But markets are a hard place for it. The signal is faint, the noise is loud, the patterns change as people trade on them, and there are only so many years of data. Learning how to test a model honestly matters far more than which model you pick, because the easiest thing to build is one that fools you.",
+    ],
+    how: {
+      paragraphs: [
+        "A model learns from examples. Each example is a set of features, numbers known at the time, such as the last week's and month's returns, the [[rsi|RSI]], the [[macd|MACD]], the gap between the price and its [[sma|moving averages]], recent volatility and trading volume. Each has a label: what happened next, such as whether the stock rose over the following week. The model looks for a rule that maps features to labels.",
+        "Models differ in how flexible they are. Logistic regression weighs each feature and adds them up into a probability: simple, and hard to overfit. A random forest grows many decision trees on different samples of the data and lets them vote. Gradient boosting builds trees one after another, each correcting the last one's errors. Flexible models can capture more complex patterns, and fit noise more easily, which is [[overfitting]] again.",
+        "The test must copy real life: train only on the past, predict the next stretch, then move forward and repeat. This is walk-forward testing, and every prediction is out of sample. Randomly mixing past and future data when training lets the model peek at the answers, and makes results look far better than they can be.",
+        "Then compare with honest baselines. Chance isn't always 50%: if a stock rose in 54% of weeks, always guessing \"up\" scores 54%. A shuffled-label baseline trains the same model on labels randomly shuffled, which destroys any real link; whatever it scores is luck. And a strategy built on the predictions should beat [[buyAndHold|buy and hold]] after [[tradingCosts|trading costs]], since switching in and out every week is expensive.",
+      ],
+      formula: {
+        expression: "Standard error of accuracy = √(accuracy × (1 − accuracy) ÷ number of predictions); 95% range ≈ accuracy ± 1.96 × standard error",
+        reading: "With few predictions, a measured accuracy could easily be a few points off the truth.",
+      },
+    },
+    example: {
+      setup: "A model makes 1,000 weekly up-or-down predictions in a walk-forward test, and gets 530 right. Over the same weeks, the stock rose 540 times. A shuffled-label version of the same model scored 52.5%.",
+      steps: [
+        "Accuracy: 530 ÷ 1,000 = 53%.",
+        "The lazy baseline, always guessing \"up\": 540 ÷ 1,000 = 54%. The model is worse than not thinking at all.",
+        "Uncertainty: √(0.53 × 0.47 ÷ 1,000) ≈ 0.0158, so the 95% range is 53% ± 3.1 points, from 49.9% to 56.1%.",
+        "That range includes 50%, 54% and the shuffled model's 52.5%: the model can't be told apart from luck.",
+        "Costs: if acting on the predictions means about 20 round trips a year at 0.2% each, that's 20 × 0.2% = 4% a year to overcome.",
+      ],
+      result: "53% sounds better than a coin flip, but it's below the lazy guess, within the range luck produces, and the trading it needs would cost about 4% a year. This is how most trading models look when tested honestly.",
+    },
+    reading: [
+      { label: "Accuracy above the base rate, not just 50%", meaning: "The first bar to clear. Compare with always guessing the more common outcome." },
+      { label: "Beats the shuffled-label baseline", meaning: "Only meaningful if the gap is bigger than the confidence ranges. A model that can't beat shuffled labels learned nothing real." },
+      { label: "Deflated Sharpe ratio", meaning: "A [[sharpe|Sharpe ratio]] adjusted for how many variations were tried and how unusual the returns were. A low value means the result is likely luck from trying many things." },
+      { label: "High turnover", meaning: "Predictions that flip often mean frequent trades, and costs can erase a small edge entirely." },
+    ],
+    realWorld: [
+      "A few secretive firms, such as Renaissance Technologies, have earned extraordinary returns with statistical models. They combine many tiny edges, vast amounts of data, low trading costs and decades of engineering, which is very different from one model on a few features.",
+      "Academic studies have found that machine learning can predict stock returns slightly better than simple methods, but much of the gain shows up in small, illiquid stocks that are expensive to trade, and it shrinks after costs.",
+      "Researchers Marcos López de Prado and David Bailey developed the deflated Sharpe ratio because so many published and marketed strategies were the lucky survivors of thousands of backtests.",
+    ],
+    mistakes: [
+      "Shuffling the data randomly before splitting it into training and testing. The model then learns from the future, which is impossible in real trading.",
+      "Comparing accuracy with 50% instead of the base rate and a shuffled-label baseline.",
+      "Trying many models, features and settings, then reporting only the best. That's [[overfitting]] with extra steps.",
+      "Ignoring trading costs. A model that trades every week needs a big edge just to stand still.",
+      "Using features that weren't known at the time, such as a figure revised later. Even a small leak of future information makes a backtest look great.",
+    ],
+    inMarketLab: [
+      { label: "Machine learning sandbox", href: "/backtest#ml", text: "On the Backtest page, the Machine learning tab lets you pick stocks, features and a model to predict next week's direction. It trains walk-forward only, and compares the model with a shuffled-label baseline and buy and hold, with accuracy ranges, turnover after costs and a deflated Sharpe ratio." },
+    ],
+    related: ["overfitting", "sharpe", "tradingCosts", "buyAndHold"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is walk-forward testing?",
+        choices: [
+          "Training on all the data, then testing on the same data",
+          "Training only on the past, predicting the next stretch, then moving forward and repeating",
+          "Testing a model on randomly shuffled weeks",
+          "Running a strategy with live money",
+        ],
+        answer: 1,
+        explanation: "Every prediction is made with only the data that would have been known at the time, like real trading.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A stock rose in 60% of weeks. A model predicting up or down is right 58% of the time. How good is it?",
+        choices: [
+          "Good: well above 50%",
+          "Worse than always guessing \"up\"",
+          "Perfect",
+        ],
+        answer: 1,
+        explanation: "Always guessing \"up\" scores 60%, so a 58% model adds nothing.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A model trained on shuffled labels scores 52%, and the real model 53%, each with a range of about ±3 points. What do you conclude?",
+        choices: [
+          "The real model has a proven edge",
+          "The difference is well within luck",
+          "The shuffled model is better",
+        ],
+        answer: 1,
+        explanation: "One point apart, with ranges of ±3 points, the two can't be told apart. The real model hasn't shown it learned anything.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do many trading models that look good in research fail in practice?",
+        choices: [
+          "Computers are too slow",
+          "Their edge was luck from many tries, or too small to survive trading costs",
+          "Exchanges ban them",
+        ],
+        answer: 1,
+        explanation: "Overfitting and costs explain most failures: the backtest found noise, or a real but tiny edge that costs ate.",
       },
     ],
   },

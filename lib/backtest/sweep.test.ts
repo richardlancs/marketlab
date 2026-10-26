@@ -1,19 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { tradingDaysEndingAt } from "../market/calendar";
-import { mulberry32 } from "../random";
-import type { PricePoint } from "../types";
-import { CONFIG_VERSION, runConfig, type BacktestConfig } from "./config";
+import { CONFIG_VERSION, type BacktestConfig } from "./config";
 import { RULE_PRESETS } from "./rules";
-import { axisValues, buildGrid, runSweep, SWEEP_LIMITS, sweepableParams, withParam } from "./sweep";
+import { axisValues, buildGrid, SWEEP_LIMITS, sweepableParams, withParam } from "./sweep";
 
-function walk(length: number, seed: number): PricePoint[] {
-  const rng = mulberry32(seed);
-  const days = tradingDaysEndingAt(Date.UTC(2026, 9, 16), length);
-  let price = 100;
-  return days.map((d) => ({ time: d + 20 * 3600_000, price: (price *= 1 + (rng() - 0.5) * 0.05) }));
-}
-const history = { A: walk(400, 1) };
-const market = walk(400, 2);
 const base: BacktestConfig = {
   version: CONFIG_VERSION,
   holdings: [{ symbol: "A", weight: 1 }],
@@ -55,25 +44,4 @@ describe("sweeps", () => {
     expect(tooMany).toMatchObject({ error: expect.stringContaining(String(SWEEP_LIMITS.maxRuns)) });
   });
 
-  it("gives the same metrics as running each setting on its own, with invalid points left empty", () => {
-    const axes = [
-      { param: "fast", from: 10, to: 60, step: 25 },
-      { param: "slow", from: 40, to: 80, step: 40 },
-    ];
-    const result = runSweep(base, axes, history, market);
-    if ("error" in result) throw new Error(result.error);
-    expect(result.points.map((p) => p.values)).toEqual([[10, 40], [10, 80], [35, 40], [35, 80], [60, 40], [60, 80]]);
-    for (const point of result.points) {
-      const [fast, slow] = point.values;
-      if (fast >= slow) expect(point.metrics).toBeNull();
-      else expect(point.metrics).toEqual(runConfig({ ...base, strategy: { kind: "moving-average", fast, slow } }, history, market).run.metrics);
-    }
-    expect(result.benchmark).toEqual(runConfig(base, history, market).benchmark.metrics);
-  });
-
-  it("reports progress", () => {
-    const calls: number[] = [];
-    runSweep(base, [{ param: "slow", from: 20, to: 140, step: 10 }], history, market, (done) => calls.push(done), 5);
-    expect(calls).toEqual([5, 10, 13]);
-  });
 });

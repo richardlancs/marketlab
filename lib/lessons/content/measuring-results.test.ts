@@ -168,4 +168,37 @@ describe("measuring results worked examples", () => {
     // Quiz: 300 of 2,000 paths below the start.
     expect(300 / 2_000).toBe(0.15);
   });
+
+  it("factor investing", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.factors);
+    const betas = [1.2, -0.3, -0.5, 0.4, -0.2];
+    const returns = [10, -2, -4, 6, -3];
+    const parts = betas.map((b, i) => Math.round(b * returns[i] * 10) / 10);
+    expect(parts).toEqual([12, 0.6, 2, 2.4, 0.6]);
+    expect(t).toContain("1.2 × 10% = +12%");
+    expect(t).toContain("−0.3 × −2% = +0.6%");
+    expect(t).toContain("−0.5 × −4% = +2%");
+    expect(t).toContain("0.4 × 6% = +2.4%");
+    expect(t).toContain("−0.2 × −3% = +0.6%");
+    const explained = parts.reduce((a, b) => a + b, 0);
+    expect(explained).toBeCloseTo(17.6, 10);
+    expect(t).toContain(`= ${explained.toFixed(1)}%`);
+    expect(t).toContain(`19% − 17.6% = ${(19 - explained).toFixed(1)}%`);
+    // Quiz: a market beta of 0.8 and a +15% market.
+    expect(0.8 * 15).toBeCloseTo(12, 10);
+  });
+
+  it("alpha", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.alpha);
+    expect(t).toContain(`about ${Math.round(0.0002 * 252 * 100)}% a year`);
+    expect(t).toContain(`1.1 × 10% = ${Math.round(1.1 * 10)}%`);
+    expect(t).toContain(`0.5 × 4% = ${0.5 * 4}%`);
+    expect(t).toContain(`14% − 13% = ${14 - 13}%`);
+    expect(t).toContain(`1% ÷ 8% = ${1 / 8}`);
+    expect(t).toContain(`(2 × 8 ÷ 1)² = ${(2 * 8) ** 2} years`);
+    // A 20% residual volatility over one year: an alpha of +10% has a t-statistic of 0.5.
+    expect(0.1 / (0.2 / Math.sqrt(1))).toBe(0.5);
+    // Quiz: 0.9 × 10% explains all of a 9% return.
+    expect(9 - 0.9 * 10).toBeCloseTo(0, 10);
+  });
 });

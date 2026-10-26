@@ -2,11 +2,10 @@
  * A backtest described as plain data: which stocks, which strategy, which
  * dates, how much money and what costs. Serializable, so a run can be saved
  * and re-run later, and validated, because saved runs come back from storage.
+ * The Python analytics service runs it (./engines.ts).
  */
-import type { PricePoint } from "../types";
-import { runBacktest, type BacktestRun, type Costs, type ExtraPoint, type Series } from "./engine";
-import { parseRuleSet, ruleSetNeedsBars, ruleStrategy, type RuleSet } from "./rules";
-import { buyAndHold, dollarCostAveraging, momentumRotation, movingAverageCrossover, rebalancing, riskParity, type Weights } from "./strategies";
+import type { BacktestRun, Costs } from "./engine";
+import { parseRuleSet, ruleSetNeedsBars, type RuleSet } from "./rules";
 
 export type StrategyConfig =
   | { kind: "buy-and-hold" }
@@ -64,69 +63,13 @@ export const LIMITS = {
   maxInstallments: 60,
 };
 
-const weightsOf = (config: BacktestConfig): Weights => Object.fromEntries(config.holdings.map((h) => [h.symbol, h.weight]));
-
-function strategyFor(config: BacktestConfig) {
-  const weights = weightsOf(config);
-  const s = config.strategy;
-  switch (s.kind) {
-    case "buy-and-hold":
-      return buyAndHold(weights);
-    case "moving-average":
-      return movingAverageCrossover(weights, s.fast, s.slow);
-    case "dollar-cost-averaging":
-      return dollarCostAveraging(weights, s.installments);
-    case "rebalancing":
-      return rebalancing(weights, s.frequency);
-    case "rules":
-      return ruleStrategy(weights, s.entry, s.exit);
-    case "momentum-rotation":
-      return momentumRotation(weights, s.top, s.lookbackMonths, s.absolute);
-    case "risk-parity":
-      return riskParity(weights, s.frequency);
-  }
-}
-
 export interface BacktestOutcome {
   run: BacktestRun;
   benchmark: BacktestRun;
 }
 
-/**
- * Runs the configured strategy and its benchmark over the same days.
- * `history` maps each symbol to its daily adjusted closes; `market` is the
- * S&P 500 (or the fund tracking it).
- */
-export function runConfig(config: BacktestConfig, history: Record<string, PricePoint[]>, market: PricePoint[], extra?: Record<string, ExtraPoint[]>): BacktestOutcome {
-  const run = runStrategy(config, history, extra);
-  return { run, benchmark: runBenchmark(config, run, history, market) };
-}
-
 /** Whether the strategy needs each day's high, low or volume, not just closes (rules using a chandelier stop or volume). */
 export const configNeedsBars = (config: BacktestConfig) => config.strategy.kind === "rules" && (ruleSetNeedsBars(config.strategy.entry) || ruleSetNeedsBars(config.strategy.exit));
-
-const seriesOf = (config: BacktestConfig, history: Record<string, PricePoint[]>, extra?: Record<string, ExtraPoint[]>): Series[] =>
-  config.holdings.map((h) => ({ symbol: h.symbol, points: history[h.symbol] ?? [], ...(extra?.[h.symbol] && { extra: extra[h.symbol] }) }));
-const optionsOf = (config: BacktestConfig) => ({ start: config.start, end: config.end, initialCash: config.initialCash, costs: config.costs });
-
-/** Just the strategy, without its benchmark: what a parameter sweep runs for each point (the benchmark is the same for all). */
-export function runStrategy(config: BacktestConfig, history: Record<string, PricePoint[]>, extra?: Record<string, ExtraPoint[]>): BacktestRun {
-  if (configNeedsBars(config) && config.holdings.some((h) => !extra?.[h.symbol])) {
-    throw new Error("These rules need each day's high, low and volume, which these prices don't include.");
-  }
-  return runBacktest(seriesOf(config, history, extra), strategyFor(config), optionsOf(config));
-}
-
-/** The benchmark for a run: the same days, the same money. */
-export function runBenchmark(config: BacktestConfig, run: BacktestRun, history: Record<string, PricePoint[]>, market: PricePoint[]): BacktestRun {
-  const series = seriesOf(config, history);
-  const options = optionsOf(config);
-  // The benchmark runs on exactly the days the strategy did.
-  const days = { ...options, start: run.equity[0].time, end: run.equity[run.equity.length - 1].time };
-  return config.benchmark === "market"
-    ? runBacktest([{ symbol: "MARKET", points: market }], buyAndHold({ MARKET: 1 }), days)
-    : runBacktest(series, buyAndHold(weightsOf(config)), days);
-}
 
 const isNumber = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const inRange = (v: unknown, min: number, max: number): v is number => isNumber(v) && v >= min && v <= max;
