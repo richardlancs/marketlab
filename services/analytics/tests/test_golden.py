@@ -12,7 +12,9 @@ Tolerances:
 - Dates, sides, symbols, trade counts: exactly equal.
 - Every number (equity values, shares, fill prices, metrics): equal within a
   relative 1e-9 (absolute 1e-9 near zero), room for math libraries that
-  round pow() and sqrt() differently.
+  round pow() and sqrt() differently. A case can set a looser `tolerance`:
+  the optimised strategy's numerical optimiser differs by a few parts in
+  10 million across platforms.
 
 After a deliberate change to the engine's behaviour, bump ENGINE_VERSION and
 update the expected results.
@@ -33,10 +35,10 @@ REL = 1e-9
 ABS = 1e-9
 
 
-def close(a: float | None, b: float | None) -> bool:
+def close(a: float | None, b: float | None, rel: float = REL) -> bool:
     if a is None or b is None:
         return a is b
-    return math.isclose(a, b, rel_tol=REL, abs_tol=ABS)
+    return math.isclose(a, b, rel_tol=rel, abs_tol=ABS)
 
 
 def run_case(case: dict) -> api.BacktestResponse:
@@ -44,13 +46,13 @@ def run_case(case: dict) -> api.BacktestResponse:
     return api.run_backtest(request)
 
 
-def compare_run(actual: api.RunModel, expected: dict, label: str) -> float:
+def compare_run(actual: api.RunModel, expected: dict, label: str, rel: float = REL) -> float:
     """Asserts one run matches; returns the largest relative difference seen."""
     worst = 0.0
 
     def check(a, b, what):
         nonlocal worst
-        assert close(a, b), f"{label} {what}: python {a!r} vs typescript {b!r}"
+        assert close(a, b, rel), f"{label} {what}: python {a!r} vs expected {b!r}"
         if a is not None and b not in (None, 0):
             worst = max(worst, abs(a - b) / abs(b))
 
@@ -77,7 +79,8 @@ def compare_run(actual: api.RunModel, expected: dict, label: str) -> float:
 @pytest.mark.parametrize("case", FIXTURES, ids=[c["name"] for c in FIXTURES])
 def test_matches_typescript(case):
     result = run_case(case)
-    worst = max(compare_run(result.run, case["expected"]["run"], "strategy"), compare_run(result.benchmark, case["expected"]["benchmark"], "benchmark"))
+    rel = case.get("tolerance", REL)
+    worst = max(compare_run(result.run, case["expected"]["run"], "strategy", rel), compare_run(result.benchmark, case["expected"]["benchmark"], "benchmark", rel))
     # Recorded for the docs: how close the engines actually are.
     print(f"{case['name']}: largest relative difference {worst:.2e}")
 
