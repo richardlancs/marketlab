@@ -14,7 +14,7 @@
  * The close can be better than a limit, or, after a gap, much worse than a
  * stop: a stop decides *when* to sell, not the price.
  */
-import { MAX_OPEN_ORDERS, MAX_SHARES_PER_ORDER, type Account, type PendingOrder } from "./trading";
+import { annotation, MAX_OPEN_ORDERS, MAX_SHARES_PER_ORDER, type Account, type PendingOrder, type TradeReason } from "./trading";
 
 /** Good-till-cancelled orders expire after this long. */
 export const ORDER_MAX_AGE = 90 * 24 * 60 * 60 * 1000;
@@ -26,6 +26,9 @@ export interface NewOrder {
   shares: number;
   price: number;
   duration: PendingOrder["duration"];
+  /** Why, if the trader said: copied to the trade when it fills. */
+  reason?: TradeReason;
+  note?: string;
 }
 
 export const isOpen = (order: PendingOrder) => order.status === "open";
@@ -68,7 +71,8 @@ export function placePendingOrder(account: Account, input: NewOrder, id: string,
     const alreadySelling = open.filter((o) => o.symbol === symbol && o.side === "sell").reduce((n, o) => n + o.shares, 0);
     if (held - alreadySelling < shares) return { ok: false, message: held ? `You only have ${held - alreadySelling} ${symbol} shares not already in a sell order.` : `You don't own any ${symbol}.` };
   }
-  const order: PendingOrder = { id, symbol, side, type, shares, price: Math.round(price * 100) / 100, duration, createdAt: now, status: "open" };
+  const { reason, note: tradeNote } = annotation(input.reason, input.note);
+  const order: PendingOrder = { id, symbol, side, type, shares, price: Math.round(price * 100) / 100, duration, createdAt: now, status: "open", ...(reason && { reason }), ...(tradeNote && { tradeNote }) };
   return { ok: true, order, account: { ...account, orders: [order, ...(account.orders ?? [])] } };
 }
 

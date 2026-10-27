@@ -228,6 +228,8 @@ These are calculated by the Python analytics service ([its README](../services/a
 - **Goal planner** (under the projection; `app/api/portfolio/plan`, `services/analytics/analytics/plan.py`): the same simulated futures, with money added or taken out at each month's end, over 1 to 40 years, with an optional target and inflation (2.5% a year: monthly amounts rise with prices, and results are in today's dollars). It shows the chance of reaching the target, the middle and bad-case (1 in 10) outcomes, and for withdrawals, the chance the money runs out and when.
 - **Optimise:** least-risk, best-Sharpe and risk-parity weightings of the same stocks, and the efficient frontier. These come from SciPy, long-only, with shrunk estimates (`services/analytics/analytics/optimisation.py`, shared with the optimised backtest strategy). At most 40% in one stock, or 80% with two. Links open the backtester to test the same weighting re-optimised over time.
 
+**Trade notes.** Every trade (market, or a limit or stop order when it fills) can carry a reason (good value, momentum, news, buying the dip, rebalancing, other) and a note of up to 280 characters, added on the trade card or later from Activity (`trade.reason`, `trade.note`; migration 0016). They're private: season and leaderboard pages never read trades. The CSV export includes them.
+
 **Factor analysis: "What drives it"** (stock pages' Risk & technicals tab; the portfolio's Risk tab; `services/analytics/analytics/factors.py`)
 - Five factors, each a daily return series built from MarketLab's own universe, the same way on simulated and real prices:
   - **Market:** the S&P 500's return;

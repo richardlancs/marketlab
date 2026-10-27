@@ -9,6 +9,24 @@
  */
 import type { Holding } from "./types";
 
+/** Why a trade was made, if the trader said (trade notes; the Review tab groups round trips by it). */
+export const TRADE_REASONS = ["value", "momentum", "news", "dip", "rebalance", "other"] as const;
+export type TradeReason = (typeof TRADE_REASONS)[number];
+export const isTradeReason = (v: unknown): v is TradeReason => typeof v === "string" && (TRADE_REASONS as readonly string[]).includes(v);
+/** The reasons' names, and the Review tab's name for trades without one. */
+export const REASON_NAMES: Record<TradeReason | "none", string> = {
+  value: "Good value",
+  momentum: "Momentum",
+  news: "News",
+  dip: "Buying the dip",
+  rebalance: "Rebalancing",
+  other: "Other",
+  none: "No reason given",
+};
+
+/** The longest trade note kept. */
+export const NOTE_LENGTH = 280;
+
 export interface Trade {
   id: string;
   symbol: string;
@@ -21,6 +39,9 @@ export interface Trade {
   time: number;
   /** For sells: profit or loss against the average cost. Absent for buys. */
   realizedGain?: number;
+  /** The trader's own reason and note, if they gave them. Private: never shown on public pages. */
+  reason?: TradeReason;
+  note?: string;
 }
 
 /** Something that happened to a holding without a trade: a dividend paid, or a split. */
@@ -57,6 +78,9 @@ export interface PendingOrder {
   closedAt?: number;
   fillPrice?: number;
   note?: string;
+  /** The trader's reason and note for the trade, copied to it when the order fills. */
+  reason?: TradeReason;
+  tradeNote?: string;
 }
 
 /** "Tell me when KO closes above $70." */
@@ -113,6 +137,30 @@ export interface Order {
   /** Supplied by the caller, so this function stays pure (no random IDs or clock reads). */
   id: string;
   time: number;
+  /** Why, if the trader said: kept on the trade. */
+  reason?: TradeReason;
+  note?: string;
+}
+
+/** The reason and note as a trade keeps them: only the ones given, a note trimmed. */
+export function annotation(reason: TradeReason | undefined, note: string | undefined): Pick<Trade, "reason" | "note"> {
+  const text = note?.trim();
+  return { ...(reason && { reason }), ...(text && { note: text.slice(0, NOTE_LENGTH) }) };
+}
+
+/** Sets (or clears, with undefined) a past trade's reason and note. An unknown trade leaves the account as it is. */
+export function annotateTrade(account: Account, id: string, reason: TradeReason | undefined, note: string | undefined): Account {
+  if (!account.trades.some((t) => t.id === id)) return account;
+  return {
+    ...account,
+    trades: account.trades.map((t) => {
+      if (t.id !== id) return t;
+      const { reason: _r, note: _n, ...rest } = t;
+      void _r;
+      void _n;
+      return { ...rest, ...annotation(reason, note) };
+    }),
+  };
 }
 
 export type TradeError = "invalid-shares" | "invalid-price" | "insufficient-cash" | "insufficient-shares" | "too-many-holdings";
@@ -158,7 +206,7 @@ export function placeOrder(account: Account, order: Order): TradeResult {
             : h,
         )
       : [...account.holdings, { symbol, shares, averageCost: price }];
-    const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time };
+    const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time, ...annotation(order.reason, order.note) };
     return { ok: true, trade, account: { ...account, cash: roundCents(account.cash - total), holdings, trades: [trade, ...account.trades] } };
   }
 
@@ -171,7 +219,7 @@ export function placeOrder(account: Account, order: Order): TradeResult {
       ? account.holdings.filter((h) => h !== held)
       : account.holdings.map((h) => (h === held ? { ...h, shares: h.shares - shares } : h));
   const realizedGain = roundCents(total - shares * held.averageCost);
-  const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time, realizedGain };
+  const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time, realizedGain, ...annotation(order.reason, order.note) };
   return { ok: true, trade, account: { ...account, cash: roundCents(account.cash + total), holdings, trades: [trade, ...account.trades] } };
 }
 
@@ -222,6 +270,8 @@ export const MAX_ALERTS = 20;
 const isTime = (v: unknown): v is number => Number.isInteger(v) && (v as number) >= 0;
 const isPrice = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
 const isOptional = <T>(v: unknown, check: (x: unknown) => x is T) => v === undefined || check(v);
+/** A trade note: some text, at most NOTE_LENGTH characters. */
+export const isNote = (v: unknown): v is string => typeof v === "string" && v.trim().length > 0 && v.length <= NOTE_LENGTH;
 
 function parseEvent(e: unknown, known: (s: unknown) => s is string): AccountEvent | null {
   if (!isRecord(e) || typeof e.id !== "string" || (e.kind !== "dividend" && e.kind !== "split") || !known(e.symbol)) return null;
@@ -246,6 +296,7 @@ export function parsePendingOrder(o: unknown, known: (s: unknown) => s is string
   if (!isPositiveInt(o.shares) || !isPrice(o.price) || !isTime(o.createdAt)) return null;
   if (o.status !== "open" && o.status !== "filled" && o.status !== "cancelled" && o.status !== "expired") return null;
   if (!isOptional(o.closedAt, isTime) || !isOptional(o.fillPrice, isPrice) || !isOptional(o.note, (x): x is string => typeof x === "string" && x.length <= 200)) return null;
+  if (!isOptional(o.reason, isTradeReason) || !isOptional(o.tradeNote, isNote)) return null;
   return {
     id: o.id,
     symbol: o.symbol,
@@ -259,6 +310,8 @@ export function parsePendingOrder(o: unknown, known: (s: unknown) => s is string
     ...(o.closedAt !== undefined && { closedAt: o.closedAt as number }),
     ...(o.fillPrice !== undefined && { fillPrice: o.fillPrice as number }),
     ...(o.note !== undefined && { note: o.note as string }),
+    ...(o.reason !== undefined && { reason: o.reason as TradeReason }),
+    ...(o.tradeNote !== undefined && { tradeNote: o.tradeNote as string }),
   };
 }
 
@@ -333,6 +386,7 @@ export function parseAccount(value: unknown, isKnown: (symbol: string) => boolea
     if (!isRecord(t) || typeof t.id !== "string" || !known(t.symbol) || (t.side !== "buy" && t.side !== "sell")) return null;
     if (!isPositiveInt(t.shares) || !isMoney(t.price) || !isMoney(t.time)) return null;
     if (t.realizedGain !== undefined && !(typeof t.realizedGain === "number" && Number.isFinite(t.realizedGain))) return null;
+    if (!isOptional(t.reason, isTradeReason) || !isOptional(t.note, isNote)) return null;
     cleanTrades.push({
       id: t.id,
       symbol: t.symbol,
@@ -341,6 +395,8 @@ export function parseAccount(value: unknown, isKnown: (symbol: string) => boolea
       price: t.price,
       time: t.time,
       ...(t.realizedGain !== undefined && { realizedGain: t.realizedGain }),
+      ...(t.reason !== undefined && { reason: t.reason }),
+      ...(t.note !== undefined && { note: t.note }),
     });
   }
 

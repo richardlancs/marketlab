@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
-import { useAccount } from "@/components/account/account-provider";
+import { useAccount, type Journal } from "@/components/account/account-provider";
+import { JournalFields } from "@/components/account/journal-fields";
 import { BookSwitcher } from "@/components/account/book-switcher";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
@@ -41,6 +42,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
   const [duration, setDuration] = useState<PendingOrder["duration"]>("gtc");
   const [status, setStatus] = useState<Status>(null);
   const [pending, setPending] = useState(false);
+  const [journal, setJournal] = useState<Journal>({});
   const hintId = useId();
   const { symbol, price } = quote;
 
@@ -61,7 +63,8 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
   const shares = Number(sharesText);
   const orderPrice = kind === "market" ? price : Number(priceText);
   const total = roundCents(shares * orderPrice);
-  const pendingInput: NewOrder = { symbol, side, type: kind === "market" ? "limit" : kind, shares, price: orderPrice, duration };
+  const why: Journal = { ...(journal.reason && { reason: journal.reason }), ...(journal.note?.trim() && { note: journal.note.trim() }) };
+  const pendingInput: NewOrder = { symbol, side, type: kind === "market" ? "limit" : kind, shares, price: orderPrice, duration, ...why };
   // A dry run of the real rules. The ID and time don't matter for a preview.
   const preview =
     sharesText === "" || (kind !== "market" && priceText === "")
@@ -79,7 +82,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
     event.preventDefault();
     if (!preview?.ok || pending) return;
     setPending(true);
-    const result = kind === "market" ? await placeOrder(quote, side, shares) : await placePendingOrder(pendingInput);
+    const result = kind === "market" ? await placeOrder(quote, side, shares, why) : await placePendingOrder(pendingInput);
     setPending(false);
     if (!result.ok) return setStatus({ tone: "error", text: result.message });
     const verb = side === "buy" ? "Bought" : "Sold";
@@ -91,6 +94,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
           : `Order placed: ${describeOrder(pendingInput, formatCurrency)}. It's checked at each day's close.`,
     });
     setSharesText("");
+    setJournal({});
   }
 
   return (
@@ -231,6 +235,15 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
             {error ?? (side === "buy" ? `${formatCurrency(account.cash)} cash available` : `You own ${held} ${held === 1 ? "share" : "shares"}`)}
           </p>
         </div>
+
+        <details className="group rounded-lg border border-border px-3 py-2" open={!!(journal.reason || journal.note)}>
+          <summary className="tap cursor-pointer text-sm font-medium">
+            Why? <span className="font-normal text-muted">Optional, private: kept with the trade</span>
+          </summary>
+          <div className="mt-3">
+            <JournalFields value={journal} onChange={setJournal} />
+          </div>
+        </details>
 
         <dl className="space-y-1.5 border-t border-border pt-3 text-sm tabular-nums">
           <div className="flex justify-between">

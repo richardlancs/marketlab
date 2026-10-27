@@ -8,17 +8,22 @@ describe("tradesToCsv", () => {
   const trade: Trade = { id: "1", symbol: "AAPL", side: "sell", shares: 2, price: 100.5, time: Date.UTC(2026, 9, 16, 21, 5), realizedGain: -12.25 };
 
   it("writes a header and one row per trade, with ISO dates", () => {
-    expect(tradesToCsv([trade])).toBe("Date,Time (UTC),Symbol,Side,Shares,Price,Total,Realized gain\r\n2026-10-16,21:05:00,AAPL,sell,2,100.5,201,-12.25\r\n");
+    expect(tradesToCsv([trade])).toBe("Date,Time (UTC),Symbol,Side,Shares,Price,Total,Realized gain,Reason,Note\r\n2026-10-16,21:05:00,AAPL,sell,2,100.5,201,-12.25,,\r\n");
   });
 
   it("leaves the gain empty for buys, and writes only a header with no trades", () => {
-    expect(tradesToCsv([{ ...trade, side: "buy", realizedGain: undefined }]).split("\r\n")[1].endsWith(",")).toBe(true);
-    expect(tradesToCsv([])).toBe("Date,Time (UTC),Symbol,Side,Shares,Price,Total,Realized gain\r\n");
+    expect(tradesToCsv([{ ...trade, side: "buy", realizedGain: undefined }]).split("\r\n")[1].endsWith(",,,")).toBe(true);
+    expect(tradesToCsv([])).toBe("Date,Time (UTC),Symbol,Side,Shares,Price,Total,Realized gain,Reason,Note\r\n");
+  });
+
+  it("writes the reason and note, quoting and defusing the note", () => {
+    const row = tradesToCsv([{ ...trade, reason: "dip", note: '=1+1, "cheap"' }]).split("\r\n")[1];
+    expect(row.endsWith(`,dip,"'=1+1, ""cheap"""`)).toBe(true);
   });
 
   it("includes dividends and splits, newest first", () => {
     const rows = tradesToCsv([trade], [{ id: "d", kind: "dividend", symbol: "AAPL", time: Date.UTC(2026, 9, 20, 20), shares: 2, value: 0.25, cash: 0.5 }]).split("\r\n");
-    expect(rows[1]).toBe("2026-10-20,20:00:00,AAPL,dividend,2,0.25,0.5,");
+    expect(rows[1]).toBe("2026-10-20,20:00:00,AAPL,dividend,2,0.25,0.5,,,");
     expect(rows[2]).toContain(",sell,");
   });
 

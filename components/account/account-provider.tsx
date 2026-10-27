@@ -4,6 +4,7 @@ import { createContext, startTransition, use, useEffect, useMemo, useOptimistic,
 import {
   addAlertAction,
   cancelOrderAction,
+  annotateTradeAction,
   importBrowserAccountAction,
   markAlertsSeenAction,
   placeOrderAction,
@@ -23,7 +24,10 @@ import { decodeAccount, STORAGE_KEY } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
 import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
-import { placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert, type AlertCondition } from "@/lib/trading";
+import { annotateTrade, placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert, type AlertCondition, type TradeReason } from "@/lib/trading";
+
+/** A trade's optional reason and note (trade notes). */
+export type Journal = { reason?: TradeReason; note?: string };
 import type { StockQuote } from "@/lib/types";
 import type { BookInfo } from "@/lib/books";
 import { chooseBookAction } from "@/lib/season-actions";
@@ -61,7 +65,9 @@ interface AccountContextValue {
   openTickers: boolean;
   toggleWatchlist(symbol: string): Promise<Outcome>;
   /** Shown at the quote's price straight away; the server then trades at its own price. */
-  placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number): Promise<Outcome>;
+  placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number, journal?: Journal): Promise<Outcome>;
+  /** Adds, changes or clears a past trade's reason and note. */
+  annotateTrade(id: string, journal: Journal): Promise<Outcome>;
   /** A limit or stop order, filled later at a close (lib/orders.ts). */
   placePendingOrder(order: NewOrder): Promise<Outcome>;
   cancelOrder(id: string): Promise<Outcome>;
@@ -259,15 +265,19 @@ export function AccountProvider({
       return runRemote((a) => applyToggle(a, symbol), () => toggleWatchlistAction(symbol));
     },
 
-    async placeOrder({ symbol, price }, side, shares) {
+    async placeOrder({ symbol, price }, side, shares, journal) {
       // Only for the optimistic view: the server makes its own ID and time, at its own price.
-      const order: Order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now() };
+      const order: Order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now(), ...journal };
       // quiet: the trade form shows its own errors.
       return runRemote(
         tryOptimistic((a) => applyOrder(a, order)),
-        () => placeOrderAction(symbol, side, shares),
+        () => placeOrderAction(symbol, side, shares, journal),
         { quiet: true },
       );
+    },
+
+    async annotateTrade(id, journal) {
+      return runRemote((a) => annotateTrade(a, id, journal.reason, journal.note), () => annotateTradeAction(id, journal), { quiet: true });
     },
 
     async placePendingOrder(input) {

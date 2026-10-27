@@ -48,7 +48,7 @@ async function read(ex: Executor, userId: string): Promise<Account | null> {
     cash: row.cash,
     holdings: holdings.map(({ symbol, shares, averageCost }) => ({ symbol, shares, averageCost })),
     watchlist: watchlist.map((w) => w.symbol),
-    trades: trades.map(({ id, symbol, side, shares, price, time, realizedGain }) => ({
+    trades: trades.map(({ id, symbol, side, shares, price, time, realizedGain, reason, note }) => ({
       id,
       symbol,
       side,
@@ -56,6 +56,8 @@ async function read(ex: Executor, userId: string): Promise<Account | null> {
       price,
       time,
       ...(realizedGain !== null && { realizedGain }),
+      ...(reason !== null && { reason }),
+      ...(note !== null && { note }),
     })),
     // Phase 7 fields, only when there's something in them (as guest accounts store them).
     ...(events.length && { events: events.map(defined) }),
@@ -106,6 +108,14 @@ async function persist(ex: Executor, userId: string, before: Account, after: Acc
   const oldTrades = new Set(before.trades.map((t) => t.id));
   const newTrades = after.trades.filter((t) => !oldTrades.has(t.id));
   if (newTrades.length) await ex.insert(trade).values(newTrades.map((t) => ({ userId, ...t, realizedGain: t.realizedGain ?? null })));
+  // A reason or note added to (or changed on) a past trade: the only change a kept trade can have.
+  const annotations = new Map(before.trades.map((t) => [t.id, [t.reason, t.note]]));
+  for (const t of after.trades) {
+    const was = annotations.get(t.id);
+    if (was && (was[0] !== t.reason || was[1] !== t.note)) {
+      await ex.update(trade).set({ reason: t.reason ?? null, note: t.note ?? null }).where(and(eq(trade.userId, userId), eq(trade.id, t.id)));
+    }
+  }
   const oldEvents = new Set((before.events ?? []).map((e) => e.id));
   const newEvents = (after.events ?? []).filter((e) => !oldEvents.has(e.id));
   if (newEvents.length) await ex.insert(accountEvent).values(newEvents.map((e) => ({ userId, ...e })));

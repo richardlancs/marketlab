@@ -7,7 +7,7 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
 ## Features
 
 - **Markets:** a dashboard, a stocks table, stock pages and ⌘K search across about 95 US stocks and 3 indices. The simulated market moves like the real one: shared market and sector moves, realistic betas, and calm and stormy stretches.
-- **Simulated trading:** market, limit and stop orders, with dividends and stock splits applied.
+- **Simulated trading:** market, limit and stop orders, with dividends and stock splits applied, and an optional reason and note on each trade (a private trading journal).
 - **Your watchlist and portfolio** are saved with or without an account. A guest's data moves into the account on sign-in.
 - **Portfolio analytics:**
   - value over time against an index;

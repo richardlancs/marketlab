@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { startingAccount } from "./starting-account";
 import { isSymbolFormat } from "./market/symbols";
-import { MAX_HOLDINGS, MAX_WATCHLIST, placeOrder, parseAccount, toggleWatchlist, totalRealizedGain, watchlistIsFull, type Account, type Order } from "./trading";
+import { annotateTrade, MAX_HOLDINGS, MAX_WATCHLIST, NOTE_LENGTH, placeOrder, parseAccount, toggleWatchlist, totalRealizedGain, watchlistIsFull, type Account, type Order } from "./trading";
 
 const SYMBOLS = ["AAPL", "MSFT", "TSLA"];
 const isKnown = (s: string) => SYMBOLS.includes(s);
@@ -161,5 +161,33 @@ describe("limits", () => {
     const order = { side: "buy" as const, shares: 1, price: 1, id: "t", time: 0 };
     expect(placeOrder(account, { ...order, symbol: "NEW" })).toMatchObject({ ok: false, error: "too-many-holdings" });
     expect(placeOrder(account, { ...order, symbol: "S0" }).ok).toBe(true);
+  });
+});
+
+describe("trade notes", () => {
+  it("keeps a reason and a trimmed note on the trade, and nothing when none is given", () => {
+    const withNote = fill(empty(), { ...order("buy", "AAPL", 1, 100), reason: "value", note: "  Cheap vs peers " });
+    expect(withNote.trades[0]).toMatchObject({ reason: "value", note: "Cheap vs peers" });
+    const plain = fill(empty(), { ...order("buy", "AAPL", 1, 100), note: "   " });
+    expect(plain.trades[0]).not.toHaveProperty("note");
+    expect(plain.trades[0]).not.toHaveProperty("reason");
+  });
+
+  it("annotates a past trade, clears it, and ignores unknown trades", () => {
+    const account = fill(empty(), order("buy", "AAPL", 1, 100));
+    const id = account.trades[0].id;
+    const noted = annotateTrade(account, id, "momentum", "Breaking out");
+    expect(noted.trades[0]).toMatchObject({ reason: "momentum", note: "Breaking out" });
+    const cleared = annotateTrade(noted, id, undefined, undefined);
+    expect(cleared.trades[0]).not.toHaveProperty("reason");
+    expect(cleared.trades[0]).not.toHaveProperty("note");
+    expect(annotateTrade(account, "nope", "dip", "x")).toBe(account);
+  });
+
+  it("loads valid notes and rejects bad ones", () => {
+    const account = fill(empty(), { ...order("buy", "AAPL", 1, 100), reason: "news", note: "Upgrade" });
+    expect(parseAccount(account, isKnown)?.trades[0]).toMatchObject({ reason: "news", note: "Upgrade" });
+    expect(parseAccount({ ...account, trades: [{ ...account.trades[0], reason: "astrology" }] }, isKnown)).toBeNull();
+    expect(parseAccount({ ...account, trades: [{ ...account.trades[0], note: "x".repeat(NOTE_LENGTH + 1) }] }, isKnown)).toBeNull();
   });
 });

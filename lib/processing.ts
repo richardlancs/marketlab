@@ -127,7 +127,7 @@ export function processAccount(account: Account, data: MarketData): Account {
       const close = closeAt.get(order.symbol)?.get(day);
       if (close === undefined) continue; // no price for it that day
       if (triggers(order, close)) {
-        const result = placeOrder(current, { symbol: order.symbol, side: order.side, shares: order.shares, price: close, id: order.id, time: day });
+        const result = placeOrder(current, { symbol: order.symbol, side: order.side, shares: order.shares, price: close, id: order.id, time: day, reason: order.reason, note: order.tradeNote });
         if (result.ok) {
           current = { ...result.account, orders: current.orders, events: current.events, alerts: current.alerts };
           updateOrder(order.id, { status: "filled", closedAt: day, fillPrice: close });

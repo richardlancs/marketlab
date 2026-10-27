@@ -9,7 +9,7 @@ import { migrate } from "drizzle-orm/libsql/migrator";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { addAlert, markAlertsSeen } from "../alerts";
 import { startingAccount } from "../starting-account";
-import type { Account, Order } from "../trading";
+import { annotateTrade, type Account, type Order } from "../trading";
 import { createAccountRepository, type AccountRepository } from "./accounts";
 import * as schema from "./schema";
 
@@ -82,6 +82,18 @@ describe("account repository", () => {
     expect(saved).toEqual(sold.ok && sold.account);
     expect(saved?.holdings.find((h) => h.symbol === "AAPL")).toBeUndefined(); // 40 + 10 bought, 50 sold
     expect(saved?.trades.map((t) => t.side)).toEqual(["sell", "buy"]);
+  });
+
+  it("saves a trade's reason and note, and later changes to them", async () => {
+    await repo.ensure(userId);
+    const bought = await repo.placeOrder(userId, { ...order("buy", "AAPL", 1, 200), reason: "dip", note: "Down 8% on no news" });
+    expect(bought.ok).toBe(true);
+    expect((await repo.load(userId))?.trades[0]).toMatchObject({ reason: "dip", note: "Down 8% on no news" });
+    const id = (await repo.load(userId))!.trades[0].id;
+    await repo.update(userId, null, (account) => ({ ok: true, account: annotateTrade(account, id, "value", undefined) }));
+    const saved = (await repo.load(userId))!.trades[0];
+    expect(saved).toMatchObject({ reason: "value" });
+    expect(saved).not.toHaveProperty("note");
   });
 
   it("refuses an order the rules refuse, and changes nothing", async () => {

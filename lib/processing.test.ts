@@ -85,6 +85,13 @@ describe("processAccount: orders", () => {
     expect(after.trades[0]).toMatchObject({ id: "o1", price: fill, time: close(2) });
   });
 
+  it("copies the order's reason and note to the trade it fills", () => {
+    const after = processAccount(withOrder(base(), { reason: "dip", note: "  Oversold after earnings  " }), data({ A: [50, 44] }));
+    expect(after.orders?.[0]).toMatchObject({ reason: "dip", tradeNote: "Oversold after earnings" });
+    expect(after.trades[0]).toMatchObject({ reason: "dip", note: "Oversold after earnings" });
+    expect(parseAccount(after, () => true)?.orders?.[0]).toMatchObject({ reason: "dip", tradeNote: "Oversold after earnings" });
+  });
+
   it("fills a stop at the close after a gap, below the stop", () => {
     const after = processAccount(withOrder(base(), { side: "sell", type: "stop", price: 45, shares: 5 }), data({ A: [50, 30] }));
     expect(after.trades[0].price).toBe(30);

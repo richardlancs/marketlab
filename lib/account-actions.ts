@@ -22,7 +22,7 @@ import { checkBadgesLater } from "./badge-check";
 import { bookView, currentBook } from "./books";
 import { clearGuestCookie, currentOwner } from "./owner";
 import { isStartingPreset } from "./starting-account";
-import { MAX_HOLDINGS, MAX_WATCHLIST, parseAccount, type Account } from "./trading";
+import { annotateTrade, annotation, isNote, isTradeReason, MAX_HOLDINGS, MAX_WATCHLIST, NOTE_LENGTH, parseAccount, type Account, type TradeReason } from "./trading";
 import { visitorAccount } from "./visitor-account";
 
 /** What the browser gets back: the account after the change, or a message to show. */
@@ -95,10 +95,24 @@ export async function processAccountAction(): Promise<ActionResult> {
   });
 }
 
-export async function placeOrderAction(input: unknown, side: unknown, shares: unknown): Promise<ActionResult> {
+/** An optional reason and note from the browser: each must be valid if given, or the whole request is refused. */
+function parseJournal(value: unknown): { reason?: TradeReason; note?: string } | null {
+  if (value === undefined || value === null) return {};
+  if (typeof value !== "object") return null;
+  const { reason, note } = value as Record<string, unknown>;
+  if (reason !== undefined && reason !== null && !isTradeReason(reason)) return null;
+  if (note !== undefined && note !== null && note !== "" && !isNote(note)) return null;
+  return annotation(isTradeReason(reason) ? reason : undefined, typeof note === "string" ? note : undefined);
+}
+
+const BAD_NOTE = { ok: false as const, message: `A note can be up to ${NOTE_LENGTH} characters.` };
+
+export async function placeOrderAction(input: unknown, side: unknown, shares: unknown, journal?: unknown): Promise<ActionResult> {
   if (typeof input !== "string" || (side !== "buy" && side !== "sell") || typeof shares !== "number") {
     return { ok: false, message: "That order isn't valid." };
   }
+  const why = parseJournal(journal);
+  if (!why) return BAD_NOTE;
   const owner = await currentOwner({ create: false });
   return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(input);
@@ -114,6 +128,7 @@ export async function placeOrderAction(input: unknown, side: unknown, shares: un
       price: stock.price,
       id: crypto.randomUUID(),
       time: Date.now(),
+      ...why,
     }, await processingDataFor(userId, [stock.symbol]));
     if (result.ok && owner?.kind === "user") checkBadgesLater(owner.id); // a trade counts towards a streak
     return result.ok ? { ok: true, account: result.account } : { ok: false, message: result.message };
@@ -135,15 +150,25 @@ async function change(userId: string, extra: string[], fn: Parameters<typeof acc
 
 export async function placePendingOrderAction(input: unknown): Promise<ActionResult> {
   if (typeof input !== "object" || input === null) return { ok: false, message: "That order isn't valid." };
-  const { symbol, side, type, shares, price, duration } = input as Record<string, unknown>;
+  const { symbol, side, type, shares, price, duration, reason, note } = input as Record<string, unknown>;
   if (typeof symbol !== "string" || typeof shares !== "number" || typeof price !== "number") return { ok: false, message: "That order isn't valid." };
+  const why = parseJournal({ reason, note });
+  if (!why) return BAD_NOTE;
   return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(symbol);
     if (!detail) return UNKNOWN;
     const listing = detail.status === "ok" ? detail.stock : detail.listing;
-    const order = { symbol: listing.symbol, side, type, shares, price, duration } as NewOrder; // each field is checked by placePendingOrder
+    const order = { symbol: listing.symbol, side, type, shares, price, duration, ...why } as NewOrder; // each field is checked by placePendingOrder
     return change(userId, [listing.symbol], (account) => placePendingOrder(account, order, crypto.randomUUID(), Date.now()));
   });
+}
+
+/** Adds, changes or clears the reason and note on one of the visitor's past trades. */
+export async function annotateTradeAction(id: unknown, journal: unknown): Promise<ActionResult> {
+  const why = parseJournal(journal);
+  if (typeof id !== "string" || id.length > 64) return { ok: false, message: "That trade isn't valid." };
+  if (!why) return BAD_NOTE;
+  return forCurrentUser("book", (userId) => change(userId, [], (account) => ({ ok: true, account: annotateTrade(account, id, why.reason, why.note) })));
 }
 
 export async function cancelOrderAction(id: unknown): Promise<ActionResult> {

@@ -16,7 +16,7 @@ function field(value: string | number): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-const HEADER = ["Date", "Time (UTC)", "Symbol", "Side", "Shares", "Price", "Total", "Realized gain"];
+const HEADER = ["Date", "Time (UTC)", "Symbol", "Side", "Shares", "Price", "Total", "Realized gain", "Reason", "Note"];
 
 /**
  * Trades, dividends and splits, newest first, like the activity list. Dates
@@ -30,8 +30,8 @@ export function tradesToCsv(trades: readonly Trade[], events: readonly AccountEv
     return [iso.slice(0, 10), iso.slice(11, 19)];
   };
   const rows = [
-    ...trades.map((t) => ({ time: t.time, row: [...at(t.time), t.symbol, t.side, t.shares, t.price, Math.round(t.shares * t.price * 100) / 100, t.realizedGain ?? ""] })),
-    ...events.map((e) => ({ time: e.time, row: [...at(e.time), e.symbol, e.kind, e.shares, e.value, e.cash, ""] })),
+    ...trades.map((t) => ({ time: t.time, row: [...at(t.time), t.symbol, t.side, t.shares, t.price, Math.round(t.shares * t.price * 100) / 100, t.realizedGain ?? "", t.reason ?? "", t.note ?? ""] })),
+    ...events.map((e) => ({ time: e.time, row: [...at(e.time), e.symbol, e.kind, e.shares, e.value, e.cash, "", "", ""] })),
   ]
     .sort((a, b) => b.time - a.time)
     .map((r) => r.row);

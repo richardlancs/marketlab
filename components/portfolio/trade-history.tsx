@@ -1,12 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useAccount } from "@/components/account/account-provider";
+import { Fragment, useState } from "react";
+import { useAccount, type Journal } from "@/components/account/account-provider";
+import { JournalFields } from "@/components/account/journal-fields";
 import { Card } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { tradesToCsv } from "@/lib/csv";
 import { formatCurrency, formatDate, formatSignedCurrency, formatTime } from "@/lib/format";
-import { MAX_TRADES, type AccountEvent, type Trade } from "@/lib/trading";
+import { MAX_TRADES, REASON_NAMES, type AccountEvent, type Trade } from "@/lib/trading";
 
 /**
  * Saves the trades as a .csv file. Runs in a click handler, so reading the
@@ -27,7 +29,18 @@ type Row = { kind: "trade"; time: number; trade: Trade } | { kind: "event"; time
 
 /** Every buy and sell, dividend and split, newest first. */
 export function TradeHistory() {
-  const { account } = useAccount();
+  const { account, book, annotateTrade } = useAccount();
+  const [editing, setEditing] = useState<{ id: string; journal: Journal; error?: string } | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  async function save() {
+    if (!editing || saving) return;
+    setSaving(true);
+    const note = editing.journal.note?.trim();
+    const result = await annotateTrade(editing.id, { ...(editing.journal.reason && { reason: editing.journal.reason }), ...(note && { note }) });
+    setSaving(false);
+    setEditing(result.ok ? null : { ...editing, error: result.message });
+  }
   const rows: Row[] = account
     ? [...account.trades.map((trade): Row => ({ kind: "trade", time: trade.time, trade })), ...(account.events ?? []).map((event): Row => ({ kind: "event", time: event.time, event }))].sort(
         (a, b) => b.time - a.time,
@@ -93,7 +106,8 @@ export function TradeHistory() {
               row.kind === "event" ? (
                 <EventRow key={`e-${row.event.id}`} event={row.event} />
               ) : (
-              <tr key={row.trade.id}>
+              <Fragment key={row.trade.id}>
+              <tr>
                 <td className="py-2 pr-4 whitespace-nowrap text-muted">
                   {formatDate(row.trade.time)}
                   <span className="block text-xs">{formatTime(row.trade.time)}</span>
@@ -104,6 +118,21 @@ export function TradeHistory() {
                   <Link href={`/stocks/${row.trade.symbol}`} className="font-semibold hover:text-accent">
                     {row.trade.symbol}
                   </Link>
+                  <span className="block max-w-56 truncate text-xs whitespace-nowrap text-muted sm:max-w-72" title={row.trade.note}>
+                    {row.trade.reason && <span className="font-medium text-foreground">{REASON_NAMES[row.trade.reason]}</span>}
+                    {row.trade.reason && row.trade.note && " · "}
+                    {row.trade.note}
+                    {!book.readOnly && editing?.id !== row.trade.id && (
+                      <button
+                        type="button"
+                        onClick={() => setEditing({ id: row.trade.id, journal: { reason: row.trade.reason, note: row.trade.note } })}
+                        className={`${row.trade.reason || row.trade.note ? "ml-2" : ""} font-medium text-accent hover:underline focus-visible:outline-2 focus-visible:outline-accent`}
+                      >
+                        {row.trade.reason || row.trade.note ? "Edit" : "Add why"}
+                        <span className="sr-only"> for this {row.trade.symbol} trade</span>
+                      </button>
+                    )}
+                  </span>
                 </td>
                 <td className="py-2 pl-4 text-right">{formatCurrency(row.trade.price)}</td>
                 <td className="py-2 pl-4 text-right">{formatCurrency(row.trade.shares * row.trade.price)}</td>
@@ -117,6 +146,29 @@ export function TradeHistory() {
                   )}
                 </td>
               </tr>
+              {editing?.id === row.trade.id && (
+                <tr>
+                  <td colSpan={5} className="pb-4">
+                    <div className="max-w-xl rounded-lg border border-border p-3 font-sans">
+                      <JournalFields value={editing.journal} onChange={(journal) => setEditing({ ...editing, journal, error: undefined })} />
+                      <div className="mt-2 flex items-center gap-2">
+                        <button type="button" onClick={save} disabled={saving} className="h-9 rounded-full bg-accent-fill px-4 text-sm font-medium text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-50">
+                          {saving ? "Saving…" : "Save"}
+                        </button>
+                        <button type="button" onClick={() => setEditing(null)} className="h-9 rounded-full px-4 text-sm font-medium text-muted hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent">
+                          Cancel
+                        </button>
+                        {editing.error && (
+                          <p role="alert" className="text-sm text-loss">
+                            {editing.error}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  </td>
+                </tr>
+              )}
+              </Fragment>
               ),
             )}
           </tbody>

@@ -176,6 +176,9 @@ export const trade = sqliteTable(
     price: real("price").notNull(),
     time: integer("time").notNull(),
     realizedGain: real("realized_gain"),
+    // The trader's own reason and note (lib/trading.ts TRADE_REASONS), private to them.
+    reason: text("reason", { enum: ["value", "momentum", "news", "dip", "rebalance", "other"] }),
+    note: text("note"),
   },
   // Trade history is always read per user, newest first.
   (table) => [index("trade_user_time_idx").on(table.userId, table.time)],
@@ -290,6 +293,9 @@ export const pendingOrder = sqliteTable(
     closedAt: integer("closed_at"),
     fillPrice: real("fill_price"),
     note: text("note"),
+    // Copied to the trade when the order fills.
+    reason: text("reason", { enum: ["value", "momentum", "news", "dip", "rebalance", "other"] }),
+    tradeNote: text("trade_note"),
   },
   (table) => [index("pending_order_user_idx").on(table.userId, table.createdAt)],
 );
