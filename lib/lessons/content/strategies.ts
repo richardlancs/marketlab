@@ -47,6 +47,7 @@ export const STRATEGIES_LESSONS: Partial<Record<TermKey, Lesson>> = {
         text: "Opens a backtest that buys Apple, JPMorgan and Coca-Cola in equal parts and holds them for five years, compared with the S&P 500.",
       },
       { label: "Backtest", href: "/backtest", text: "Every other strategy is compared with buying and holding the same stocks, so you can see whether its trading actually helped." },
+      { label: "Your own trading", href: "/portfolio#review", text: "The Portfolio page's Review tab compares your account with what it would be worth had you never traded again after your first week: your own buy-and-hold yardstick." },
     ],
     related: ["compounding", "diversification", "benchmark", "maxDrawdown"],
     quiz: [

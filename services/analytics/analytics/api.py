@@ -30,6 +30,7 @@ import math
 import os
 
 import pandas as pd
+from collections.abc import Sequence
 from typing import Annotated, Literal, Union
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Path, Request
@@ -39,7 +40,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import analysis, correlation, engine, factors, fundamentals, jobs, luck, ml, options, overfitting, pairs, performance, plan, portfolio, saved, screener, screens, snapshots, store, walkforward
+from . import analysis, correlation, engine, factors, fundamentals, jobs, luck, ml, options, overfitting, pairs, performance, plan, portfolio, review, saved, screener, screens, snapshots, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -718,6 +719,9 @@ class TradeIn(Model):
     side: Literal["buy", "sell"]
     shares: Annotated[float, Field(gt=0, allow_inf_nan=False)]
     price: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    realized_gain: Annotated[float, Field(allow_inf_nan=False)] | None = None
+    """Sells: the gain against the average cost, as the account recorded it (the review recovers starting costs from it)."""
+    reason: Literal["value", "momentum", "news", "dip", "rebalance", "other"] | None = None
 
 
 class EventIn(Model):
@@ -726,11 +730,13 @@ class EventIn(Model):
     symbol: Symbol
     shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
     cash: Annotated[float, Field(allow_inf_nan=False)]
+    shares_after: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
 
 
 class HoldingIn(Model):
     symbol: Symbol
     shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    average_cost: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
 
 
 class AccountIn(Model):
@@ -764,6 +770,33 @@ def portfolio_performance(body: PerformanceRequest, db: Annotated[database.Datab
     history = {s: list(zip(c.times, c.prices)) for s, c in body.history.items()}
     stored = snapshots.stored_values(db, body.owner_id, body.index.times[0], body.index.times[-1]) if body.owner_id else None
     return performance.performance(account, history, list(zip(body.index.times, body.index.prices)), stored)
+
+
+class ReviewRequest(Model):
+    source: Source
+    account: AccountIn
+    history: Annotated[dict[Symbol, ClosesIn], Field(max_length=200)]
+    """Each relevant stock's closes as traded (not adjusted)."""
+    index: ClosesIn
+    """The S&P 500's closes, at least from the oldest trade on: the sessions everything is counted in."""
+
+
+def _review_inputs(body: ReviewRequest, db: database.Database, extra: Sequence[str] = ()) -> tuple[dict, dict, dict, list[tuple[int, float]], pd.Series | None]:
+    account = body.account.model_dump(by_alias=True)
+    history = {s: list(zip(c.times, c.prices)) for s, c in body.history.items()}
+    index = list(zip(body.index.times, body.index.prices))
+    first = min((t["time"] for t in account["trades"]), default=body.index.times[-1])
+    symbols = list(dict.fromkeys([*performance.relevant_symbols(account), *extra, store.MARKET]))
+    adjusted = store.load_closes(db, body.source, symbols, first - 30 * 86_400_000, body.index.times[-1] + 86_400_000)
+    return account, history, adjusted, index, adjusted.get(store.MARKET)
+
+
+@app.post("/v1/portfolio/review", dependencies=[Depends(require_token)])
+def portfolio_review(body: ReviewRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The account's own trading reviewed: FIFO round trips, after-sale returns, the disposition effect, and doing nothing instead (review.py)."""
+    account, history, adjusted, index, market = _review_inputs(body, db)
+    return {"review": review.review(account, history, adjusted, index, market)}
+
 
 
 class CompanyFactsRequest(Model):

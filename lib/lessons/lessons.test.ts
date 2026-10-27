@@ -11,7 +11,7 @@ import type { Lesson } from "./types";
 const APP_PAGES = ["/", "/stocks", "/watchlist", "/portfolio", "/backtest", "/screener", "/leaderboard", "/learn", "/options"];
 /** Tabs a lesson may open with a #fragment (a stock page's tabs, and the portfolio's). */
 // Tabs a link may open (components/ui/tabs.tsx ids).
-const PAGE_TABS: Record<string, string[]> = { "/stocks/": ["overview", "trade", "analysis", "company", "news"], "/portfolio": ["holdings", "orders", "performance", "risk", "activity", "compete"], "/backtest": ["strategies", "ml", "pairs"] };
+const PAGE_TABS: Record<string, string[]> = { "/stocks/": ["overview", "trade", "analysis", "company", "news"], "/portfolio": ["holdings", "orders", "performance", "risk", "activity", "compete", "review"], "/backtest": ["strategies", "ml", "pairs"] };
 const isKnownSymbol = (symbol: string) => CATALOG.some((s) => s.symbol === symbol);
 
 const lessons = Object.entries(LESSONS) as [TermKey, Lesson][];

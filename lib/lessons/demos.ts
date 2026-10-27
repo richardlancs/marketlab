@@ -407,7 +407,7 @@ export function factorContributions(exposures: Record<Factor, number>, factorRet
   return { parts, total: parts.reduce((sum, p) => sum + p.contribution, alpha) };
 }
 
-// Volatility clustering.
+// Volatility clustering and the disposition effect.
 
 /**
  * Daily moves with a long-run volatility of `annualVolatility`. Clustered
@@ -452,3 +452,32 @@ export function blockVolatilities(moves: readonly number[], block = 21): number[
 /** Sessions for a shock's extra variance to fade by half, when `persistence` (alpha + beta) of it is left each day: log(0.5) ÷ log(persistence). */
 export const shockHalfLife = (persistence: number) => (persistence > 0 && persistence < 1 ? arithmeticLog(0.5) / arithmeticLog(persistence) : Infinity);
 
+/** A holding on a day you sell: its gain or loss against what you paid (0.2 = +20%), and whether you sold it. */
+export interface DispositionHolding {
+  gain: number;
+  sold: boolean;
+}
+
+/**
+ * Odean's tally for selling days: realised gains and losses (holdings sold
+ * above or below cost) and paper ones (holdings kept). PGR = realised gains ÷
+ * (realised + paper gains); PLR the same for losses. Holdings exactly at cost
+ * count as neither. PGR or PLR is null with nothing to count.
+ */
+export function dispositionTally(days: readonly (readonly DispositionHolding[])[]) {
+  let realisedGains = 0;
+  let paperGains = 0;
+  let realisedLosses = 0;
+  let paperLosses = 0;
+  for (const day of days) {
+    for (const h of day) {
+      if (h.gain > 0 && h.sold) realisedGains++;
+      else if (h.gain > 0) paperGains++;
+      else if (h.gain < 0 && h.sold) realisedLosses++;
+      else if (h.gain < 0) paperLosses++;
+    }
+  }
+  const pgr = realisedGains + paperGains > 0 ? realisedGains / (realisedGains + paperGains) : null;
+  const plr = realisedLosses + paperLosses > 0 ? realisedLosses / (realisedLosses + paperLosses) : null;
+  return { realisedGains, paperGains, realisedLosses, paperLosses, pgr, plr, difference: pgr !== null && plr !== null ? pgr - plr : null };
+}

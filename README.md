@@ -13,7 +13,8 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
   - value over time against an index;
   - return, drawdown, volatility and Sharpe ratio;
   - sector breakdown;
-  - CSV export.
+  - CSV export;
+  - a review of your own trading: completed round trips (first in, first out), what stocks did after you sold, the disposition effect, results by your reasons, your account against never trading again.
 - **Research tools:**
   - risk and technicals on every stock page, with a GARCH volatility forecast (likely ranges for the next day, week and month, and how today compares with the stock's history);
   - a screener with presets;
@@ -33,7 +34,7 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
   - share links;
   - a pairs-trading lab: find cointegrated pairs (adjusted for how many were tested) and trade the gap the year after;
   - a machine-learning sandbox that tests models walk-forward against luck and buy and hold.
-- **Learn:** 50 short lessons with demos and quizzes, plus ⓘ explanations of terms throughout the app.
+- **Learn:** 51 short lessons with demos and quizzes, plus ⓘ explanations of terms throughout the app.
 - **Leaderboard:** opt-in, under a display name.
 
 ## Quick start
@@ -86,7 +87,7 @@ The mock market is the default and needs no key. Setting `TIINGO_API_KEY` gives 
 
 ## The analytics service
 
-Every calculation runs in the Python service: backtests, sweeps and walk-forward tests, historical screens, the luck check, the pairs lab, volatility forecasts, portfolio performance, risk and correlation, the goal planner, stock profiles and factors, the options lab, the machine-learning sandbox, SEC company numbers, and the nightly jobs. The Next.js app keeps accounts, trading, market data and the pages. See [What runs where](docs/how-it-works.md#what-runs-where).
+Every calculation runs in the Python service: backtests, sweeps and walk-forward tests, historical screens, the luck check, the pairs lab, volatility forecasts, the trade review, portfolio performance, risk and correlation, the goal planner, stock profiles and factors, the options lab, the machine-learning sandbox, SEC company numbers, and the nightly jobs. The Next.js app keeps accounts, trading, market data and the pages. See [What runs where](docs/how-it-works.md#what-runs-where).
 
 Backtests follow one timing rule:
 

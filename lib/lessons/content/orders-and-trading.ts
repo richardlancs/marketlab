@@ -42,6 +42,7 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Most US brokers stopped charging commissions on stock trades around 2019, so a market order on a big stock now costs little more than the spread. Many brokers are paid instead by the market makers who fill their customers' orders.",
       "Long-term investors buying a broad [[etf|ETF]] or a large company often use market orders during normal trading hours, because the spread is small and the price they pay matters little over many years.",
       "Traders avoid market orders in the first and last minutes of the day, during big news, and in stocks that trade rarely, because that's when spreads widen and fills can surprise.",
+      "Many traders keep a trading journal: why they bought or sold, written down at the time. Read back later, it shows habits that are hard to see trade by trade, such as the [[dispositionEffect|disposition effect]].",
     ],
     mistakes: [
       "Placing a market order overnight or over a weekend and assuming it will fill at Friday's price. If news arrives, the open can be very different.",
@@ -49,10 +50,10 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Thinking a $0 commission means a trade is free. The spread and slippage are still there; they're just less visible. See [[tradingCosts|trading costs]].",
     ],
     inMarketLab: [
-      { label: "Apple's trade card", href: "/stocks/AAPL", text: "Every stock page has a trade card. Choose Market to buy or sell at the latest close straight away." },
+      { label: "Apple's trade card", href: "/stocks/AAPL", text: "Every stock page has a trade card. Choose Market to buy or sell at the latest close straight away. You can also pick a reason and add a short note to each trade, a trading journal you can look back on." },
       { label: "Portfolio", href: "/portfolio", text: "Your filled trades, with the price each one filled at, are listed in your trade history." },
     ],
-    related: ["limitOrder", "stopOrder", "tradingCosts"],
+    related: ["limitOrder", "stopOrder", "tradingCosts", "dispositionEffect"],
     quiz: [
       {
         kind: "Terminology",
@@ -132,7 +133,7 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Assuming the cash is reserved. In MarketLab it's checked at the fill, so spending it first means the order is cancelled.",
     ],
     inMarketLab: [
-      { label: "Coca-Cola's trade card", href: "/stocks/KO", text: "Choose Limit on any stock's trade card, set a price and a duration, and the order waits for a close at your price or better." },
+      { label: "Coca-Cola's trade card", href: "/stocks/KO", text: "Choose Limit on any stock's trade card, set a price and a duration, and the order waits for a close at your price or better. Add a reason and a short note to keep a journal of why you traded." },
       { label: "Portfolio", href: "/portfolio", text: "Open orders are listed with a Cancel button. Filled ones appear as trades in your activity, and ones that ended without filling show whether they expired or were cancelled, and why." },
     ],
     related: ["marketOrder", "stopOrder", "tradingCosts"],
@@ -224,10 +225,10 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
     mistakes: [
       "Treating the stop price as a guaranteed sale price. It's a trigger; the fill can be lower.",
       "Setting stops so tight that normal [[volatility]] sets them off. A stock that moves 2% on a typical day will hit a 1% stop quickly.",
-      "Moving a stop lower as the price approaches it, which defeats the point of deciding in advance.",
+      "Moving a stop lower as the price approaches it, which defeats the point of deciding in advance. It's the [[dispositionEffect|disposition effect]] at work: hoping a loser comes back.",
     ],
     inMarketLab: [
-      { label: "Tesla's trade card", href: "/stocks/TSLA", text: "Choose Stop on a stock's trade card. A volatile stock like this one shows how far a close can land past a stop." },
+      { label: "Tesla's trade card", href: "/stocks/TSLA", text: "Choose Stop on a stock's trade card. A volatile stock like this one shows how far a close can land past a stop. Note your reason and exit plan with the trade, so you can check later that you stuck to it." },
       { label: "Portfolio", href: "/portfolio", text: "A filled stop appears as a trade in your activity, at the close it actually filled at, so you can compare it with the stop you set." },
     ],
     related: ["limitOrder", "marketOrder", "volatility", "maxDrawdown"],

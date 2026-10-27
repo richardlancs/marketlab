@@ -10,6 +10,7 @@ import {
   breakevens,
   compoundPath,
   crossoverReturns,
+  dispositionTally,
   equalMix,
   factorContributions,
   FACTORS,
@@ -282,5 +283,24 @@ describe("volatility clustering", () => {
     expect(shockHalfLife(0.98)).toBeCloseTo(Math.log(0.5) / Math.log(0.98), 8);
     expect(shockHalfLife(0.5)).toBeCloseTo(1, 10);
     expect(shockHalfLife(1)).toBe(Infinity);
+  });
+});
+
+describe("the disposition effect", () => {
+  it("counts realised and paper gains and losses on selling days", () => {
+    const day = [
+      { gain: 0.2, sold: true },
+      { gain: 0.1, sold: false },
+      { gain: 0.03, sold: false },
+      { gain: -0.15, sold: false },
+      { gain: -0.05, sold: false },
+      { gain: 0, sold: false },
+    ];
+    const t = dispositionTally([day]);
+    expect(t).toMatchObject({ realisedGains: 1, paperGains: 2, realisedLosses: 0, paperLosses: 2 });
+    expect(t.pgr).toBeCloseTo(1 / 3, 10);
+    expect(t.plr).toBe(0);
+    expect(t.difference).toBeCloseTo(1 / 3, 10);
+    expect(dispositionTally([]).pgr).toBeNull();
   });
 });

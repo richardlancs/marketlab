@@ -59,6 +59,7 @@ export type DemoKey =
   | "beta"
   | "benchmark"
   | "volatilityClustering"
+  | "disposition"
   | "orders"
   | "tradingCosts"
   | "dividend"

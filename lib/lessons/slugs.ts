@@ -20,6 +20,7 @@ export const LESSON_SLUGS = {
   alpha: "alpha",
   luck: "luck-or-skill",
   volatilityClustering: "volatility-clustering",
+  dispositionEffect: "disposition-effect",
   benchmark: "benchmark",
   exposure: "time-invested",
   monteCarlo: "monte-carlo",

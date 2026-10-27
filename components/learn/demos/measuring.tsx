@@ -8,6 +8,7 @@ import {
   blockVolatilities,
   compoundPath,
   demoTime,
+  dispositionTally,
   metricsOf,
   pathBetween,
   pricePath,
@@ -253,6 +254,54 @@ export function VolatilityClusteringDemo() {
         <Stat label="Wildest month" value={plainPercent(wildest, 0)} hint="As a yearly rate" />
         <Stat label="Biggest day" value={signedPercent(biggest)} tone={biggest < 0 ? "loss" : "gain"} />
         <Stat label="A shock fades by half in" value={clustered ? `${halfLife.toFixed(0)} days` : "At once"} hint={clustered ? "log 0.5 ÷ log(alpha + beta)" : "Each day ignores the last"} />
+      </StatRow>
+    </DemoFrame>
+  );
+}
+
+const HOLDINGS = [
+  { name: "Stock A", gain: 0.2 },
+  { name: "Stock B", gain: 0.1 },
+  { name: "Stock C", gain: 0.03 },
+  { name: "Stock D", gain: -0.05 },
+  { name: "Stock E", gain: -0.15 },
+] as const;
+
+/** The disposition effect: pick what to sell on one day and see the realised and paper gains and losses, and PGR and PLR. */
+export function DispositionDemo() {
+  const [sold, setSold] = useState<string[]>(["Stock A"]);
+  const toggle = (name: string) => setSold((s) => (s.includes(name) ? s.filter((n) => n !== name) : [...s, name]));
+  const tally = dispositionTally([HOLDINGS.map((h) => ({ gain: h.gain, sold: sold.includes(h.name) }))]);
+  const share = (x: number | null) => (x === null ? "—" : plainPercent(x, 0));
+  return (
+    <DemoFrame title="Which will you sell today?" note="Made-up holdings, each shown against what you paid for it.">
+      <div role="group" aria-label="Holdings to sell" className="grid gap-2 sm:grid-cols-5">
+        {HOLDINGS.map((h) => (
+          <button
+            key={h.name}
+            type="button"
+            aria-pressed={sold.includes(h.name)}
+            onClick={() => toggle(h.name)}
+            className="rounded-xl border border-border px-3 py-2 text-left text-sm transition-colors hover:bg-foreground/[0.04] focus-visible:outline-2 focus-visible:outline-accent aria-pressed:border-accent aria-pressed:bg-accent/10"
+          >
+            <span className="block font-medium">{h.name}</span>
+            <span className={`tabular-nums ${h.gain >= 0 ? "text-gain" : "text-loss"}`}>{signedPercent(h.gain)}</span>
+            <span className="block text-xs text-muted">{sold.includes(h.name) ? "Sell" : "Keep"}</span>
+          </button>
+        ))}
+      </div>
+      <p className="text-sm">
+        Realised: {tally.realisedGains} gains, {tally.realisedLosses} losses. On paper (kept): {tally.paperGains} gains, {tally.paperLosses} losses.
+      </p>
+      <StatRow>
+        <Stat label="Share of gains taken (PGR)" value={share(tally.pgr)} hint="Realised ÷ (realised + paper) gains" />
+        <Stat label="Share of losses taken (PLR)" value={share(tally.plr)} hint="The same for losses" />
+        <Stat
+          label="PGR − PLR"
+          value={tally.difference === null ? "—" : `${tally.difference >= 0 ? "+" : "−"}${plainPercent(Math.abs(tally.difference), 0)}`}
+          tone={tally.difference === null || tally.difference === 0 ? undefined : tally.difference > 0 ? "loss" : "gain"}
+          hint={tally.difference === null ? undefined : tally.difference > 0 ? "Taking gains more readily" : tally.difference < 0 ? "Taking losses more readily" : "No lean either way"}
+        />
       </StatRow>
     </DemoFrame>
   );

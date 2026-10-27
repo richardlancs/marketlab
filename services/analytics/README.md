@@ -4,6 +4,7 @@ A FastAPI service that does all of MarketLab's numerical work. Only the Next.js 
 
 - **Backtests:** every strategy (buy and hold, the moving-average crossover, dollar-cost averaging, rebalancing, custom rules, momentum rotation, risk parity, optimised weights), and parameter sweeps with the deflated Sharpe ratio of the best result. It's MarketLab's only backtest engine.
 - **"Was it luck?":** a run against 1,000 random versions of itself, and a block-bootstrap range for its Sharpe ratio.
+- **Your own trading:** a review of an account's trades (FIFO round trips, returns after each sale, the disposition effect, results by reason, against doing nothing).
 - **Volatility forecasts:** a GARCH(1,1) fit (SciPy maximum likelihood) per stock, stored with its profile, and for a portfolio.
 - **The pairs lab:** cointegration scans of same-sector pairs (Benjamini–Hochberg adjusted) and a long/short simulator for trading one pair's gap.
 - **Walk-forward tests** of the crossover, and **historical screens**.
@@ -34,6 +35,7 @@ Modules:
   - `analytics/factors.py`: factor returns from MarketLab's universe, and exposures by regression;
   - `analytics/portfolio.py`: portfolio risk, stress tests, Monte Carlo and optimisation;
   - `analytics/volatility.py`: GARCH(1,1) fits, forecasts over a day, week and month, the volatility cone and an out-of-sample check;
+  - `analytics/review.py`: the trade review, FIFO round trips, after-sale returns, the disposition effect and doing nothing instead;
   - `analytics/correlation.py`: correlations, clustered order, closest pairs and the effective number of bets;
   - `analytics/pairs.py`: the pairs lab, cointegration scans and the long/short gap simulator;
   - `analytics/plan.py`: the goal planner;
@@ -58,7 +60,7 @@ Modules:
   - `test_performance.py`, `test_fundamentals.py`, `test_alerts.py`: against cases made by MarketLab's TypeScript code (accounts from real orders, SEC inputs, alert triggers), so moving each calculation here changed nothing;
   - `test_factors.py`, `test_plan.py`, `test_options.py`, `test_ml.py`, `test_nightly.py`: the Phase 16 tools and the nightly runner;
   - `test_luck.py`, `test_optimised.py`, `test_pairs.py`, `test_correlation.py`: the Phase 17 tools.
-  - `test_volatility.py`: volatility forecasts.
+  - `test_volatility.py`, `test_review.py`: volatility forecasts and the trade review.
 
 ## Setup
 
@@ -108,6 +110,7 @@ Phase 16 and 17 endpoints, briefly (each validates its input; see `analytics/api
 | `POST /v1/backtests/luck` | A run against 1,000 random versions of itself, and its Sharpe ratio's range |
 | `POST /v1/pairs/scan` · `/v1/pairs/backtest` | The pairs lab: scan same-sector pairs; trade one pair's gap the year after |
 | `POST /v1/analytics/correlation` | How a set of stocks (a watchlist) move together |
+| `POST /v1/portfolio/review` | A review of an account's own trades |
 | `POST /v1/fundamentals/company` | A company's SEC numbers, fetched by CIK and parsed |
 | `POST /v1/jobs/nightly` | The nightly runner: indicator alerts, portfolio snapshots, stock profiles, factors |
 

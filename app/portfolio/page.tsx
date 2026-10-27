@@ -11,6 +11,7 @@ import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
 import { SeasonCard } from "@/components/portfolio/season-card";
 import { SectorCard } from "@/components/portfolio/sector-card";
 import { TradeHistory } from "@/components/portfolio/trade-history";
+import { TradeReview } from "@/components/portfolio/trade-review";
 import { Tabs } from "@/components/ui/tabs";
 
 export const metadata: Metadata = { title: "Portfolio — MarketLab" };
@@ -58,6 +59,7 @@ export default function PortfolioPage() {
             ),
           },
           { id: "activity", label: "Activity", content: <TradeHistory /> },
+          { id: "review", label: "Review", content: <TradeReview /> },
           {
             id: "compete",
             label: "Compete",

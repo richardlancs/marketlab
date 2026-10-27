@@ -128,6 +128,12 @@ export const GLOSSARY = {
     more: "A GARCH model turns that into a forecast: tomorrow's variance is a long-run level, plus a share of today's surprise, plus a share of today's variance. After a shock, the forecast is high and then fades back towards normal. It forecasts how big moves are likely to be, never which way they'll go.",
     group: "Measuring results",
   },
+  dispositionEffect: {
+    title: "Disposition effect",
+    short: "The habit of selling winners too soon and holding losers too long.",
+    more: "Selling a winner feels good and selling a loser means admitting a mistake, so many investors do the first more readily. Researchers measure it by comparing how often gains are taken with how often losses are, on the days someone sells. It tends to cost money, because past winners often keep going for a while and taxes favour realising losses.",
+    group: "Measuring results",
+  },
   marketOrder: {
     title: "Market order",
     short: "Buy or sell right away, at whatever the current price is.",

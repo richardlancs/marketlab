@@ -238,7 +238,7 @@ export function TradeCard({ quote }: { quote: StockQuote }) {
 
         <details className="group rounded-lg border border-border px-3 py-2" open={!!(journal.reason || journal.note)}>
           <summary className="tap cursor-pointer text-sm font-medium">
-            Why? <span className="font-normal text-muted">Optional, private: kept with the trade</span>
+            Why? <span className="font-normal text-muted">Optional, private: your Review tab learns from it</span>
           </summary>
           <div className="mt-3">
             <JournalFields value={journal} onChange={setJournal} />

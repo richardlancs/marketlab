@@ -1428,4 +1428,100 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       },
     ],
   },
+  dispositionEffect: {
+    why: [
+      "Picture two holdings, one up 20% and one down 20%. You need cash and must sell one. Most people sell the winner. Locking in a gain feels good, and selling the loser would mean admitting a mistake, so it's kept until it comes back. Doing this again and again is the disposition effect, one of the best-documented habits of real investors.",
+      "It's worth knowing because it quietly costs money, and because you can measure it in your own trading. MarketLab's Review tab does exactly that with your paper trades.",
+    ],
+    how: {
+      paragraphs: [
+        "Two forces drive it. Pride and regret: a realised gain proves you were right, a realised loss makes a mistake final, and a loss on paper can still feel temporary. And anchoring: the price you paid becomes the line everything is judged against, though the market neither knows nor cares what you paid.",
+        "Terrance Odean's 1998 study measured it in 10,000 brokerage accounts. On each day an investor sells anything, look at every stock they own. One sold above what it cost is a realised gain; below, a realised loss. One kept is a paper gain if it's above its cost, or a paper loss if below. Add up the counts over all the selling days.",
+        "The proportion of gains realised, PGR, is realised gains ÷ (realised gains + paper gains): of all the chances to take a gain, the share taken. The proportion of losses realised, PLR, is the same for losses. If PGR is above PLR, you take gains more readily. Odean found a PGR of about 14.8% and a PLR of about 9.8%.",
+        "Why it costs: winners have tended to keep going for a while, the pattern behind [[momentum]] strategies, so selling them early gives some of that up. Odean found the winners investors sold went on to beat the losers they kept by about 3.4 percentage points over the next year. And in many tax systems, realising losses lowers your tax bill while realising gains raises it, so the habit runs the wrong way. MarketLab doesn't model taxes.",
+        "The remedies are about deciding before emotion arrives. Set your exit rules when you buy, such as a [[stopOrder|stop order]] or a target price, and write down why you bought. A trading journal lets you check later whether that reason still holds, which is a better test than whether the price is above what you paid.",
+      ],
+      formula: {
+        expression: "PGR = realised gains ÷ (realised gains + paper gains); PLR = realised losses ÷ (realised losses + paper losses); disposition = PGR − PLR",
+        reading: "On the days you sold, the share of gains on offer that you took, minus the share of losses. Above zero means gains go first.",
+      },
+    },
+    example: {
+      setup: "You own five stocks. One day you sell A, which is up 20% on what you paid. You keep B (+10%), C (+3%), D (−5%) and E (−15%).",
+      steps: [
+        "That day: 1 realised gain (A) and no realised losses. On paper: 2 gains (B and C) and 2 losses (D and E).",
+        "That day alone: PGR = 1 ÷ (1 + 2) = 33%, and PLR = 0 ÷ (0 + 2) = 0%.",
+        "Over a year, add up every selling day. Say the totals are 12 realised gains, 18 paper gains, 4 realised losses and 28 paper losses.",
+        "PGR = 12 ÷ (12 + 18) = 40%. PLR = 4 ÷ (4 + 28) = 12.5%.",
+        "PGR − PLR = 40% − 12.5% = 27.5 percentage points.",
+      ],
+      result: "When you sold, you took 40% of the gains on offer but only 12.5% of the losses. That's a strong disposition effect, far above the 5 points Odean found on average.",
+    },
+    demo: "disposition",
+    reading: [
+      { label: "PGR − PLR near zero", meaning: "You take gains and losses about equally readily. No sign of the habit." },
+      { label: "PGR − PLR clearly above zero", meaning: "You take gains more readily than losses. Check whether the losers you kept had a reason beyond waiting to break even." },
+      { label: "PGR − PLR below zero", meaning: "You cut losers faster than winners: the opposite habit, and the one many trading rules aim for." },
+      { label: "Fewer than 10 selling days", meaning: "Too few to tell. MarketLab waits for at least 10 days with a sale before showing the measure." },
+    ],
+    realWorld: [
+      "Hersh Shefrin and Meir Statman named the disposition effect in 1985, building on Daniel Kahneman and Amos Tversky's prospect theory, which found that a loss hurts about twice as much as an equal gain pleases.",
+      "It shows up well beyond small investors: among fund managers, in home sellers who won't accept less than they paid, and in stock markets from Finland to China. Odean also found investors realised more losses in December, when the tax benefit was close, so the habit gives way when the reward is visible.",
+      "Many professional traders follow rules such as \"cut your losses and let your winners run\", and record every trade in a journal, precisely because the opposite feels natural.",
+    ],
+    mistakes: [
+      "Judging a holding by what you paid. The market doesn't know your price; ask whether you'd buy it today at today's price.",
+      "Holding a loser until it gets back to even. It must rise further than it fell to get there; see [[maxDrawdown|max drawdown]].",
+      "Selling a winner to lock in the gain, with no reason beyond the gain itself.",
+      "Reading PGR − PLR from a handful of sales. With only a few selling days, the counts are mostly noise.",
+    ],
+    inMarketLab: [
+      {
+        label: "Review your trading",
+        href: "/portfolio#review",
+        text: "The Portfolio page's Review tab matches each sale to your earliest purchases (first in, first out) and lists your completed round trips, with your hit rate, average win and loss, median days held, and how each stock did in the month after you sold. With at least 10 selling days, it shows your PGR, PLR and the gap between them.",
+      },
+      {
+        label: "Your reasons, and luck",
+        href: "/portfolio#review",
+        text: "It also compares your account with never trading again after your first week, and groups results by the reason you gave for each trade: value, momentum, news, dip, rebalance or other.",
+      },
+      { label: "Note each trade", href: "/stocks/AAPL#trade", text: "The trade card lets you pick a reason and add a short note to each trade: a trading journal to look back on." },
+    ],
+    related: ["luck", "buyAndHold", "momentum", "stopOrder"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is the disposition effect?",
+        choices: ["Selling winners too soon and holding losers too long", "Buying stocks that have recently risen", "Spreading money across many stocks", "Selling everything in a crash"],
+        answer: 0,
+        explanation: "It's the habit of taking gains readily while hanging on to losses, often to avoid admitting a mistake.",
+      },
+      {
+        kind: "Using it",
+        prompt: "On your selling days you had 6 realised gains, 14 paper gains, 3 realised losses and 27 paper losses. What's PGR − PLR?",
+        choices: ["10 percentage points", "20 percentage points", "30 percentage points", "−20 percentage points"],
+        answer: 1,
+        explanation: "PGR = 6 ÷ (6 + 14) = 30% and PLR = 3 ÷ (3 + 27) = 10%, so PGR − PLR = 20 points: gains were taken three times as readily.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Which question avoids anchoring on the price you paid?",
+        choices: ["Is it above what I paid?", "Would I buy it today at today's price?", "How long have I held it?"],
+        answer: 1,
+        explanation: "What you paid is history the market ignores. Whether you'd buy it now is the decision you're really making by keeping it.",
+      },
+      {
+        kind: "Real world",
+        prompt: "What did Odean find about the winners investors sold and the losers they kept?",
+        choices: [
+          "The losers recovered and beat the winners",
+          "The winners sold went on to beat the losers kept, by about 3.4 points over the next year",
+          "Both did exactly as well",
+        ],
+        answer: 1,
+        explanation: "Selling winners and keeping losers cost investors money: the stocks they sold kept doing better than the ones they held on to.",
+      },
+    ],
+  },
 };

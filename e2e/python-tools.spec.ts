@@ -104,7 +104,7 @@ test("the portfolio and the watchlist show how many independent bets they hold",
   await expect(page.getByText(/independent bets?|Watch two or more stocks/).first()).toBeVisible({ timeout: 60_000 });
 });
 
-// Phase 18: volatility forecasts.
+// Phase 18: volatility forecasts and reviewing your own trading.
 
 test("a stock page forecasts how much the stock might move", async ({ page }) => {
   await page.goto("/stocks/AAPL#analysis");
@@ -112,4 +112,25 @@ test("a stock page forecasts how much the stock might move", async ({ page }) =>
   await expect(card.getByText("Next month", { exact: true })).toBeVisible({ timeout: 90_000 });
   await expect(card.getByText("Today against its own history")).toBeVisible();
   await expect(card.getByText(/stayed inside the 90% range on/)).toBeVisible();
+});
+
+test("a trade keeps its reason, and the Review tab reviews the account", async ({ page }) => {
+  test.slow();
+  await page.goto("/stocks/KO#trade");
+  const trade = page.locator('[aria-labelledby="trade"]');
+  await trade.getByLabel("Shares").fill("2");
+  await trade.getByText("Why?").click();
+  await trade.getByRole("button", { name: "Good value" }).click();
+  await trade.getByLabel("Note").fill("Cheap against its history");
+  await trade.getByRole("button", { name: /^Buy 2 KO/ }).click();
+  await expect(trade.getByText(/Bought 2 shares of KO/)).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/portfolio#activity");
+  await expect(page.getByText("Good value · Cheap against its history")).toBeVisible();
+
+  await page.goto("/portfolio#review");
+  const review = page.locator('[aria-labelledby="review-heading"]');
+  await expect(review.getByText(/Nothing sold yet|Completed trades/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByRole("heading", { name: "Trade by trade" })).toBeVisible();
+  await expect(page.getByText(/2 from .* · Good value/)).toBeVisible();
 });

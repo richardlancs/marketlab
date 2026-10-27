@@ -232,4 +232,17 @@ describe("measuring results worked examples", () => {
     // Quiz: alpha 0.1 and beta 0.85.
     expect(Math.round(Math.log(0.5) / Math.log(0.95))).toBe(14);
   });
+
+  it("disposition effect", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.dispositionEffect);
+    expect(t).toContain(`1 ÷ (1 + 2) = ${pct(1 / 3)}`);
+    const pgr = 12 / (12 + 18);
+    const plr = 4 / (4 + 28);
+    expect(t).toContain(`12 ÷ (12 + 18) = ${pct(pgr)}`);
+    expect(t).toContain(`4 ÷ (4 + 28) = ${pct(plr, 1)}`);
+    expect(t).toContain(`= ${((pgr - plr) * 100).toFixed(1)} percentage points`);
+    expect(Math.round((0.148 - 0.098) * 100)).toBe(5);
+    // Quiz: 6, 14, 3 and 27.
+    expect(6 / 20 - 3 / 30).toBeCloseTo(0.2, 10);
+  });
 });

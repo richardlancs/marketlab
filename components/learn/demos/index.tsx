@@ -1,7 +1,7 @@
 import type { DemoKey } from "@/lib/lessons";
 import { CompanySizeDemo, DiversificationDemo } from "./company";
 import { FactorDemo } from "./factors";
-import { BenchmarkDemo, BetaDemo, DrawdownDemo, GrowthDemo, SharpeDemo, VolatilityClusteringDemo, VolatilityDemo } from "./measuring";
+import { BenchmarkDemo, BetaDemo, DispositionDemo, DrawdownDemo, GrowthDemo, SharpeDemo, VolatilityClusteringDemo, VolatilityDemo } from "./measuring";
 import { ImpliedVolatilityDemo, OptionGreeksDemo, OptionPayoffDemo, OptionStrategiesDemo } from "./options";
 import { DollarCostAveragingDemo, MovingAverageDemo, OverfittingDemo, RebalancingDemo, RsiDemo } from "./strategies";
 import { DividendDemo, OrdersDemo, SplitDemo, TradingCostsDemo } from "./trading";
@@ -16,6 +16,7 @@ const DEMOS: Record<DemoKey, () => React.ReactNode> = {
   beta: BetaDemo,
   benchmark: BenchmarkDemo,
   volatilityClustering: VolatilityClusteringDemo,
+  disposition: DispositionDemo,
   orders: OrdersDemo,
   tradingCosts: TradingCostsDemo,
   dividend: DividendDemo,
