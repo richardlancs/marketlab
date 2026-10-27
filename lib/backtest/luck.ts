@@ -49,20 +49,28 @@ const pair = (v: unknown) => {
   return !!p && numOrNull(p.totalReturn) && numOrNull(p.sharpe);
 };
 
+/** A comparison with random versions if `value` has its shape, or null (also used for an account's own trading, lib/review). */
+export function parseComparison(value: unknown): LuckComparison | null {
+  const c = obj(value);
+  const h = obj(c?.histogram);
+  if (!c || (c.kind !== "timing" && c.kind !== "picking") || !Number.isInteger(c.trials) || !pair(c.strategy) || !pair(c.randomMedian) || !pair(c.percentile)) return null;
+  if (!h || !Array.isArray(h.edges) || !h.edges.every(numOrNull) || !Array.isArray(h.counts) || !h.counts.every((n) => Number.isInteger(n)) || h.edges.length !== h.counts.length + 1) return null;
+  return value as LuckComparison;
+}
+
+/** A Sharpe range if `value` has its shape, or null. */
+export function parseSharpeRange(value: unknown): SharpeRange | null {
+  const r = obj(value);
+  if (!r || !["sharpe", "benchmarkSharpe", "low", "high", "chanceAboveBenchmark"].every((k) => numOrNull(r[k])) || !Number.isInteger(r.resamples) || !Number.isInteger(r.block)) return null;
+  return value as SharpeRange;
+}
+
 /** The result if `value` has its shape, or null. */
 export function parseLuck(value: unknown): LuckResult | null {
   const v = obj(value);
   if (!v || !Array.isArray(v.notes) || !v.notes.every((n) => typeof n === "string")) return null;
-  if (v.comparison !== null) {
-    const c = obj(v.comparison);
-    const h = obj(c?.histogram);
-    if (!c || (c.kind !== "timing" && c.kind !== "picking") || !Number.isInteger(c.trials) || !pair(c.strategy) || !pair(c.randomMedian) || !pair(c.percentile)) return null;
-    if (!h || !Array.isArray(h.edges) || !h.edges.every(numOrNull) || !Array.isArray(h.counts) || !h.counts.every((n) => Number.isInteger(n)) || h.edges.length !== h.counts.length + 1) return null;
-  }
-  if (v.sharpeRange !== null) {
-    const r = obj(v.sharpeRange);
-    if (!r || !["sharpe", "benchmarkSharpe", "low", "high", "chanceAboveBenchmark"].every((k) => numOrNull(r[k])) || !Number.isInteger(r.resamples) || !Number.isInteger(r.block)) return null;
-  }
+  if (v.comparison !== null && !parseComparison(v.comparison)) return null;
+  if (v.sharpeRange !== null && !parseSharpeRange(v.sharpeRange)) return null;
   return value as LuckResult;
 }
 

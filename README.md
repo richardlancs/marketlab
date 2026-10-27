@@ -14,7 +14,7 @@ A stock dashboard, portfolio simulator and strategy backtester. The live site is
   - return, drawdown, volatility and Sharpe ratio;
   - sector breakdown;
   - CSV export;
-  - a review of your own trading: completed round trips (first in, first out), what stocks did after you sold, the disposition effect, results by your reasons, your account against never trading again.
+  - a review of your own trading: completed round trips (first in, first out), what stocks did after you sold, the disposition effect, results by your reasons, your account against never trading again, and "Was it luck?" against random traders with your habits.
 - **Research tools:**
   - risk and technicals on every stock page, with a GARCH volatility forecast (likely ranges for the next day, week and month, and how today compares with the stock's history);
   - a screener with presets;

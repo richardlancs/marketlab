@@ -29,6 +29,7 @@ import json
 import math
 import os
 
+import numpy as np
 import pandas as pd
 from collections.abc import Sequence
 from typing import Annotated, Literal, Union
@@ -797,6 +798,31 @@ def portfolio_review(body: ReviewRequest, db: Annotated[database.Database, Depen
     account, history, adjusted, index, market = _review_inputs(body, db)
     return {"review": review.review(account, history, adjusted, index, market)}
 
+
+class AccountLuckRequest(ReviewRequest):
+    universe: Annotated[list[Symbol], Field(min_length=2, max_length=200)]
+    """The catalog's stocks: what a random picker chooses from."""
+
+
+@app.post("/v1/portfolio/luck", dependencies=[Depends(require_token)])
+def portfolio_luck(body: AccountLuckRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """The account's trading against 1,000 random traders with its habits, and a range for its Sharpe ratio (luck.account_luck)."""
+    account, history, adjusted, index, _ = _review_inputs(body, db, body.universe)
+    if not account["trades"]:
+        return {"result": {"timing": None, "picking": None, "sharpeRange": None, "notes": ["There are no trades to compare yet."], "trips": 0}}
+    times_all = [t for t, _ in index]
+    first = review.session_of(times_all, min(t["time"] for t in account["trades"]))
+    times = times_all[first:]
+    trips = review.round_trips(account, history, times[-1])
+    trips_with_exit = [*trips["closed"], *({**t, "exit": None} for t in trips["open"])]
+    try:
+        values = np.array(performance.value_series(account, history, times), dtype=float)
+    except performance.MissingPrices:
+        values = None
+    index_values = np.array([v for _, v in index[first:]], dtype=float)
+    seed = json.dumps({"trades": [[t["time"], t["symbol"], t["shares"]] for t in account["trades"]], "last": times[-1]})
+    universe = [s for s in body.universe if s in adjusted]
+    return {"result": luck.account_luck(trips_with_exit, adjusted, universe, times, values, index_values, seed)}
 
 
 class CompanyFactsRequest(Model):

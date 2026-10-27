@@ -131,6 +131,36 @@ def test_round_trips_carry_the_buys_reason_and_group_by_it():
     assert groups["dip"]["hitRate"] == 1 and groups["momentum"]["hitRate"] == 0 and groups["none"]["roundTrips"] == 1
 
 
+def test_account_luck_ranks_hindsight_at_the_top():
+    from analytics import luck
+
+    n = 400
+    rng = np.random.default_rng(2)
+    times = [T0 + d * DAY for d in range(n)]
+    adjusted = {f"S{i}": pd.Series(100 * np.cumprod(1 + rng.normal(0, 0.02, n)), index=times) for i in range(20)}
+    # Perfect hindsight: each trip buys a stock right before its best 20-session stretch.
+    trips = []
+    for i in range(8):
+        s = adjusted[f"S{i}"].to_numpy()
+        gains = s[20:] / s[:-20]
+        a = int(np.argmax(gains))
+        trips.append({"symbol": f"S{i}", "entry": times[a] + 60_000, "exit": times[a + 20] + 60_000, "shares": 10, "entryPrice": float(s[a])})
+    result = luck.account_luck(trips, adjusted, list(adjusted), times, None, None, "seed")
+    assert result["timing"]["percentile"]["totalReturn"] > 0.95
+    assert result["picking"]["percentile"]["totalReturn"] > 0.9
+    again = luck.account_luck(trips, adjusted, list(adjusted), times, None, None, "seed")
+    assert again == result
+
+
+def test_account_luck_needs_enough_trips():
+    from analytics import luck
+
+    times = [T0 + d * DAY for d in range(100)]
+    adjusted = {"S0": pd.Series(np.linspace(100, 120, 100), index=times), "S1": pd.Series(np.linspace(100, 90, 100), index=times)}
+    trips = [{"symbol": "S0", "entry": times[1], "exit": times[10], "shares": 1, "entryPrice": 100}]
+    result = luck.account_luck(trips, adjusted, ["S0", "S1"], times, None, None, "x")
+    assert result["timing"] is None and "Trade a bit more" in result["notes"][0]
+
 
 def test_endpoints(db):
     from fastapi.testclient import TestClient
@@ -161,5 +191,9 @@ def test_endpoints(db):
     data = response.json()["review"]
     assert data["status"] == "ok" and data["summary"]["roundTrips"] == 6 and data["byReason"][0]["reason"] == "dip"
     assert data["afterSales"]["summary"]["21"]["sales"] == 6
+    response = client.post("/v1/portfolio/luck", json={**body, "universe": list(prices)}, headers=AUTH)
+    assert response.status_code == 200, response.text
+    result = response.json()["result"]
+    assert result["trips"] == 6 and result["timing"]["trials"] == 1000 and result["sharpeRange"] is not None
     bad = {**body, "account": {**body["account"], "trades": [{**trades[0], "reason": "astrology"}]}}
     assert client.post("/v1/portfolio/review", json=bad, headers=AUTH).status_code == 422

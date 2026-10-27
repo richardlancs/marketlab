@@ -30,6 +30,19 @@ and the benchmark's drawn from the same days, so how often the strategy's
 Sharpe beats the benchmark's is a paired comparison.
 
 Seeded by the inputs, so the same run always gets the same answer.
+
+An account's own trading (account_luck, the portfolio's Review tab) is
+compared the same way, one round trip (review.py) at a time, valued simply
+as the money put in times the stock's adjusted return while held:
+
+- Timing: each round trip keeps its stock and how many sessions it was
+  held, at random dates since the account's first trade.
+- Picking: each keeps its dates and money, in a random stock from the
+  catalog that had prices on both days.
+
+The measure is the return on the money traded: all round trips' gains over
+all the money they put in. Round trips from the starting holdings (no entry
+date) are left out. The Sharpe range uses the account's daily values.
 """
 
 from __future__ import annotations
@@ -188,8 +201,11 @@ def luck(config: engine.Config, prices: Mapping[str, pd.Series], market: pd.Seri
 
 def sharpe_range(run: engine.Run, benchmark: engine.Run, rng: np.random.Generator) -> dict[str, Any] | None:
     """A 90% range for the run's Sharpe ratio, and how often it beats the benchmark's, by a paired block bootstrap."""
-    a = np.array([v for _, v in run.equity])
-    b = np.array([v for _, v in benchmark.equity])
+    return sharpe_range_of(np.array([v for _, v in run.equity]), np.array([v for _, v in benchmark.equity]), run.metrics.sharpe, benchmark.metrics.sharpe, rng)
+
+
+def sharpe_range_of(a: np.ndarray, b: np.ndarray, sharpe: float | None, benchmark_sharpe: float | None, rng: np.random.Generator) -> dict[str, Any] | None:
+    """sharpe_range for two daily value series on the same days."""
     if len(a) != len(b) or len(a) < 2 * BLOCK + 1:
         return None
     ra, rb = a[1:] / a[:-1] - 1, b[1:] / b[:-1] - 1
@@ -209,11 +225,95 @@ def sharpe_range(run: engine.Run, benchmark: engine.Run, rng: np.random.Generato
         return None  # the run barely moved (mostly cash): no Sharpe ratio to speak of
     beats = np.where(np.isfinite(bs), s > bs, s > 0)[usable]
     return {
-        "sharpe": _n(run.metrics.sharpe, 4),
-        "benchmarkSharpe": _n(benchmark.metrics.sharpe, 4),
+        "sharpe": _n(sharpe, 4),
+        "benchmarkSharpe": _n(benchmark_sharpe, 4),
         "low": _n(np.percentile(s[usable], 5), 4),
         "high": _n(np.percentile(s[usable], 95), 4),
         "chanceAboveBenchmark": _n(float(beats.mean()), 4),
         "resamples": RESAMPLES,
         "block": BLOCK,
     }
+
+
+MIN_TRIPS = 5
+MIN_SESSIONS = 60
+
+
+def _comparison(kind: str, actual: float, totals: np.ndarray) -> dict[str, Any]:
+    counts, edges = np.histogram(totals, bins=BINS)
+    return {
+        "kind": kind,
+        "trials": TRIALS,
+        "strategy": {"totalReturn": _n(actual), "sharpe": None},
+        "randomMedian": {"totalReturn": _n(np.median(totals)), "sharpe": None},
+        "percentile": {"totalReturn": _n(_percentile(actual, totals), 4), "sharpe": None},
+        "histogram": {"edges": [_n(e) for e in edges], "counts": [int(c) for c in counts]},
+    }
+
+
+def account_luck(
+    trips: list[Mapping[str, Any]],
+    adjusted: Mapping[str, pd.Series],
+    universe: list[str],
+    times: list[int],
+    values: np.ndarray | None,
+    index_values: np.ndarray | None,
+    seed_text: str,
+) -> dict[str, Any]:
+    """
+    `trips`: round trips with an entry (closed, or open with exit None = still
+    held), each with symbol, entry, exit, shares and entryPrice. `times`: the
+    sessions since the first trade. `values` and `index_values`: the account's
+    and the index's daily values on those sessions, for the Sharpe range.
+    """
+    from bisect import bisect_right
+
+    rng = np.random.default_rng(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16))
+    notes: list[str] = []
+    symbols = sorted(set(universe) | {t["symbol"] for t in trips})
+    column = {s: i for i, s in enumerate(symbols)}
+    # Sessions × stocks, carried forward over gaps, NaN before a stock's first price.
+    grid = np.array([adjusted[s].reindex(times, method="ffill").to_numpy(dtype=float) if s in adjusted else np.full(len(times), np.nan) for s in symbols]).T
+    session = lambda moment: max(0, bisect_right(times, moment) - 1)  # noqa: E731
+
+    usable = []
+    for t in trips:
+        if t.get("entry") is None:
+            continue
+        a, b = session(t["entry"]), session(t["exit"]) if t.get("exit") is not None else len(times) - 1
+        j = column[t["symbol"]]
+        if np.isfinite(grid[a, j]) and np.isfinite(grid[b, j]) and grid[a, j] > 0:
+            usable.append((j, a, b, float(t["shares"]) * float(t["entryPrice"])))
+    timing = picking = None
+    if len(times) < MIN_SESSIONS:
+        notes.append(f"Your account needs at least {MIN_SESSIONS} sessions of trading history to compare; keep going.")
+    elif len(usable) < MIN_TRIPS:
+        notes.append(f"Trade a bit more first: this needs at least {MIN_TRIPS} completed or open trades with a known start, and has {len(usable)}.")
+    else:
+        money = np.array([u[3] for u in usable])
+        total_money = money.sum()
+        actual = sum(m * (grid[b, j] / grid[a, j] - 1) for j, a, b, m in usable) / total_money
+        # Timing: same stock and length, random start (on or after the stock's first price).
+        gains = np.zeros(TRIALS)
+        for j, a, b, m in usable:
+            length = b - a
+            column_prices = grid[:, j]
+            first = int(np.argmax(np.isfinite(column_prices)))
+            latest = len(times) - 1 - length
+            starts = rng.integers(first, max(first, latest) + 1, size=TRIALS)
+            gains += m * (column_prices[np.minimum(starts + length, len(times) - 1)] / column_prices[starts] - 1)
+        timing = _comparison("timing", float(actual), gains / total_money)
+        # Picking: same days and money, a random stock with prices on both days.
+        gains = np.zeros(TRIALS)
+        for j, a, b, m in usable:
+            valid = np.nonzero(np.isfinite(grid[a]) & np.isfinite(grid[b]) & (grid[a] > 0))[0]
+            chosen = rng.choice(valid, size=TRIALS)
+            gains += m * (grid[b, chosen] / grid[a, chosen] - 1)
+        picking = _comparison("picking", float(actual), gains / total_money)
+
+    sharpe = None
+    if values is not None and index_values is not None and len(values) >= MIN_SESSIONS:
+        returns = np.stack([values[1:] / values[:-1] - 1, index_values[1:] / index_values[:-1] - 1])
+        own, bench = _stats(returns)[1]
+        sharpe = sharpe_range_of(values, index_values, None if not math.isfinite(own) else float(own), None if not math.isfinite(bench) else float(bench), rng)
+    return {"timing": timing, "picking": picking, "sharpeRange": sharpe, "notes": notes, "trips": len(usable)}

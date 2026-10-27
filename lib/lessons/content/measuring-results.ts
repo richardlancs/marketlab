@@ -1275,6 +1275,11 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         href: backtestLink({ kind: "momentum-rotation", top: 2, lookbackMonths: 6, absolute: false }, ["AAPL", "MSFT", "NVDA", "XOM"]),
         text: "A picking strategy: here the random versions rebalance on the same days but give the top weights to stocks chosen at random.",
       },
+      {
+        label: "Was it luck? for your own account",
+        href: "/portfolio#review",
+        text: "The Portfolio page's Review tab compares your real paper trading with 1,000 random traders who keep your habits: the same number of trades and holding periods at random dates, or your dates with random stocks.",
+      },
     ],
     related: ["overfitting", "sharpe", "benchmark", "pairsTrading"],
     quiz: [
@@ -1484,7 +1489,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       {
         label: "Your reasons, and luck",
         href: "/portfolio#review",
-        text: "It also compares your account with never trading again after your first week, and groups results by the reason you gave for each trade: value, momentum, news, dip, rebalance or other.",
+        text: "It also compares your account with never trading again after your first week, checks it against random traders with your habits, and groups results by the reason you gave for each trade: value, momentum, news, dip, rebalance or other.",
       },
       { label: "Note each trade", href: "/stocks/AAPL#trade", text: "The trade card lets you pick a reason and add a short note to each trade: a trading journal to look back on." },
     ],

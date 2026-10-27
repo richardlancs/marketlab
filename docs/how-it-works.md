@@ -235,6 +235,7 @@ These are calculated by the Python analytics service ([its README](../services/a
 - **Disposition effect** (Odean, 1998): on each day with a sale, every stock held counts as a gain or a loss against its FIFO cost, realised if any was sold and on paper if kept. PGR = realised gains / (realised + paper gains), PLR likewise for losses; shown from 10 selling days.
 - **By reason:** completed trades grouped by the reason given when the shares were bought (trade notes), once two reasons have 3 each.
 - **Compared with doing nothing:** from a week after the first trade, the account against the same holdings and cash never traded again (growing with adjusted closes, so dividends count) and against the S&P 500.
+- **Was it luck?** (on request; `luck.account_luck`): each round trip with a known start is valued as money in × the stock's adjusted return while held. 1,000 random traders keep each trip's stock and length at random dates (timing), and 1,000 keep its dates and money in a random catalog stock (picking). Plus the block-bootstrap Sharpe range of the account's daily values against the S&P 500. Needs 5 trips and 60 sessions.
 
 **Trade notes.** Every trade (market, or a limit or stop order when it fills) can carry a reason (good value, momentum, news, buying the dip, rebalancing, other) and a note of up to 280 characters, added on the trade card or later from Activity (`trade.reason`, `trade.note`; migration 0016). They're private: season and leaderboard pages never read trades. The CSV export includes them.
 

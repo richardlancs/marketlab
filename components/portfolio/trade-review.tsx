@@ -3,14 +3,15 @@
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { useAccount } from "@/components/account/account-provider";
+import { RandomVersions, SharpeRangeView } from "@/components/analytics/luck-views";
 import { ComparisonChart } from "@/components/charts/comparison-chart";
 import { Card } from "@/components/ui/card";
 import { Explain } from "@/components/ui/explain";
 import { ServiceError } from "@/components/ui/service-data";
 import { formatCurrency, formatDate, formatPercent, formatShare, formatSignedCurrency } from "@/lib/format";
-import { reviewAction } from "@/lib/review-actions";
+import { accountLuckAction, reviewAction } from "@/lib/review-actions";
 import { REASON_NAMES } from "@/lib/trading";
-import { dispositionVerdict, type ReviewResult, type RoundTrip, type TradeReview as Review } from "@/lib/review/types";
+import { accountLuckVerdict, dispositionVerdict, type AccountLuck, type ReviewResult, type RoundTrip, type TradeReview as Review } from "@/lib/review/types";
 
 type State<T> = { status: "idle" | "loading" } | { status: "error"; message: string } | { status: "done"; result: T };
 const DASH = "—";
@@ -26,7 +27,7 @@ const PER_REASON = 3;
  * The portfolio's Review tab: the visitor's own trades reviewed by the
  * analytics service (lib/review): round trips (FIFO), what happened after
  * each sale, the disposition effect, how the account compares with doing
- * nothing, and results by the reasons given.
+ * nothing, results by the reasons given, and "Was it luck?" on request.
  *
  * All the portfolio's tabs are rendered at once (hidden until chosen), so the
  * review loads only once this tab is on screen, and again after a new trade
@@ -86,6 +87,7 @@ export function TradeReview() {
           {state.result.compared && <Compared c={state.result.compared} />}
           <AfterSales r={state.result} />
           <Habits r={state.result} />
+          <AccountLuckCard />
           <RoundTrips r={state.result} />
         </>
       )}
@@ -308,6 +310,77 @@ function Habits({ r }: { r: Review }) {
   );
 }
 
+function AccountLuckCard() {
+  const [state, setState] = useState<State<AccountLuck>>({ status: "idle" });
+  async function check() {
+    setState({ status: "loading" });
+    try {
+      const outcome = await accountLuckAction();
+      setState(outcome.ok ? { status: "done", result: outcome.result } : { status: "error", message: outcome.message });
+    } catch {
+      setState({ status: "error", message: "Couldn't reach the server. Check your connection and try again." });
+    }
+  }
+  const result = state.status === "done" ? state.result : null;
+  return (
+    <Card aria-labelledby="account-luck-heading">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h2 id="account-luck-heading" className="flex items-center gap-1.5 text-lg font-semibold tracking-tight">
+            Was it luck? <Explain term="luck" />
+          </h2>
+          <p className="text-sm text-muted">Your trades against 1,000 random traders with your habits.</p>
+        </div>
+        {state.status !== "done" && (
+          <button
+            type="button"
+            onClick={check}
+            disabled={state.status === "loading"}
+            className="h-9 rounded-full border border-border px-4 text-sm font-medium transition-colors hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-50"
+          >
+            {state.status === "loading" ? "Checking…" : "Was it luck?"}
+          </button>
+        )}
+      </div>
+      {state.status === "loading" && <div aria-busy className="mt-4 h-40 animate-pulse rounded-lg bg-foreground/[0.06]" />}
+      {state.status === "error" && (
+        <p role="alert" className="mt-3 text-sm text-loss">
+          {state.message}
+        </p>
+      )}
+      {result && (
+        <div className="mt-4 space-y-8">
+          {result.timing && (
+            <RandomVersions
+              c={result.timing}
+              verdict={accountLuckVerdict(result.timing)}
+              lineName="your trades"
+              thisLabel="Your trades"
+              measure="Return on money traded"
+              method={`Timing: each of your ${result.trips} trades keeps its stock and how long you held it, at random dates since your first trade. Valued simply (money in × the stock's return while held, dividends included), so the line can differ a little from your account's gains.`}
+            />
+          )}
+          {result.picking && (
+            <RandomVersions
+              c={result.picking}
+              verdict={accountLuckVerdict(result.picking)}
+              lineName="your trades"
+              thisLabel="Your trades"
+              measure="Return on money traded"
+              method="Picking: each trade keeps its dates and money, in a random catalog stock that had prices on both days."
+            />
+          )}
+          {result.sharpeRange && <SharpeRangeView r={result.sharpeRange} benchmarkName="S&P 500" subject="Your account's" thisLabel="Your account" what="the account" />}
+          {result.notes.map((note) => (
+            <p key={note} className="text-sm text-muted">
+              {note}
+            </p>
+          ))}
+        </div>
+      )}
+    </Card>
+  );
+}
 
 function RoundTrips({ r }: { r: Review }) {
   const [all, setAll] = useState(false);

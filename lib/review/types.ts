@@ -1,11 +1,12 @@
 /**
  * A review of the visitor's own paper trading (the portfolio's Review tab),
  * as the analytics service calculates it (services/analytics/analytics/
- * review.py).
+ * review.py), and "Was it luck?" for the account (luck.account_luck).
  * Types and parsers only, so the route, the browser and tests can use them.
  *
  * Returns are fractions (0.021 = 2.1%), gains dollars, times ms.
  */
+import { parseComparison, parseSharpeRange, type LuckComparison, type SharpeRange } from "../backtest/luck";
 import { isTradeReason, type TradeReason } from "../trading";
 
 
@@ -103,6 +104,15 @@ export interface TradeReview {
 
 export type ReviewResult = TradeReview | { status: "no-trades" };
 
+export interface AccountLuck {
+  timing: LuckComparison | null;
+  picking: LuckComparison | null;
+  sharpeRange: SharpeRange | null;
+  notes: string[];
+  /** Round trips with a known start that were compared. */
+  trips: number;
+}
+
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
 const numOrNull = (v: unknown) => v === null || isNum(v);
 const obj = (v: unknown): Record<string, unknown> | null => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : null);
@@ -143,8 +153,29 @@ export function parseReview(value: unknown): ReviewResult | null {
   return value as TradeReview;
 }
 
+/** The account's luck check if `value` has its shape, or null. */
+export function parseAccountLuck(value: unknown): AccountLuck | null {
+  const v = obj(value);
+  if (!v || !Array.isArray(v.notes) || !v.notes.every((n) => typeof n === "string") || !isNum(v.trips)) return null;
+  if (v.timing !== null && !parseComparison(v.timing)) return null;
+  if (v.picking !== null && !parseComparison(v.picking)) return null;
+  if (v.sharpeRange !== null && !parseSharpeRange(v.sharpeRange)) return null;
+  return value as AccountLuck;
+}
 
 const percent = (share: number) => `${Math.round(share * 100)}%`;
+
+/** One plain sentence: how the account's own trading did against random traders with its habits. */
+export function accountLuckVerdict(c: LuckComparison): string {
+  const beat = c.percentile.totalReturn;
+  if (beat === null) return "There wasn't enough to compare.";
+  const who = c.kind === "timing" ? "random traders who held the same stocks for as long, at random dates" : "random traders who traded on your days with your money, in random stocks";
+  const head = `Your trades beat ${percent(beat)} of ${c.trials.toLocaleString("en-US")} ${who}.`;
+  if (beat >= 0.95) return `${head} Chance alone rarely does that well, so your ${c.kind === "timing" ? "timing" : "picks"} may have mattered. It's still one stretch of one market.`;
+  if (beat >= 0.75) return `${head} Better than most, but chance does this well ${percent(1 - beat)} of the time: encouraging, not proof.`;
+  if (beat >= 0.25) return `${head} That's about what chance gives: no sign yet that your ${c.kind === "timing" ? "timing" : "picks"} added anything.`;
+  return `${head} Random ${c.kind === "timing" ? "timing" : "picks"} did better most of the time.`;
+}
 
 /** The disposition measure in plain words, or null when there aren't enough selling days. */
 export function dispositionVerdict(d: TradeReview["disposition"]): string | null {
