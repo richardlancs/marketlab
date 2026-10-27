@@ -122,6 +122,12 @@ export const GLOSSARY = {
     more: "A strategy that beat 95% of random versions making the same kind of choices has some evidence behind it; one that beat 60% looks like chance. A bootstrap range shows how far its Sharpe ratio could have landed with the same kind of days in a different order.",
     group: "Measuring results",
   },
+  volatilityClustering: {
+    title: "Volatility clustering",
+    short: "Calm days tend to follow calm days, and wild days follow wild days, so recent swings say a lot about the next few.",
+    more: "A GARCH model turns that into a forecast: tomorrow's variance is a long-run level, plus a share of today's surprise, plus a share of today's variance. After a shock, the forecast is high and then fades back towards normal. It forecasts how big moves are likely to be, never which way they'll go.",
+    group: "Measuring results",
+  },
   marketOrder: {
     title: "Market order",
     short: "Buy or sell right away, at whatever the current price is.",

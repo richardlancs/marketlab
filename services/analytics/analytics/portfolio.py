@@ -12,6 +12,8 @@ weights stay as they are now. Cash earns nothing and never moves.
   (the weighted average of the holdings' own volatilities over the
   portfolio's; above 1 means they partly offset each other), beta against the
   S&P 500, and one-day 95% VaR and expected shortfall.
+- Forecast: a GARCH(1,1) fit (volatility.py) to the portfolio's own past daily
+  returns at today's weights: volatility now, long-run, and over the next month.
 - Stress tests: the S&P 500's worst drawdowns in the stored history,
   replayed on today's weights (each stock's own return over the same days),
   and hypothetical shocks scaled by each holding's beta.
@@ -37,6 +39,7 @@ import numpy as np
 import pandas as pd
 
 from . import correlation as correlation_
+from . import volatility
 from .optimisation import default_cap, optimise, shrink_returns, shrunk_covariance
 
 TRADING_DAYS = 252
@@ -153,6 +156,7 @@ def portfolio_analysis(
 
     # Monte Carlo: block bootstrap of the portfolio's own daily returns (up to 3 years of them).
     history = _returns(bars, symbols, 3 * TRADING_DAYS).to_numpy() @ w
+    forecast = volatility.outlook(np.log1p(history))
     rng = np.random.default_rng(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16))
     days = MC_YEARS * TRADING_DAYS
     blocks = math.ceil(days / MC_BLOCK)
@@ -199,6 +203,7 @@ def portfolio_analysis(
             "holdingVolatility": [_n(v) for v in vols],
             "holdingBeta": [_n(betas.get(s), 4) for s in symbols],
             "riskContribution": [_n(c, 4) for c in contributions],
+            "forecast": forecast,
             **{k: v for k, v in correlation_.summary(year).items() if k != "sessions"},
         },
         "sectors": {k: _n(v, 4) for k, v in sorted(exposure.items(), key=lambda kv: -kv[1])},

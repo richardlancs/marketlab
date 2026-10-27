@@ -103,3 +103,13 @@ test("the portfolio and the watchlist show how many independent bets they hold",
   await page.goto("/watchlist#together");
   await expect(page.getByText(/independent bets?|Watch two or more stocks/).first()).toBeVisible({ timeout: 60_000 });
 });
+
+// Phase 18: volatility forecasts.
+
+test("a stock page forecasts how much the stock might move", async ({ page }) => {
+  await page.goto("/stocks/AAPL#analysis");
+  const card = page.locator('[aria-labelledby="volatility-forecast"]');
+  await expect(card.getByText("Next month", { exact: true })).toBeVisible({ timeout: 90_000 });
+  await expect(card.getByText("Today against its own history")).toBeVisible();
+  await expect(card.getByText(/stayed inside the 90% range on/)).toBeVisible();
+});

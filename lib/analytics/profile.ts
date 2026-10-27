@@ -15,6 +15,37 @@ export interface Drawdown {
   recoveryDays: number | null;
 }
 
+export interface VolatilityRange {
+  sessions: number;
+  /** One standard deviation of the log return over the horizon. */
+  sd: number | null;
+  low68: number | null;
+  high68: number | null;
+  low90: number | null;
+  high90: number | null;
+}
+
+export interface VolatilityConeRow {
+  sessions: number;
+  now: number | null;
+  low: number | null;
+  median: number | null;
+  high: number | null;
+  /** Share of past windows at or below today's. */
+  percentile: number | null;
+}
+
+/** A GARCH(1,1) volatility forecast (services/analytics/analytics/volatility.py). Volatilities are annualised. */
+export interface VolatilityForecast {
+  asOf: number;
+  price: number | null;
+  realised21: number | null;
+  model: { omega: number | null; alpha: number | null; beta: number | null; persistence: number | null; halfLife: number | null; longRun: number | null; now: number | null; sessions: number } | null;
+  ranges: Record<"day" | "week" | "month", VolatilityRange> | null;
+  cone: VolatilityConeRow[];
+  check: { sessions: number; inside90: number | null; naiveInside90: number | null; qlike: number | null; naiveQlike: number | null } | null;
+}
+
 export interface StockProfile {
   asOf: number;
   sessions: number;
@@ -42,6 +73,8 @@ export interface StockProfile {
     rollingVolatility: [number, number | null][];
     histogram: { edges: number[]; counts: number[] };
   };
+  /** Missing on profiles stored before the forecast existed (analytics 1.0.0). */
+  volatility?: VolatilityForecast | null;
   technicals: {
     sma50: number | null;
     sma200: number | null;
@@ -96,5 +129,24 @@ export function parseStockProfile(value: unknown): StockProfile | null {
   const oneOf = (v: unknown, options: string[]) => v === null || options.includes(v as string);
   if (!oneOf(states.trend, ["above", "below"]) || !oneOf(states.cross, ["golden", "death"]) || !numOrNull(states.lastCross)) return null;
   if (!oneOf(states.rsi, ["overbought", "oversold", "neutral"]) || !oneOf(states.macd, ["bullish", "bearish"])) return null;
+  if (p.volatility !== undefined && p.volatility !== null && !parseVolatility(p.volatility)) return null;
   return value as StockProfile;
+}
+
+/** The forecast if `value` has its shape, or null. */
+export function parseVolatility(value: unknown): VolatilityForecast | null {
+  const v = obj(value);
+  if (!v || !isNum(v.asOf) || !numOrNull(v.price) || !numOrNull(v.realised21) || !Array.isArray(v.cone)) return null;
+  const model = v.model === null ? null : obj(v.model);
+  if (v.model !== null && (!model || !isNum(model.sessions) || !["omega", "alpha", "beta", "persistence", "halfLife", "longRun", "now"].every((k) => numOrNull(model[k])))) return null;
+  const ranges = v.ranges === null ? null : obj(v.ranges);
+  const range = (r: unknown) => {
+    const x = obj(r);
+    return !!x && isNum(x.sessions) && ["sd", "low68", "high68", "low90", "high90"].every((k) => numOrNull(x[k]));
+  };
+  if (v.ranges !== null && (!ranges || !["day", "week", "month"].every((k) => range(ranges[k])))) return null;
+  if (!v.cone.every((row) => obj(row) && isNum((row as Record<string, unknown>).sessions) && ["now", "low", "median", "high", "percentile"].every((k) => numOrNull((row as Record<string, unknown>)[k])))) return null;
+  const check = v.check === null ? null : obj(v.check);
+  if (v.check !== null && (!check || !isNum(check.sessions) || !["inside90", "naiveInside90", "qlike", "naiveQlike"].every((k) => numOrNull(check[k])))) return null;
+  return value as VolatilityForecast;
 }

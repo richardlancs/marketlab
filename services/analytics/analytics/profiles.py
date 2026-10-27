@@ -17,6 +17,8 @@ Risk measures:
 - Maximum drawdown: the largest fall from a running peak, with its peak,
   trough and the day it was regained (None if it hasn't been yet).
 
+The volatility forecast (GARCH, the cone and its check) is volatility.py's.
+
 Momentum "12-1" is the return from 12 months ago to 1 month ago, skipping
 the latest month (short-term moves tend to reverse), the usual measure.
 
@@ -35,6 +37,7 @@ import numpy as np
 import pandas as pd
 
 from . import technicals as ta
+from . import volatility
 
 TRADING_DAYS = 252
 #: Windows, in sessions, for period returns.
@@ -164,6 +167,7 @@ def stock_profile(bars: pd.DataFrame, market: pd.DataFrame | None) -> dict[str, 
             "rollingVolatility": [[int(t), _number(v, 4)] for t, v in weekly_rolling.items()],
             "histogram": {"edges": [float(e) for e in HISTOGRAM_EDGES], "counts": [int(c) for c in counts]},
         },
+        "volatility": volatility.forecast(close) if len(close) > 60 else None,
         "technicals": {
             "sma50": _last(sma50),
             "sma200": _last(sma200),

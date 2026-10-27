@@ -224,7 +224,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
     ],
     mistakes: [
       "Treating volatility as the whole story of risk. A stock can be calm for years and then collapse in a day; check the [[maxDrawdown|max drawdown]] too.",
-      "Assuming past volatility will continue. Calm periods are often followed by stormy ones, and the reverse.",
+      "Assuming today's volatility will last. It comes in spells that persist for weeks, then fade; see [[volatilityClustering|volatility clustering]].",
       "Forgetting that volatility counts big jumps up just like big drops, so a stock that soared can look \"risky\".",
       "Comparing volatility worked out from different data, such as daily against monthly returns, which can give different numbers.",
     ],
@@ -232,7 +232,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Portfolio", href: "/portfolio", text: "The Performance card shows your portfolio's volatility next to the index you compare it with." },
       { label: "Backtest", href: "/backtest", text: "Every backtest shows the volatility of the strategy and its benchmark. Try a single stock against five to watch diversification bring it down." },
     ],
-    related: ["sharpe", "maxDrawdown", "valueAtRisk", "beta"],
+    related: ["sharpe", "maxDrawdown", "valueAtRisk", "volatilityClustering"],
     quiz: [
       {
         kind: "Terminology",
@@ -887,13 +887,13 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Reading VaR as the most you can lose. It's where the bad days start, not where they end; the worst day can be several times bigger.",
       "Trusting a VaR built from a calm year. Historical VaR only knows the days it has seen, so it's lowest just before trouble arrives.",
       "Assuming returns follow a bell curve. The normal shortcut tends to understate how often extreme losses happen.",
-      "Scaling one-day VaR to a year by assuming the days are independent. Bad days tend to cluster, so losses over weeks can be worse than that math suggests.",
+      "Scaling one-day VaR to a year by assuming the days are independent. [[volatilityClustering|Bad days tend to cluster]], so losses over weeks can be worse than that math suggests.",
     ],
     inMarketLab: [
       { label: "Stock pages", href: "/stocks/NVDA", text: "The Risk card shows the 1-day VaR (95%) and the expected shortfall for the last year, with a histogram of daily returns and a line at the VaR. Compare NVIDIA with a calmer stock like Procter & Gamble (PG)." },
       { label: "Portfolio risk analysis", href: "/portfolio", text: "Under Risk analysis, the Risk tab shows the same two numbers for your whole portfolio, worked out from its daily returns at today's weights." },
     ],
-    related: ["volatility", "maxDrawdown", "monteCarlo"],
+    related: ["volatility", "maxDrawdown", "monteCarlo", "volatilityClustering"],
     quiz: [
       {
         kind: "Terminology",
@@ -1229,7 +1229,7 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         "The first yardstick is a set of random versions of the same strategy. They take the same kind of decisions as the real one, but at random. For a timing strategy, like a [[maCrossover|moving-average crossover]] or custom rules, each random version holds each stock for as many separate stretches, and as many days in total, as the real one did, but at random dates. For a picking strategy, like [[momentum|momentum rotation]], [[riskParity|risk parity]] or optimised weights, each one rebalances on the same days with the same weights, but hands them to the stocks in a random order.",
         "The result is a percentile: the share of random versions the real run beat. Beating 71% means luck alone did at least as well 29% of the time, which is what chance often gives. Beating 97% is harder to explain by luck, though one period is still only one period. Strategies that make no choices, like [[buyAndHold|buy and hold]], [[dollarCostAveraging|dollar-cost averaging]] or [[rebalancing]], have nothing to randomise, so they get no random versions.",
         "The second yardstick is a bootstrap: a range for the [[sharpe|Sharpe ratio]]. Take the run's own daily returns, cut them into blocks of 21 trading days, and draw blocks at random, with repeats, to build a new history of the same length. Do that 2,000 times and work out the Sharpe ratio each time. The middle 90% of those values is the range the result could plausibly have landed in with the same kind of days in a different order.",
-        "Blocks matter because markets have moods. Calm weeks tend to follow calm weeks, and stormy ones follow stormy ones. Shuffling single days would break those stretches up and make the range look narrower than it should. The benchmark is reshuffled on the same days, so you also see how often the strategy's Sharpe ratio came out ahead of the benchmark's.",
+        "Blocks matter because markets have moods. [[volatilityClustering|Calm weeks tend to follow calm weeks]], and stormy ones follow stormy ones. Shuffling single days would break those stretches up and make the range look narrower than it should. The benchmark is reshuffled on the same days, so you also see how often the strategy's Sharpe ratio came out ahead of the benchmark's.",
         "Both checks assume you ran one strategy. If you tried twenty settings and kept the best, its percentile overstates the evidence, which is the problem of [[overfitting]]; the parameter sweep's deflated Sharpe ratio is built to allow for that.",
       ],
       formula: {
@@ -1319,6 +1319,112 @@ export const MEASURING_RESULTS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 1,
         explanation: "Top performance rarely persists. Much of one period's lead turns out to be luck, which is why one good run proves little.",
+      },
+    ],
+  },
+  volatilityClustering: {
+    why: [
+      "Markets don't swing by the same amount every day. They have moods: weeks of small, quiet moves, then a shock, then weeks where 2% and 3% days are ordinary. A stormy day makes the next few more likely to be stormy too, and calm tends to follow calm. This is volatility clustering, one of the most reliable patterns in market prices.",
+      "It matters because it makes risk partly forecastable, even when direction isn't. Yesterday's chaos says little about whether tomorrow goes up or down, but a lot about how far it's likely to move. That helps when sizing a position, setting a stop, judging a [[valueAtRisk|Value at Risk]] figure, or deciding whether a calm stock's sudden jumpiness is unusual.",
+    ],
+    how: {
+      paragraphs: [
+        "The standard model is GARCH(1,1). It forecasts tomorrow's variance, which is volatility squared, from three parts: a small share of the long-run level, a share called alpha of today's squared surprise (how far today's move was from normal), and a share called beta of today's variance. A big surprise lifts the forecast straight away; beta makes the higher level linger.",
+        "Alpha plus beta is the persistence: the share of a shock's extra variance still there the next day. Stock indexes usually land around 0.97 to 0.99, so shocks fade slowly. The half-life is how many sessions it takes for half of a shock to fade: log(0.5) ÷ log(alpha + beta). At a persistence of 1 or more, shocks would never fade and there'd be no long-run level.",
+        "The forecast is about size, never direction. From it come price ranges: if tomorrow's volatility is 1.5%, the next move lands within ±1.5% on about 2 days in 3, and within ±1.645 × 1.5% on about 9 days in 10. Those ranges assume moves follow a bell curve, and real markets don't: crashes happen far more often than a bell curve allows, so the outer edges understate them.",
+        "The volatility cone is a second view. Measure volatility over the last week, month, three months, six months and year, each as a yearly rate, and compare each with its own history: the band from the 10th to the 90th percentile of past readings. Above the band, today is unusually stormy for that window; below it, unusually calm. Short windows swing more than long ones, so the band is wider at the short end, like a cone.",
+        "MarketLab's simulated market is itself built with GARCH(1,1): the market factor uses an alpha of 0.09 and a beta of 0.89. So the model fits these prices unusually well, and fitting it to the simulated S&P 500 should find numbers close to those. That's a lesson in itself: a model finds its pattern easily when the data was made that way. Real markets are messier, with jumps, crashes and moods that change shape.",
+      ],
+      formula: {
+        expression: "variance tomorrow = (1 − alpha − beta) × long-run variance + alpha × today's surprise² + beta × today's variance; half-life = log(0.5) ÷ log(alpha + beta)",
+        reading: "Tomorrow's risk is mostly today's risk, nudged by today's surprise and pulled slowly back towards normal.",
+      },
+    },
+    example: {
+      setup: "A stock's long-run daily volatility is 1% (about 15.9% a year), with an alpha of 0.09 and a beta of 0.89. Today's volatility was the usual 1%, but the stock fell 4%, closing at $100.",
+      steps: [
+        "Work in squared percentages. The long-run variance is 1² = 1, and its share is (1 − 0.09 − 0.89) × 1 = 0.02.",
+        "Today's surprise adds 0.09 × 4² = 0.09 × 16 = 1.44. Today's variance adds 0.89 × 1 = 0.89.",
+        "Tomorrow's variance is 0.02 + 1.44 + 0.89 = 2.35, so tomorrow's volatility is √2.35 ≈ 1.53%, or 1.53% × 15.87 ≈ 24.3% a year.",
+        "Ranges for tomorrow: about 2 in 3 between $98.47 and $101.53 (±1.53%), and 9 in 10 within ±1.645 × 1.53% ≈ ±2.52%, from $97.48 to $102.52.",
+        "Fading: the persistence is 0.09 + 0.89 = 0.98, so the half-life is log(0.5) ÷ log(0.98) ≈ 34 sessions, about seven weeks.",
+      ],
+      result: "One 4% fall lifted tomorrow's expected swing by about half, from 1% to 1.53%, and it takes about 34 sessions for half of that extra to fade. The model says nothing about whether the next move is up or down.",
+    },
+    demo: "volatilityClustering",
+    reading: [
+      { label: "Volatility now well above its long-run level", meaning: "A stormy spell. Ranges are wide, and the model expects them to narrow only slowly." },
+      { label: "Volatility now below its long-run level", meaning: "A calm spell. Calm usually follows calm, but not forever, and it's when risk numbers built from recent days look smallest." },
+      { label: "Half-life of a few sessions", meaning: "Shocks fade fast. Recent days matter, but not for long." },
+      { label: "Half-life of a month or more", meaning: "Spells last. Typical of stock indexes, and of MarketLab's simulated market." },
+      { label: "Today above the cone's band", meaning: "Volatility over that window is higher than in 90% of past readings." },
+    ],
+    realWorld: [
+      "Benoit Mandelbrot noticed in 1963 that large changes tend to be followed by large changes, of either sign, and small by small. Robert Engle turned that into the ARCH model in 1982, Tim Bollerslev extended it to GARCH in 1986, and Engle shared the 2003 Nobel prize in economics for the work.",
+      "Banks and funds use GARCH-style forecasts for risk limits and Value at Risk, and options traders compare them with [[impliedVolatility|implied volatility]]. Some funds target a set volatility, holding less when the forecast rises.",
+      "In 2008 and again in 2020, the S&P 500's daily swings stayed huge for weeks before settling, a cluster you can see in any chart of its daily moves. October 19, 1987, when it fell about 20% in one day, would be close to impossible under a bell curve.",
+    ],
+    mistakes: [
+      "Reading a high volatility forecast as a prediction of a fall. It means big moves, in either direction.",
+      "Treating the 9-in-10 range as the worst case. On about 1 day in 10 the move lands outside it, and crashes can land far outside.",
+      "Using one long-run volatility number just after a shock or a long calm, the two times it's most wrong.",
+      "Trusting a fit because it looks perfect on simulated prices. MarketLab's were made with this model; real ones weren't.",
+    ],
+    inMarketLab: [
+      {
+        label: "How much it might move",
+        href: "/stocks/AAPL#analysis",
+        text: "On a stock page's Risk & technicals tab, this card shows likely price ranges for the next day, week and month (about 2 in 3, and 9 in 10), volatility now against its long-run level, how fast a shock fades by half, and the volatility cone.",
+      },
+      {
+        label: "Did the forecast work?",
+        href: "/stocks/TSLA#analysis",
+        text: "The same card checks the last 250 sessions, with a model fitted only on the days before each one: the share of days inside the 90% range, next to a plain last-month's-volatility forecast. Close to 90% means the ranges were the right size.",
+      },
+    ],
+    related: ["volatility", "valueAtRisk", "impliedVolatility", "luck"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does volatility clustering mean?",
+        choices: [
+          "Stocks in the same sector move together",
+          "Big moves tend to follow big moves, and small moves follow small ones",
+          "Prices tend to return to their average",
+          "Volatility is about the same every year",
+        ],
+        answer: 1,
+        explanation: "Volatility comes in spells. A stormy day makes more stormy days likely, in either direction, and calm days tend to follow calm ones.",
+      },
+      {
+        kind: "Using it",
+        prompt: "A GARCH model has an alpha of 0.1 and a beta of 0.85. Roughly how long until half of a shock has faded?",
+        choices: ["About 1 session", "About 14 sessions", "About 95 sessions", "It never fades"],
+        answer: 1,
+        explanation: "The persistence is 0.1 + 0.85 = 0.95, and log(0.5) ÷ log(0.95) ≈ 13.5, so about 14 sessions.",
+      },
+      {
+        kind: "Using it",
+        prompt: "The model forecasts tomorrow's volatility at 2%. What does that tell you?",
+        choices: [
+          "The stock will probably rise about 2%",
+          "A move within about ±2% is likely on roughly 2 days in 3, in either direction",
+          "The stock can't move more than 2%",
+          "The stock will probably fall about 2%",
+        ],
+        answer: 1,
+        explanation: "GARCH forecasts the size of moves, not their direction. One volatility either side covers about 2 days in 3, if moves follow a bell curve.",
+      },
+      {
+        kind: "Real world",
+        prompt: "GARCH fits MarketLab's simulated S&P 500 much better than the real one. Why?",
+        choices: [
+          "The simulated prices were made with a GARCH(1,1) model; real prices have jumps and changing moods",
+          "Real markets have no volatility clustering",
+          "GARCH only works on data from one year",
+        ],
+        answer: 0,
+        explanation: "A model finds its pattern easily when the data was built that way. Real markets cluster too, but less neatly, with crashes a bell curve can't explain.",
       },
     ],
   },

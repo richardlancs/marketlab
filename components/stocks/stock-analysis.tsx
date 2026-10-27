@@ -6,6 +6,8 @@ import { getStockProfile } from "@/lib/analytics/server";
 import type { StockProfile } from "@/lib/analytics/profile";
 import { formatCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
 import type { TermKey } from "@/lib/glossary";
+import { marketMode } from "@/lib/market/mode";
+import { VolatilityCard } from "./volatility-card";
 
 const DASH = "—";
 const pct = (v: number | null) => (v === null ? DASH : formatShare(v));
@@ -37,6 +39,7 @@ export async function StockAnalysis({ symbol }: { symbol: string }) {
   return (
     <div className="flex flex-col gap-4 lg:gap-6">
       <RiskCard profile={profile} symbol={symbol} />
+      {profile.volatility && <VolatilityCard forecast={profile.volatility} symbol={symbol} simulated={marketMode() !== "tiingo"} />}
       <TechnicalsCard profile={profile} />
     </div>
   );

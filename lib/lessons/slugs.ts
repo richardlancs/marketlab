@@ -19,6 +19,7 @@ export const LESSON_SLUGS = {
   factors: "factor-investing",
   alpha: "alpha",
   luck: "luck-or-skill",
+  volatilityClustering: "volatility-clustering",
   benchmark: "benchmark",
   exposure: "time-invested",
   monteCarlo: "monte-carlo",

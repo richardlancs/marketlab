@@ -213,4 +213,23 @@ describe("measuring results worked examples", () => {
     // Quiz: the middle 90% of 2,000 values, and 1 − 80% left to luck.
     expect([2_000 * 0.05, 2_000 * 0.95]).toEqual([100, 1_900]);
   });
+
+  it("volatility clustering", () => {
+    const t = text(MEASURING_RESULTS_LESSONS.volatilityClustering);
+    const [alpha, beta] = [0.09, 0.89];
+    const base = 1 - alpha - beta;
+    expect(t).toContain(`(1 − 0.09 − 0.89) × 1 = ${base.toFixed(2)}`);
+    expect(t).toContain(`0.09 × 4² = 0.09 × 16 = ${alpha * 16}`);
+    const variance = base + alpha * 16 + beta * 1;
+    expect(t).toContain(`0.02 + 1.44 + 0.89 = ${variance.toFixed(2)}`);
+    const vol = Math.sqrt(variance);
+    expect(t).toContain(`√2.35 ≈ ${vol.toFixed(2)}%`);
+    expect(t).toContain(`≈ ${(1.53 * Math.sqrt(252)).toFixed(1)}% a year`);
+    expect(t).toContain(`$${(100 - 1.53).toFixed(2)} and $${(100 + 1.53).toFixed(2)}`);
+    expect(t).toContain(`±${(1.645 * 1.53).toFixed(2)}%`);
+    expect(t).toContain(`from $${(100 - 2.52).toFixed(2)} to $${(100 + 2.52).toFixed(2)}`);
+    expect(t).toContain(`log(0.5) ÷ log(0.98) ≈ ${Math.round(Math.log(0.5) / Math.log(0.98))} sessions`);
+    // Quiz: alpha 0.1 and beta 0.85.
+    expect(Math.round(Math.log(0.5) / Math.log(0.95))).toBe(14);
+  });
 });

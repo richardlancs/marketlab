@@ -10,7 +10,7 @@ import { ServiceError, useServiceData } from "@/components/ui/service-data";
 import type { PortfolioAnalysis, Weighting } from "@/lib/analytics/portfolio";
 import { CONFIG_VERSION, LIMITS } from "@/lib/backtest/config";
 import { shareFragment } from "@/lib/backtest/share";
-import { formatCompactCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
+import { formatCompactCurrency, formatCurrency, formatDate, formatPercent, formatShare } from "@/lib/format";
 import type { TermKey } from "@/lib/glossary";
 
 type Analysis = { empty: true } | { empty?: false; analysis: PortfolioAnalysis; totalValue: number };
@@ -69,7 +69,7 @@ export function RiskAnalysis() {
       {value.status === "error" && <ServiceError message={value.message} onRetry={state.retry} />}
       {value.status === "ok" && (
         <div role="tabpanel" className="mt-4">
-          {tab === "Risk" && <RiskView a={value.analysis} />}
+          {tab === "Risk" && <RiskView a={value.analysis} totalValue={value.totalValue} />}
           {tab === "Stress tests" && <StressView a={value.analysis} totalValue={value.totalValue} />}
           {tab === "Projection" && (
             <>
@@ -101,10 +101,19 @@ function Stat({ label, value, note, term }: { label: string; value: string; note
   );
 }
 
-function RiskView({ a }: { a: PortfolioAnalysis }) {
+function RiskView({ a, totalValue }: { a: PortfolioAnalysis; totalValue: number }) {
   const r = a.risk;
+  const f = r.forecast;
   return (
     <div>
+      {f && f.month !== null && f.now !== null && f.longRun !== null && (
+        <p className="mb-4 text-sm">
+          Over the next month, a typical swing for the whole account is about{" "}
+          <span className="font-medium tabular-nums">±{formatCurrency(totalValue * (Math.exp(f.month) - 1))}</span> (±{formatShare(f.month)}); its volatility is{" "}
+          {f.now < f.longRun * 0.85 ? "calmer than usual" : f.now > f.longRun * 1.15 ? "higher than usual" : "about usual"} right now ({formatShare(f.now)} a year against {formatShare(f.longRun)}).
+          <Explain term="volatilityClustering" className="ml-1.5 align-middle" />
+        </p>
+      )}
       <dl className="grid grid-cols-2 gap-4 sm:grid-cols-5">
         <Stat label="Volatility" value={share(r.volatility)} note="a year, from daily moves" term="volatility" />
         <Stat label="Beta" value={num(r.beta)} note="vs the S&P 500" term="beta" />

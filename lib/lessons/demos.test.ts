@@ -6,6 +6,7 @@ import {
   arithmeticLog,
   beta,
   blackScholes,
+  blockVolatilities,
   breakevens,
   compoundPath,
   crossoverReturns,
@@ -19,13 +20,16 @@ import {
   normalCdf,
   orderFill,
   pathBetween,
+  pathFromMoves,
   pricePath,
   profitAtExpiry,
   rebalanceDrift,
   recoveryNeeded,
   relatedPaths,
+  shockHalfLife,
   simplePath,
   stockWithBeta,
+  volatilityMoves,
   worstDrawdown,
 } from "./demos";
 
@@ -248,5 +252,35 @@ describe("factor contributions", () => {
     expect(parts.map((p) => p.factor)).toEqual([...FACTORS]);
     expect(parts[0].contribution).toBeCloseTo(0.12, 10);
     expect(total).toBeCloseTo(0.19, 10);
+  });
+});
+
+describe("volatility clustering", () => {
+  it("gives the same moves for the same seed, and a path from them", () => {
+    expect(volatilityMoves(5, 100)).toEqual(volatilityMoves(5, 100));
+    expect(volatilityMoves(5, 100, { clustered: false })).toHaveLength(100);
+    const path = pathFromMoves([0.1, -0.1]);
+    expect(path[1]).toBeCloseTo(110, 10);
+    expect(path[2]).toBeCloseTo(99, 10);
+  });
+
+  it("keeps about the same overall volatility, but spreads the months far wider", () => {
+    const clustered = volatilityMoves(3, 2520);
+    const constant = volatilityMoves(3, 2520, { clustered: false });
+    const overall = (moves: number[]) => blockVolatilities(moves, moves.length)[0];
+    expect(overall(constant)).toBeCloseTo(0.2, 1);
+    expect(overall(clustered)).toBeGreaterThan(0.12);
+    expect(overall(clustered)).toBeLessThan(0.3);
+    const spread = (moves: number[]) => {
+      const months = blockVolatilities(moves).sort((a, b) => a - b);
+      return months[Math.floor(months.length * 0.9)] / months[Math.floor(months.length * 0.1)];
+    };
+    expect(spread(clustered)).toBeGreaterThan(spread(constant) * 1.3);
+  });
+
+  it("finds a shock's half-life", () => {
+    expect(shockHalfLife(0.98)).toBeCloseTo(Math.log(0.5) / Math.log(0.98), 8);
+    expect(shockHalfLife(0.5)).toBeCloseTo(1, 10);
+    expect(shockHalfLife(1)).toBe(Infinity);
   });
 });

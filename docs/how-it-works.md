@@ -164,6 +164,12 @@ These are calculated by the Python analytics service ([its README](../services/a
   - one-day 95% VaR and expected shortfall;
   - best and worst days, and a histogram of daily returns;
   - period returns.
+- **How much it might move** (`services/analytics/analytics/volatility.py`, stored with the profile):
+  - a GARCH(1,1) fit by maximum likelihood (SciPy) to the last three years of daily log returns: volatility now and long-run, and a shock's half-life;
+  - likely price ranges for the next day, week and month (one standard deviation and 90%, assuming normal moves);
+  - the volatility cone: today's volatility over 1 week to 1 year against its own history's 10th, 50th and 90th percentiles;
+  - a check: fitted on everything but the last 250 sessions, then forecasting each of those one day ahead, the share of days inside the 90% range and the QLIKE loss, against a plain "last month's volatility" forecast.
+  - The simulated market itself uses GARCH(1,1), so the model fits the public site's prices unusually well; the card says so.
 - **Technicals:**
   - 50- and 200-day averages, and the 20-day EMA;
   - RSI, MACD, Bollinger Bands and ATR;
@@ -215,7 +221,7 @@ These are calculated by the Python analytics service ([its README](../services/a
   - only prices are used.
 
 **Portfolio: Risk analysis** (`app/api/portfolio/analysis`; holdings are read on the server)
-- **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation map and sector exposure.
+- **Risk:** volatility, beta, VaR, the diversification ratio, each holding's share of the risk, a correlation map and sector exposure, and a GARCH forecast of the next month's typical swing from the portfolio's own past returns.
 - **Correlation map** (`services/analytics/analytics/correlation.py`; also the watchlist's "How they move together" tab, `app/api/watchlist/correlation`): a year of daily-return correlations, ordered by hierarchical clustering so similar stocks sit together, the closest pairs, and the effective number of independent bets, (Σλ)² / Σλ² over the correlation matrix's eigenvalues.
 - **Stress tests:** the market's worst falls in the data, replayed on today's weights, plus beta-scaled hypothetical shocks.
 - **Projection:** a 10-year Monte Carlo of 2,000 paths from month-long blocks of the portfolio's own daily returns.

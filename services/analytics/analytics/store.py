@@ -26,7 +26,7 @@ import pandas as pd
 from .db import Database
 
 #: Bumped whenever a stored calculation changes, so every result is recalculated once.
-ANALYTICS_VERSION = "1.0.0"
+ANALYTICS_VERSION = "1.1.0"
 #: The index every beta and relative measure is taken against.
 MARKET = "SPX"
 SOURCES = ("mock", "tiingo")

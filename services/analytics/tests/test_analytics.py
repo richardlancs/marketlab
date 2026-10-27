@@ -259,6 +259,12 @@ class TestPortfolio:
         assert all(s["portfolio"] < 0 for s in a["stress"] if s["kind"] == "historical")
         assert a["optimisation"] is None  # one stock: nothing to weigh
 
+    def test_forecast_is_absent_or_sensible(self):
+        market, stocks = market_and_stocks()
+        f = portfolio.portfolio_analysis(stocks, {"AAA": 1, "BBB": 1}, 0, {}, market, "s")["risk"]["forecast"]
+        if f is not None:  # short or unclustered histories get no model
+            assert f["now"] > 0 and f["longRun"] > 0 and f["month"] > 0
+
     def test_drawdown_episodes(self):
         prices = frame([100, 90, 80, 100, 110, 99, 105, 120, 60, 70])["adj_close"]
         episodes = portfolio.drawdown_episodes(prices, 3)

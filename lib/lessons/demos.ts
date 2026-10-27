@@ -406,3 +406,49 @@ export function factorContributions(exposures: Record<Factor, number>, factorRet
   const parts = FACTORS.map((factor) => ({ factor, contribution: exposures[factor] * factorReturns[factor] }));
   return { parts, total: parts.reduce((sum, p) => sum + p.contribution, alpha) };
 }
+
+// Volatility clustering.
+
+/**
+ * Daily moves with a long-run volatility of `annualVolatility`. Clustered
+ * moves follow GARCH(1,1): tomorrow's variance = the long-run level's share
+ * (1 − alpha − beta) + alpha × today's squared move + beta × today's variance,
+ * so a big move makes the next ones bigger. Constant moves keep the same
+ * size every day. Both draw the same random numbers, so only the clustering differs.
+ */
+export function volatilityMoves(seed: number, days: number, { annualVolatility = 0.2, alpha = 0.09, beta = 0.89, clustered = true } = {}): number[] {
+  const rng = mulberry32(seed);
+  const longRun = (annualVolatility * annualVolatility) / TRADING_DAYS;
+  const base = longRun * (1 - alpha - beta);
+  let variance = longRun;
+  const moves: number[] = [];
+  for (let i = 0; i < days; i++) {
+    const move = Math.sqrt(clustered ? variance : longRun) * normal(rng);
+    moves.push(move);
+    variance = base + alpha * move * move + beta * variance;
+  }
+  return moves;
+}
+
+/** A price path from daily moves, starting at `start`. */
+export function pathFromMoves(moves: readonly number[], start = 100): number[] {
+  const values = [start];
+  for (const move of moves) values.push(values[values.length - 1] * (1 + move));
+  return values;
+}
+
+/** Each whole block of `block` days' volatility, scaled to a year: the standard deviation of its moves × √252. */
+export function blockVolatilities(moves: readonly number[], block = 21): number[] {
+  const out: number[] = [];
+  for (let start = 0; start + block <= moves.length; start += block) {
+    const slice = moves.slice(start, start + block);
+    const mean = slice.reduce((a, b) => a + b, 0) / block;
+    const variance = slice.reduce((a, m) => a + (m - mean) ** 2, 0) / (block - 1);
+    out.push(Math.sqrt(variance * TRADING_DAYS));
+  }
+  return out;
+}
+
+/** Sessions for a shock's extra variance to fade by half, when `persistence` (alpha + beta) of it is left each day: log(0.5) ÷ log(persistence). */
+export const shockHalfLife = (persistence: number) => (persistence > 0 && persistence < 1 ? arithmeticLog(0.5) / arithmeticLog(persistence) : Infinity);
+

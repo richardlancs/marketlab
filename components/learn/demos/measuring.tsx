@@ -3,7 +3,22 @@
 import { useMemo, useState } from "react";
 import { runBacktest } from "@/lib/backtest/engine";
 import { buyAndHold, movingAverageCrossover } from "@/lib/backtest/strategies";
-import { beta, compoundPath, demoTime, metricsOf, pathBetween, pricePath, recoveryNeeded, simplePath, stockWithBeta, toPricePoints, worstDrawdown } from "@/lib/lessons/demos";
+import {
+  beta,
+  blockVolatilities,
+  compoundPath,
+  demoTime,
+  metricsOf,
+  pathBetween,
+  pricePath,
+  recoveryNeeded,
+  shockHalfLife,
+  simplePath,
+  stockWithBeta,
+  toPricePoints,
+  volatilityMoves,
+  worstDrawdown,
+} from "@/lib/lessons/demos";
 import { Choice, DemoChart, DemoFrame, dollars, plainPercent, signedPercent, Slider, Stat, StatRow } from "./parts";
 
 /** Compounding, total return and CAGR: money growing year by year, with and without growth on growth. */
@@ -200,6 +215,45 @@ export function BenchmarkDemo() {
         <Stat label="Time invested" value={plainPercent(strategy.metrics.exposure, 0)} hint={`${strategy.trades.length} trades`} />
       </StatRow>
       <p className="sr-only">The price started at ${prices[0].toFixed(0)}.</p>
+    </DemoFrame>
+  );
+}
+
+const VOLATILITY_KINDS = [
+  { value: "constant", label: "Same size every day" },
+  { value: "clustered", label: "Clustered (GARCH)" },
+] as const;
+
+/** Volatility clustering: the same random draws, with moves of a constant size or in calm and wild spells. */
+export function VolatilityClusteringDemo() {
+  const [kind, setKind] = useState<(typeof VOLATILITY_KINDS)[number]["value"]>("clustered");
+  const [persistence, setPersistence] = useState(0.98);
+  const clustered = kind === "clustered";
+  const moves = useMemo(() => volatilityMoves(76, 504, { clustered, alpha: 0.09, beta: persistence - 0.09 }), [clustered, persistence]);
+  const months = blockVolatilities(moves);
+  const overall = blockVolatilities(moves, moves.length)[0];
+  const calmest = Math.min(...months);
+  const wildest = Math.max(...months);
+  const biggest = moves.reduce((big, m) => (Math.abs(m) > Math.abs(big) ? m : big), 0);
+  const halfLife = shockHalfLife(persistence);
+  return (
+    <DemoFrame title="Calm and wild spells">
+      <Choice label="Daily moves" options={VOLATILITY_KINDS} value={kind} onChange={setKind} />
+      {clustered && (
+        <Slider label="How long spells last (alpha + beta)" value={persistence} min={0.8} max={0.99} step={0.01} format={(v) => `${v.toFixed(2)}: half-life ${shockHalfLife(v).toFixed(0)} days`} onChange={setPersistence} />
+      )}
+      <DemoChart
+        series={[{ label: "Daily move", values: moves.map((m) => m * 100), color: "var(--series-1)" }]}
+        format={(v) => `${v.toFixed(0)}%`}
+        summary={`Two years of daily moves with ${plainPercent(overall, 0)} volatility overall. The calmest month ran at ${plainPercent(calmest, 0)} a year and the wildest at ${plainPercent(wildest, 0)}.`}
+      />
+      <StatRow>
+        <Stat label="Volatility overall" value={plainPercent(overall, 0)} hint="Two years together" />
+        <Stat label="Calmest month" value={plainPercent(calmest, 0)} hint="As a yearly rate" />
+        <Stat label="Wildest month" value={plainPercent(wildest, 0)} hint="As a yearly rate" />
+        <Stat label="Biggest day" value={signedPercent(biggest)} tone={biggest < 0 ? "loss" : "gain"} />
+        <Stat label="A shock fades by half in" value={clustered ? `${halfLife.toFixed(0)} days` : "At once"} hint={clustered ? "log 0.5 ÷ log(alpha + beta)" : "Each day ignores the last"} />
+      </StatRow>
     </DemoFrame>
   );
 }

@@ -60,6 +60,8 @@ export interface PortfolioAnalysis {
     holdingVolatility: (number | null)[];
     holdingBeta: (number | null)[];
     riskContribution: (number | null)[];
+    /** A GARCH fit to the portfolio's own past returns (annualised now/long-run; `month` is the next month's sd); missing on old results. */
+    forecast?: { now: number | null; longRun: number | null; month: number | null; halfLife: number | null } | null;
   } & CorrelationSummary;
   sectors: Record<string, number | null>;
   stress: StressResult[];
@@ -104,6 +106,10 @@ export function parsePortfolioAnalysis(value: unknown): PortfolioAnalysis | null
   if (!["volatility", "beta", "var95", "expectedShortfall95", "diversificationRatio"].every((k) => numOrNull(risk[k]))) return null;
   if (!["holdingVolatility", "holdingBeta", "riskContribution"].every((k) => numbers(risk[k], n))) return null;
   if (!isCorrelationSummary(risk, n)) return null;
+  if (risk.forecast !== undefined && risk.forecast !== null) {
+    const f = obj(risk.forecast);
+    if (!f || !["now", "longRun", "month", "halfLife"].every((k) => numOrNull(f[k]))) return null;
+  }
   const sectors = obj(a.sectors);
   if (!sectors || !Object.values(sectors).every(numOrNull)) return null;
   if (!Array.isArray(a.stress) || !a.stress.every((s) => obj(s) && typeof (s as StressResult).name === "string" && numOrNull((s as StressResult).portfolio))) return null;
