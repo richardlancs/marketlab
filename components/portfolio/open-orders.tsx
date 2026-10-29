@@ -7,9 +7,12 @@ import { Card } from "@/components/ui/card";
 import { formatCurrency, formatDate } from "@/lib/format";
 import { describeOrder, isOpen } from "@/lib/orders";
 
+const TYPE_NAMES = { limit: "Limit", stop: "Stop", trailing: "Trailing stop" } as const;
+
 /**
- * Limit and stop orders still waiting, with Cancel, and the ones that ended
- * recently without filling (expired, or cancelled, with the reason). Filled
+ * Limit, stop and trailing stop orders still waiting, with Cancel, and the
+ * ones that ended recently without filling (expired, or cancelled, with the
+ * reason). A bracket's stop-loss and take-profit are marked as such. Filled
  * ones show up as trades in the activity list. `symbol` narrows it to one
  * stock, for its page. Renders nothing when there's nothing to show.
  */
@@ -41,7 +44,8 @@ export function OpenOrders({ symbol }: { symbol?: string }) {
                   </>
                 )}
                 <span className="block text-xs text-muted">
-                  {o.type === "limit" ? "Limit" : "Stop"} · {o.duration === "day" ? "next close only" : "until cancelled"} · placed {formatDate(o.createdAt)}
+                  {o.ocoGroup ? (o.type === "stop" ? "Stop-loss" : "Take-profit") : TYPE_NAMES[o.type]}
+                  {o.ocoGroup && " · one cancels the other"} · {o.duration === "day" ? "next close only" : "until cancelled"} · placed {formatDate(o.createdAt)}
                 </span>
               </span>
               <button

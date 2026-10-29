@@ -30,13 +30,14 @@ const CASH_COLOR = "color-mix(in srgb, var(--muted) 45%, transparent)";
 export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?: boolean }) {
   const { account, quotes } = useAccount();
   if (!account) return <PortfolioSkeleton />;
-  const portfolio = summarizePortfolio(account.holdings, Object.values(quotes), account.cash);
+  const portfolio = summarizePortfolio(account.holdings, Object.values(quotes), account.cash, account.options);
 
-  // One entry per slice of the allocation bar and row of the table, cash last.
+  // One row of the table per holding (a short's value is negative: what buying it back would cost), then options, then cash.
   const slices = [
     ...portfolio.positions.map((p, i) => ({
-      label: p.symbol,
-      name: p.name,
+      label: p.shares < 0 ? `${p.symbol} short` : p.symbol,
+      symbol: p.symbol,
+      name: p.shares < 0 ? `${p.name}: ${-p.shares} shares short` : p.name,
       value: p.marketValue,
       // A stock whose price hasn't loaded is valued at cost; its gain shows as "—", not 0%.
       gain: p.priced ? p.gain : null,
@@ -44,8 +45,17 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
       color: seriesColor(i),
       href: `/stocks/${p.symbol}`,
     })),
-    { label: "Cash", name: "Uninvested", value: portfolio.cash, gain: null, gainPercent: null, color: CASH_COLOR, href: null },
+    ...((account.options ?? []).length
+      ? [{ label: "Options", symbol: null, name: "Option positions at their latest values", value: portfolio.optionsValue, gain: null, gainPercent: null, color: OTHER_COLOR, href: "/portfolio#options" }]
+      : []),
+    { label: "Cash", symbol: null, name: "Uninvested", value: portfolio.cash, gain: null, gainPercent: null, color: CASH_COLOR, href: null },
   ].map((slice) => ({ ...slice, weight: portfolio.totalValue > 0 ? slice.value / portfolio.totalValue : 0 }));
+  // The bar shows what's owned: a short is a debt, so it comes off the cash, which holds its proceeds.
+  const owed = slices.reduce((sum, s) => (s.value < 0 ? sum + s.value : sum), 0);
+  const bar = slices
+    .filter((s) => s.value > 0)
+    .map((s) => (s.label === "Cash" && owed < 0 ? { ...s, label: "Cash, less shorts", value: Math.max(0, s.value + owed) } : s))
+    .map((s) => ({ ...s, weight: portfolio.totalValue > 0 ? s.value / portfolio.totalValue : 0 }));
 
   return (
     <Card aria-labelledby="portfolio" className="h-full">
@@ -88,7 +98,7 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
        * hidden from screen readers because the table below has every number.
        */}
       <div aria-hidden className="mt-5 flex h-3 gap-0.5">
-        {slices.map((slice) => (
+        {bar.map((slice) => (
           <div
             key={slice.label}
             title={`${slice.label}: ${formatCurrency(slice.value)} (${weightFormat.format(slice.weight)})`}
@@ -122,7 +132,7 @@ export function PortfolioSummary({ showDetailsLink = true }: { showDetailsLink?:
               <th scope="row" className="py-2 text-left font-medium">
                 {/* The color key ties each row to its segment in the bar above. */}
                 <span aria-hidden className="mr-2 inline-block size-2.5 rounded-[3px] align-middle" style={{ background: slice.color }} />
-                {slice.href && <StockLogo symbol={slice.label} size={22} className="mr-2 align-middle" />}
+                {slice.symbol && <StockLogo symbol={slice.symbol} size={22} className="mr-2 align-middle" />}
                 {slice.href ? (
                   <Link href={slice.href} title={slice.name} className="tap rounded-sm hover:text-accent focus-visible:outline-2 focus-visible:outline-accent">
                     {slice.label}

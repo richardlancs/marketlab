@@ -8,12 +8,12 @@ import { formatCurrency } from "@/lib/format";
 import { summarizePortfolio } from "@/lib/portfolio";
 import type { StockQuote } from "@/lib/types";
 
-/** How much of one stock the simulated portfolio holds, and how it's doing. */
+/** How much of one stock the simulated portfolio holds (or is short), and how it's doing. */
 export function PositionCard({ quote }: { quote: StockQuote }) {
   const { account, quotes } = useAccount();
   const { symbol } = quote;
   // This page's quote is the freshest for this stock; the others value the rest of the portfolio (for the weight).
-  const portfolio = account && summarizePortfolio(account.holdings, Object.values({ ...quotes, [symbol]: quote }), account.cash);
+  const portfolio = account && summarizePortfolio(account.holdings, Object.values({ ...quotes, [symbol]: quote }), account.cash, account.options);
   const position = portfolio?.positions.find((p) => p.symbol === symbol);
 
   return (
@@ -29,11 +29,11 @@ export function PositionCard({ quote }: { quote: StockQuote }) {
       ) : position ? (
         <dl className="mt-3 grid grid-cols-2 gap-x-4 gap-y-3 text-sm">
           <div>
-            <dt className="text-xs text-muted">Shares</dt>
-            <dd className="mt-0.5 font-medium tabular-nums">{position.shares}</dd>
+            <dt className="text-xs text-muted">{position.shares < 0 ? "Shares short" : "Shares"}</dt>
+            <dd className="mt-0.5 font-medium tabular-nums">{Math.abs(position.shares)}</dd>
           </div>
           <div>
-            <dt className="text-xs text-muted">Average cost</dt>
+            <dt className="text-xs text-muted">{position.shares < 0 ? "Average sale price" : "Average cost"}</dt>
             <dd className="mt-0.5 font-medium tabular-nums">{formatCurrency(position.averageCost)}</dd>
           </div>
           <div>
@@ -49,8 +49,8 @@ export function PositionCard({ quote }: { quote: StockQuote }) {
             <dd className="mt-0.5">
               <ChangeBadge
                 change={position.dayChange}
-                // Today's % is measured against yesterday's value of the position.
-                percent={position.dayChange / (position.marketValue - position.dayChange)}
+                // Today's % is measured against yesterday's value of the position (for a short, what it would cost to buy back).
+                percent={position.dayChange / Math.abs(position.marketValue - position.dayChange)}
                 currency
               />
             </dd>
