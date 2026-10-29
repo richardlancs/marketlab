@@ -6,7 +6,8 @@
  *   close: it stores every catalog stock's and index's latest bars, then has
  *   the service recalculate whatever changed, in time-boxed calls.
  * - Pages call getStockProfile(): it reads the stored result, and if there's
- *   none yet (or it's behind the latest close), it stores that stock's bars
+ *   none yet (or it's behind the latest close, or from an older analytics
+ *   version), it stores that stock's bars
  *   and has the service calculate it on the spot. So pages work before the
  *   daily job has ever run, and locally without it.
  */
@@ -21,7 +22,7 @@ import { CATALOG } from "../market/catalog";
 import { INDICES } from "../market/universe";
 import { parseScreenResult, summarizeScreen, type ScreenConfig, type ScreenResult, type ScreenSettings } from "./history";
 import { parseFactorExposures, type FactorExposures } from "./factors";
-import { parseStockProfile, type StockProfile } from "./profile";
+import { ANALYTICS_VERSION, parseStockProfile, type StockProfile } from "./profile";
 import type { ScreenerRow } from "./screener";
 
 /** The index every beta is measured against (it must be stored with any stock). */
@@ -178,7 +179,7 @@ export async function getStockProfile(symbol: string): Promise<ProfileStatus> {
   try {
     const latest = (await getBarsForStore(symbol))?.bars.at(-1)?.time;
     let stored = await storedProfile(symbol);
-    if (!stored || (latest !== undefined && stored.asOf < latest)) {
+    if (!stored || stored.version !== ANALYTICS_VERSION || (latest !== undefined && stored.asOf < latest)) {
       if (!pythonConfigured()) {
         cacheLife("minutes");
         return stored ? { status: "ok", profile: stored.result, computedAt: stored.computedAt } : { status: "unavailable", reason: "The analytics service isn't running." };
@@ -214,7 +215,10 @@ export async function getScreenerData(): Promise<ScreenerData> {
   try {
     let profiles = await prices.results("stock-profile", source, parseStockProfile);
     const latest = (await getBarsForStore(MARKET))?.bars.at(-1)?.time ?? 0;
-    const behind = CATALOG.filter((s) => (profiles.get(s.symbol)?.asOf ?? 0) < latest);
+    const behind = CATALOG.filter((s) => {
+      const stored = profiles.get(s.symbol);
+      return !stored || stored.version !== ANALYTICS_VERSION || stored.asOf < latest;
+    });
     if (behind.length > 0 && pythonConfigured()) {
       try {
         await refreshAnalytics(Date.now() + 20_000);

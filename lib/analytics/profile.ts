@@ -7,6 +7,9 @@
  * positive numbers. Times are ms.
  */
 
+/** store.ANALYTICS_VERSION: a stored result from another version is recalculated. tests/test_store_version.py keeps the two equal. */
+export const ANALYTICS_VERSION = "1.1.0";
+
 export interface Drawdown {
   depth: number;
   peak: number | null;

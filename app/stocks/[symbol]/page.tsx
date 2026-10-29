@@ -110,7 +110,8 @@ async function StockDetails({ params }: { params: PageProps<"/stocks/[symbol]">[
                     intraday={stock.intraday}
                     today={{ change: stock.change, percent: stock.changePercent }}
                     title={
-                      <h2 id="price" className="text-lg font-semibold tracking-tight">
+                      // Keyed: it reaches PriceChart from inside the tabs array, and React warns about unkeyed elements from arrays.
+                      <h2 key="title" id="price" className="text-lg font-semibold tracking-tight">
                         Price
                       </h2>
                     }

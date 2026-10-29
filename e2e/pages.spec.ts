@@ -22,10 +22,12 @@ test.describe("pages", () => {
   });
 
   test("a stock page shows risk and technicals from the analytics service", async ({ page }) => {
+    // The first profile on a fresh database stores the prices and calculates it, which can pass 30 s under a full run's load.
+    test.slow();
     await page.goto("/stocks/NVDA#analysis");
     // Role queries skip React's hidden copy while a streamed section swaps in.
     const risk = page.getByRole("region", { name: "Risk", exact: true });
-    await expect(risk).toBeVisible();
+    await expect(risk).toBeVisible({ timeout: 90_000 });
     await expect(risk.getByText("Beta vs S&P 500")).toBeVisible();
     await expect(page.getByRole("region", { name: "Technicals", exact: true }).getByText("RSI (14)")).toBeVisible();
   });
@@ -47,11 +49,13 @@ test.describe("pages", () => {
   });
 
   test("a screen tested over time shows its monthly picks, saves and reproduces", async ({ page }) => {
+    // Stores the whole catalog's prices on a fresh database first: slow under a full run's load.
+    test.slow();
     await page.goto("/screener?preset=momentum");
     await page.getByRole("link", { name: /Test this screen over time/ }).click();
     await expect(page).toHaveURL(/\/screener\/history/);
     await page.getByRole("button", { name: "Test this screen over time" }).click();
-    await expect(page.getByText("These results use MarketLab's simulated market")).toBeVisible();
+    await expect(page.getByText("These results use MarketLab's simulated market")).toBeVisible({ timeout: 90_000 });
     await expect(page.getByText("survivorship bias", { exact: true })).toBeVisible();
     const history = page.locator("section", { has: page.getByRole("heading", { name: "Monthly selections" }) });
     const month = history.locator("details").first();
@@ -61,10 +65,10 @@ test.describe("pages", () => {
     await expect(month.getByText(/qualifying stock/).first()).toBeVisible();
 
     await page.getByRole("button", { name: "Save run" }).click();
-    await expect(page.getByRole("button", { name: "Reproduce from saved inputs" })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Reproduce from saved inputs" })).toBeVisible({ timeout: 60_000 });
     await expect(page.getByRole("region", { name: "Saved screen runs" }).getByText(/Momentum leaders, \d{4}/)).toBeVisible();
     await page.getByRole("button", { name: "Reproduce from saved inputs" }).click();
-    await expect(page.getByRole("status").filter({ hasText: /every selection, trade and value is the same/ })).toBeVisible();
+    await expect(page.getByRole("status").filter({ hasText: /every selection, trade and value is the same/ })).toBeVisible({ timeout: 60_000 });
   });
 
   test("a lesson's quiz marks an answer", async ({ page }) => {
