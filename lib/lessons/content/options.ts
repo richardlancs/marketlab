@@ -41,7 +41,7 @@ export const OPTIONS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Options that expire the same day now make up a large share of trading in S&P 500 index options. They are cheap, fast and especially risky.",
       "Studies of individual investors' option trading have found that, as a group, they lose money: they tend to buy short-dated, out-of-the-money calls on popular stocks, and pay wide trading costs on top.",
       "Companies grant employees options to buy their shares at today's price. They pay off only if the share price rises, which is the point: they tie pay to the company's success.",
-      "Investors buy puts as insurance on stocks they own, and some sell calls on their shares for extra income. Both are covered in [[optionStrategies|option strategies]].",
+      "Investors buy puts as insurance on stocks they own, and some sell calls on their shares for extra income. Both are covered in [[optionStrategies|option strategies]], and selling options in [[writingOptions|writing options]].",
     ],
     mistakes: [
       "Thinking cheap options are bargains. An out-of-the-money option is cheap because it usually expires worthless.",
@@ -50,7 +50,8 @@ export const OPTIONS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Selling options for the premium without counting the risk. Someone who sells a call without owning the shares has no limit on how much they can lose.",
     ],
     inMarketLab: [
-      { label: "Options lab", href: "/options", text: "Pick a stock to see a simulated chain of calls and puts around its price, priced from its own volatility, and draw the payoff of any single option at expiry. It's for learning only: there's no option trading in portfolios." },
+      { label: "Options lab", href: "/options", text: "Pick a stock to see a simulated chain of calls and puts around its price, priced from its own volatility, and draw the payoff of any single option at expiry. You can also paper-trade single contracts from the chain, and they show in your portfolio." },
+      { label: "Your options", href: "/portfolio#holdings", text: "Options you hold, or have written, are listed with your holdings at their latest price. At expiry each is settled in cash at what it pays." },
     ],
     related: ["optionStrategies", "optionGreeks", "impliedVolatility", "stopOrder"],
     quiz: [
@@ -318,7 +319,7 @@ export const OPTIONS_LESSONS: Partial<Record<TermKey, Lesson>> = {
       "Forgetting that each leg has trading costs, and that a sold option can be exercised early.",
     ],
     inMarketLab: [
-      { label: "Options lab", href: "/options", text: "Draw the payoff of a covered call, protective put, bull call spread or straddle on any stock's simulated options, and see the breakevens, maximum profit and maximum loss. Learning only: no option trades reach your portfolio." },
+      { label: "Options lab", href: "/options", text: "Draw the payoff of a covered call, protective put, bull call spread or straddle on any stock's simulated options, and see the breakevens, maximum profit and maximum loss. The drawings are for learning, but you can paper-trade single options from the chain, including [[writingOptions|covered calls and cash-secured puts]], and the portfolio shows them." },
     ],
     related: ["callsAndPuts", "optionGreeks", "impliedVolatility", "maxDrawdown"],
     quiz: [
@@ -354,6 +355,99 @@ export const OPTIONS_LESSONS: Partial<Record<TermKey, Lesson>> = {
         choices: ["Better than the index", "Worse than the index", "Exactly the same"],
         answer: 1,
         explanation: "Selling calls caps the gains, so in strong rallies the strategy keeps giving away the best part of the rise.",
+      },
+    ],
+  },
+
+  writingOptions: {
+    why: [
+      "Every option bought was sold by someone. The seller, or writer, collects the premium up front, and in return takes on the obligation: to pay out whatever the option is worth at expiry. Most options expire worthless or nearly so, which is why selling them appeals to many investors as a source of steady income.",
+      "The catch is the shape of the bet. A writer's gain is capped at the premium, while the loss can be many times larger. Writing only options you can cover, with shares you own or cash you've set aside, keeps that loss to something you could have chosen anyway: selling the shares at the strike, or buying them there.",
+    ],
+    how: {
+      paragraphs: [
+        "In MarketLab you trade single options from the options lab's simulated chain, priced by Black-Scholes. Each contract is for 100 shares and is European: it can't be used early, and at the expiry day's close it's settled in cash at what it's worth then. A call pays the close minus the strike, a put the strike minus the close, and otherwise nothing. No shares change hands.",
+        "Trades happen at the chain's price at the latest close, plus a half-spread when you buy and less one when you sell. The half-spread is 2% of the premium, and at least $0.05 a share. You can buy calls and puts, and sell ones you own, before expiry.",
+        "You can write two kinds, and nothing riskier. A covered call: you need 100 shares of the stock for each contract, and they're set aside, so you can't sell them while the call is open. A cash-secured put: the strike × 100 for each contract is set aside from your buying power. To end either early, buy it back from the chain.",
+        "Options are for your practice portfolio only. Season (competition) portfolios can't trade them, though they can sell short. Written options show in your holdings as negative values: what it would cost to buy them back.",
+      ],
+      formula: {
+        expression: "writer's result at expiry = premium received − settlement paid; call settlement = max(close − strike, 0) × 100; put settlement = max(strike − close, 0) × 100",
+        reading: "You keep the premium and pay whatever the option is worth when it expires.",
+      },
+    },
+    example: {
+      setup: "You own 100 shares of a $100 stock. The chain, priced with 20% volatility and a 4% rate, shows a 3-month $110 call at $1.14 and a 3-month $100 put at $3.49.",
+      steps: [
+        "Covered call: you write one $110 call. 2% of $1.14 is less than the $0.05 minimum, so you receive $1.14 − $0.05 = $1.09 a share, or $109.00. Your 100 shares are set aside until it ends.",
+        "At expiry the stock closes at $105.00. The call is worth nothing, so you keep the $109.00, and your shares.",
+        "If it closes at $120.00 instead, the call settles at $120.00 − $110.00 = $10.00 a share: $1,000.00 comes out of your cash. The shares gained $2,000.00, so you're up $2,000.00 + $109.00 − $1,000.00 = $1,109.00, rather than $2,000.00.",
+        "Cash-secured put: you write one $100 put. Its half-spread is 2% of $3.49, about $0.07, so you receive $3.42 a share, or $342.00, and $10,000.00 of your buying power is set aside.",
+        "At expiry the stock closes at $92.00. The put settles at $100.00 − $92.00 = $8.00 a share, so you pay $800.00 and are down $458.00. That's what you'd have lost buying 100 shares at $100.00 − $3.42 = $96.58.",
+        "If it closes at $100.00 or above, you keep the $342.00: 3.42% on the $10,000.00 set aside, in three months.",
+      ],
+      result: "Both trades paid up front. The covered call gave up the stock's rise above $110, and the put took on the stock's fall below $100, cushioned by the premium. That's the trade every writer makes: a small, likely gain for a larger, less likely loss.",
+    },
+    reading: [
+      { label: "Strike far from the price", meaning: "A small premium, and the option will probably expire worthless. Less income, less chance of paying out." },
+      { label: "Strike near the price", meaning: "A bigger premium, and about even odds of paying out at expiry." },
+      { label: "A written option showing a loss", meaning: "The stock has moved toward or past the strike. You can buy it back now, or wait for expiry." },
+      { label: "Buying power lower than your cash", meaning: "Cash-secured puts, and shorts, have money set aside. It's freed when they end." },
+    ],
+    realWorld: [
+      "Real US stock options can be exercised at any time before expiry, so a writer can be assigned early and have to deliver or buy the shares. Most stock options settle in shares, not cash; index options settle in cash.",
+      "In 1993 Berkshire Hathaway sold put options on Coca-Cola shares, collecting about $7.5 million in premiums: in effect, being paid to offer to buy the stock at a lower price.",
+      "Funds that write covered calls on an index are popular for their income, but have trailed the index in strong bull markets, as [[optionStrategies|option strategies]] explains.",
+      "Brokers grant option permissions in levels. Covered calls and cash-secured puts usually come first; writing uncovered options needs the highest approval, because the losses have no fixed limit.",
+    ],
+    mistakes: [
+      "Treating the premium as free income. It's paid for by the gains you give up, or the falls you take on.",
+      "Writing puts on a stock you wouldn't want to own at the strike, just for the premium.",
+      "Choosing whichever strike pays the most. A bigger premium means a bigger chance of paying out.",
+      "Forgetting the shares behind a covered call are set aside, then trying to sell them.",
+    ],
+    inMarketLab: [
+      { label: "Options lab", href: "/options", text: "Pick a stock, choose a contract from the chain, and buy it or write it. A covered call needs 100 shares of the stock per contract in your practice portfolio; a cash-secured put needs the strike × 100 in buying power." },
+      { label: "Your options", href: "/portfolio#holdings", text: "Open options are listed with your holdings at their latest price, with a button to close them. At expiry they're settled in cash and the result appears in your activity." },
+    ],
+    related: ["callsAndPuts", "optionStrategies", "impliedVolatility", "shortSelling"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is a cash-secured put?",
+        choices: [
+          "Buying a put with cash",
+          "Writing a put with the cash to pay its strike × 100 set aside",
+          "A put that can only expire worthless",
+          "Selling a call on shares you own",
+        ],
+        answer: 1,
+        explanation: "You sell the put and keep enough cash aside to cover it. Selling a call on shares you own is a covered call.",
+      },
+      {
+        kind: "Using it",
+        prompt: "In MarketLab a contract's chain price is $2.00 a share. What do you receive per share for writing it?",
+        choices: ["$2.00", "$1.96", "$1.95", "$2.05"],
+        answer: 2,
+        explanation: "The half-spread is 2% of $2.00, or $0.04, but at least $0.05, so you receive $2.00 − $0.05 = $1.95.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You wrote a $50 covered call for $2. At expiry the stock closes at $56. What does the call cost you, net of the premium, per contract?",
+        choices: ["$200", "$400", "$600", "Nothing"],
+        answer: 1,
+        explanation: "It settles at $56 − $50 = $6 a share, or $600, less the $200 received: $400. Your shares gained $6 a share, though: you gave up the rise above $50 in return for the $2.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do brokers make writing uncovered calls the hardest permission to get?",
+        choices: [
+          "Because they pay no premium",
+          "Because a stock can rise without limit, so the loss has no ceiling",
+          "Because they always expire worthless",
+        ],
+        answer: 1,
+        explanation: "A call writer without the shares owes the stock's whole rise above the strike, and there's no limit to how far it can go.",
       },
     ],
   },

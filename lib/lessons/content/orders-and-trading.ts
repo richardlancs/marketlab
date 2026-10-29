@@ -198,6 +198,7 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
         "A sell stop sits below the current price and triggers when the price falls to it or lower. A buy stop sits above the current price and triggers when the price rises to it or higher, for people who want to buy only once a rise is under way, or to limit the loss on a short sale.",
         "In MarketLab, stops are checked against each daily close. A sell stop triggers on the first close at or below your level, and fills at that close. If the close is far below the stop, that's the price you get. Like [[limitOrder|limit orders]], a stop lasts until the next close or up to 90 days, and the shares (or cash, for a buy stop) are checked when it fills.",
         "At a real broker, a stop is watched all day. Once the stock trades at or through the stop price, the order becomes a [[marketOrder|market order]] and fills at the next available price. A stop-limit order adds a limit as well, so it never sells below a floor, but then it may not sell at all in a fast fall.",
+        "Two variations build on it. A [[trailingStop|trailing stop]] follows the price up as it rises, so it can protect a gain as well as cap a loss. A [[bracketOrder|bracket order]] places a stop-loss and a take-profit together, the moment a buy fills.",
       ],
     },
     example: {
@@ -218,7 +219,7 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Buy stop above the price", meaning: "Buys only once the price has risen to the level, often a bit higher than you hoped." },
     ],
     realWorld: [
-      "Traders often place stop-losses as soon as they buy, so a single bad trade can't grow into a large loss. Some size their positions so that a stop being hit costs a set share of their account.",
+      "Traders often place stop-losses as soon as they buy, so a single bad trade can't grow into a large loss. Some [[positionSizing|size their positions]] so that a stop being hit costs a set share of their account.",
       "Long-term investors use stops less, because a stock that dips sharply may recover, and being sold out and missing the rebound has a cost too. Spreading money across many holdings is another way to limit the damage from one stock. See [[diversification]].",
       "Sharp, sudden market drops have triggered many stops at once, selling shares far below their stop prices before prices bounced back. This is one reason some investors prefer stop-limit orders or no stops at all.",
     ],
@@ -231,7 +232,7 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
       { label: "Tesla's trade card", href: "/stocks/TSLA", text: "Choose Stop on a stock's trade card. A volatile stock like this one shows how far a close can land past a stop. Note your reason and exit plan with the trade, so you can check later that you stuck to it." },
       { label: "Portfolio", href: "/portfolio", text: "A filled stop appears as a trade in your activity, at the close it actually filled at, so you can compare it with the stop you set." },
     ],
-    related: ["limitOrder", "marketOrder", "volatility", "maxDrawdown"],
+    related: ["trailingStop", "bracketOrder", "positionSizing", "limitOrder"],
     quiz: [
       {
         kind: "Terminology",
@@ -265,6 +266,458 @@ export const ORDERS_AND_TRADING_LESSONS: Partial<Record<TermKey, Lesson>> = {
         ],
         answer: 1,
         explanation: "After triggering it becomes a limit order, so it won't sell below the limit. If the price falls straight past, it may not sell at all.",
+      },
+    ],
+  },
+
+  trailingStop: {
+    why: [
+      "A plain [[stopOrder|stop-loss]] caps a loss, but it stays where you put it. If the stock doubles, a stop set 10% below what you paid is now far below the price, and a fall could take back most of the gain before it does anything.",
+      "A trailing stop fixes that by moving. It follows the price up and never moves back down, so it keeps cutting the most you can give back. It's one way to follow the old rule \"let your winners run, cut your losers short\" without having to watch the screen and move the stop yourself.",
+    ],
+    how: {
+      paragraphs: [
+        "You set a distance, either a percentage or a dollar amount. A sell trailing stop sits that far below the highest close since you placed it. Each close above the old high lifts the stop; a lower close leaves it where it is. When a close reaches the stop or falls below it, the order sells.",
+        "In MarketLab, prices are end-of-day, so the trailing stop is checked at each day's close. A close at or below the stop fills it at that close, which can be worse than the stop's level after a gap down, just like a plain stop. A close that doesn't fill it moves it up if that close was a new high.",
+        "It protects a position, so you need one: you place a sell trailing stop on shares you own. The mirror image covers a [[shortSelling|short sale]]: a buy trailing stop sits a set distance above the lowest close since you placed it, only ever moves down, and buys the shares back if the price climbs to it.",
+        "The distance is the whole decision. Too tight, and an ordinary day's wiggle sells you out of a stock that then keeps rising. Too wide, and it gives back a lot before it acts. Many traders set it from the stock's typical swings, its [[volatility]], rather than picking a round number.",
+      ],
+      formula: {
+        expression: "sell trailing stop = highest close since placed − distance (or × (1 − percent))",
+        reading: "The stop sits a fixed distance under the best close so far, and only ever rises.",
+      },
+    },
+    example: {
+      setup: "You buy 20 shares at $50.00, for $1,000.00, and place a 10% trailing stop on them.",
+      steps: [
+        "It starts 10% below $50.00, at $45.00.",
+        "The stock closes at $55.00, a new high, so the stop rises to $49.50. Then $60.00: the stop rises to $54.00. The shares are now worth 20 × $60.00 = $1,200.00.",
+        "The next close is $57.00. That's below the high, so the stop stays at $54.00. It never moves back down.",
+        "Then the stock falls hard and closes at $53.00, below the stop. It sells at that close: 20 × $53.00 = $1,060.00, a profit of $60.00.",
+        "Had it filled exactly at the stop, the profit would have been 20 × $54.00 − $1,000.00 = $80.00. The close landed past the level, as a stop's fill can.",
+      ],
+      result: "A fixed stop at $45.00 would still be waiting while the gain slipped away. The trailing stop followed the price up and kept part of the rise, though it sold at the close, not at its level.",
+    },
+    reading: [
+      { label: "A tight trail, like 3%", meaning: "Protects most of a gain, but a normal dip can trigger it. Suits calm stocks, or short trades." },
+      { label: "A wide trail, like 15% to 20%", meaning: "Rides out ordinary swings, but gives back more before it sells. Suits volatile stocks and longer holds." },
+      { label: "The stop above what you paid", meaning: "The position can no longer lose money, unless a close gaps far below the stop." },
+      { label: "A buy trailing stop on a short", meaning: "Follows the price down and buys back if it rises the set distance off its low." },
+    ],
+    realWorld: [
+      "Most brokers offer trailing stops, usually watched all day against live prices rather than once at the close. Some only keep them active during regular trading hours, so an overnight gap fills at the open.",
+      "Trend-following traders often use trailing stops as their whole exit rule. Some set the distance as a multiple of the stock's average daily range, so a jumpy stock gets a wider trail than a quiet one.",
+      "Like any stop, a trailing stop can be hit by a brief plunge. In sudden market-wide drops, many stops fire at once, selling near the bottom just before prices recover.",
+    ],
+    mistakes: [
+      "Setting the trail tighter than the stock's normal daily moves, so it sells on noise.",
+      "Expecting the fill at the stop's level. It's still a stop: the fill is the close that reached it, which can be lower.",
+      "Thinking it protects a stock you don't own. It needs a position: shares to sell, or a short to buy back.",
+    ],
+    inMarketLab: [
+      { label: "Tesla's trade card", href: "/stocks/TSLA#trade", text: "When you own shares, or are short, choose Trailing stop on the trade card and set the trail as a percentage or in dollars. A volatile stock like this one shows why the distance matters." },
+      { label: "Open orders", href: "/portfolio#orders", text: "Your open orders show where each trailing stop sits now, after following the closes since you placed it." },
+    ],
+    related: ["stopOrder", "bracketOrder", "volatility", "dispositionEffect"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does a sell trailing stop do when the stock closes lower, but above the stop?",
+        choices: ["It moves down with the price", "It sells at once", "It stays where it is", "It cancels itself"],
+        answer: 2,
+        explanation: "A trailing stop only ever moves in your favor. It rises with new high closes and stays put otherwise.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You place a $5 trailing stop on shares closing at $40. They close at $44, then $47, then $45. Where is the stop?",
+        choices: ["$35", "$39", "$40", "$42"],
+        answer: 3,
+        explanation: "The highest close is $47, so the stop is $47 − $5 = $42. The fall to $45 doesn't move it back.",
+      },
+      {
+        kind: "Using it",
+        prompt: "In MarketLab your trailing stop sits at $54. The stock gaps down and closes at $49. What price do you sell at?",
+        choices: ["$54", "$49", "Nothing: it skipped the stop", "$51.50"],
+        answer: 1,
+        explanation: "Orders are checked at each close and fill at that close, so a gap past the level fills at $49.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do some traders set a trailing stop's distance from a stock's typical daily range?",
+        choices: [
+          "So a jumpy stock gets a wider trail and isn't sold on ordinary noise",
+          "Because brokers require it",
+          "To make sure it fills at its level",
+        ],
+        answer: 0,
+        explanation: "A fixed 5% suits a calm stock but trips constantly on a volatile one. Matching the trail to the swings avoids that.",
+      },
+    ],
+  },
+
+  bracketOrder: {
+    why: [
+      "The best time to decide how you'll get out of a trade is before you're in it. Once you own a stock and it's moving, fear and hope take over: you hold a loser hoping it comes back, or grab a small gain too early.",
+      "A bracket order writes both exits down at the start. It's an entry with a stop-loss to cap the loss and a take-profit to bank a gain, placed together. Whichever happens first closes the trade, and the other is cancelled.",
+    ],
+    how: {
+      paragraphs: [
+        "In MarketLab, an order that opens a position, a buy or a [[shortSelling|short sale]], can carry a stop-loss, a take-profit, or both. Nothing happens to them until the opening order fills. Then both are placed as orders on the new shares.",
+        "The two are \"one-cancels-other\": when one fills, the other is cancelled, so you can't end up selling the same shares twice. For a buy, the stop-loss is a sell [[stopOrder|stop]] below the price and the take-profit a sell [[limitOrder|limit]] above it. For a short, they flip: the stop-loss is a buy stop above the price and the take-profit a buy limit below it.",
+        "Prices here are end-of-day, so both are checked at each day's close and fill at that close. One close can't set off both, because the stop sits below the target (above it, for a short). A close at or below the stop fills the stop, at that close even after a gap; a close at or above the target fills the target, at that close.",
+        "Placing both levels also shows the trade's shape before you take it: how much you could lose against how much you hope to make. Traders call that the reward-to-risk ratio.",
+      ],
+      formula: {
+        expression: "risk = shares × (entry − stop); reward = shares × (target − entry)",
+        reading: "What you'd lose if the stop fills at its level, and what you'd make if the target fills at its level.",
+      },
+    },
+    example: {
+      setup: "You buy 50 shares at $40.00, or $2,000.00, with a stop-loss at $38.00 and a take-profit at $46.00.",
+      steps: [
+        "Risk: 50 × ($40.00 − $38.00) = $100.00. Reward: 50 × ($46.00 − $40.00) = $300.00, or 3 to 1.",
+        "With 3 to 1, you break even if you're right on $1 of every $4 at stake: winning about 25% of trades like this pays for the losers.",
+        "One path: the stock closes at $42.00, $44.50, then $46.80. The last close is at or above $46.00, so the take-profit fills at that close: 50 × $46.80 = $2,340.00, a profit of $340.00. The stop-loss is cancelled.",
+        "Another path: bad news and a close at $37.50. That's below $38.00, so the stop-loss fills at $37.50 and the take-profit is cancelled. The loss is 50 × ($40.00 − $37.50) = $125.00, a little more than planned because of the gap.",
+      ],
+      result: "Either way, the exit was decided before the trade, and only one of the two could happen. The fills can land past their levels, because every order fills at a close.",
+    },
+    reading: [
+      { label: "Target 3 times as far as the stop", meaning: "You can be wrong more often than right and still come out ahead, if the levels hold." },
+      { label: "Target closer than the stop", meaning: "You need to be right most of the time. Many small wins can be erased by one loss." },
+      { label: "Stop very close to the entry", meaning: "Cheap if it fills, but ordinary daily moves will often fill it." },
+      { label: "A short's bracket", meaning: "The stop-loss sits above the price and the take-profit below, because a short gains when the price falls." },
+    ],
+    realWorld: [
+      "Most brokers offer bracket orders, often called OCO (one-cancels-other) or OTOCO (one-triggers-OCO) orders. They're popular with traders who can't watch the market all day.",
+      "Professional traders often plan every trade this way, sizing it from the distance to the stop. See [[positionSizing|position sizing]].",
+      "A wide take-profit can mean never selling a big winner too early. Some traders skip the target entirely and use a [[trailingStop|trailing stop]] instead.",
+    ],
+    mistakes: [
+      "Placing the stop where the loss feels bearable rather than where the trade idea is proven wrong.",
+      "Cancelling the stop-loss when the price nears it. That undoes the point of deciding in advance.",
+      "Choosing a target with no reason behind it, then judging the strategy by how often it's hit.",
+    ],
+    inMarketLab: [
+      { label: "Apple's trade card", href: "/stocks/AAPL#trade", text: "Open \"Protect it\" when buying or selling short, and set a stop-loss, a take-profit, or both. When your order fills, they're placed as one-cancels-other orders." },
+      { label: "Open orders", href: "/portfolio#orders", text: "A bracket's two exits are listed together under your open orders. When one fills, the other disappears." },
+    ],
+    related: ["stopOrder", "limitOrder", "positionSizing", "trailingStop"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What does \"one-cancels-other\" mean in a bracket order?",
+        choices: [
+          "When the stop-loss or take-profit fills, the other is cancelled",
+          "The buy cancels if the price moves",
+          "Both exits fill at the same time",
+          "You can only place one order a day",
+        ],
+        answer: 0,
+        explanation: "The two exits are linked. Once one closes the position, the other has nothing left to sell, so it's cancelled.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You buy 100 shares at $20 with a stop at $19 and a target at $23. What's the reward-to-risk ratio?",
+        choices: ["1 to 1", "2 to 1", "3 to 1", "4 to 1"],
+        answer: 2,
+        explanation: "Risk is $20 − $19 = $1 a share; reward is $23 − $20 = $3 a share: 3 to 1.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You sell a stock short at $50 with a bracket. Where do the stop-loss and take-profit go?",
+        choices: [
+          "Stop-loss below $50, take-profit above",
+          "Stop-loss above $50, take-profit below",
+          "Both above $50",
+          "Both below $50",
+        ],
+        answer: 1,
+        explanation: "A short loses when the price rises, so its stop-loss is a buy stop above the price, and its take-profit a buy limit below.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do traders like brackets?",
+        choices: [
+          "They guarantee a profit",
+          "They decide the exits before emotions take over, and work while you're away",
+          "They avoid all trading costs",
+        ],
+        answer: 1,
+        explanation: "The exits are chosen calmly in advance, and they wait for the market without being watched. They don't guarantee a profit or the fill price.",
+      },
+    ],
+  },
+
+  positionSizing: {
+    why: [
+      "Two traders can make the same trade, with the same entry and the same stop, and have completely different results, because one bought 25 shares and the other 250. How much you buy often matters more than what you buy.",
+      "Position sizing turns a vague question, \"how much should I put in?\", into a rule: decide how much you're willing to lose if the trade fails, and buy only as many shares as keeps the loss to that. A string of losing trades, which every trader has, then stays survivable.",
+    ],
+    how: {
+      paragraphs: [
+        "Start with a [[stopOrder|stop-loss]]: the price that proves the trade wrong. The distance from your entry price to the stop is what you lose per share if it fills at its level. Divide the amount you're willing to risk by that distance, round down to whole shares, and that's the position.",
+        "A common rule of thumb is to risk about 1% of the account on each trade. With $10,000, that's $100. Ten losers in a row then cost about 10%, painful but far from fatal. Risking 10% a trade, the same streak would leave you with about a third of the account.",
+        "A wide stop means fewer shares, and a tight stop more, so the loss stays the same either way. That's the point: the stop is set by the stock's chart and swings, and the size follows from it.",
+        "It's a plan, not a promise. In MarketLab every order fills at a day's close, so a gap past the stop loses more than the amount you planned. A volatile stock, or one with news coming, can gap by more than the whole distance.",
+      ],
+      formula: {
+        expression: "shares = risk amount ÷ (entry price − stop price), rounded down",
+        reading: "Buy as many shares as you can lose the stop distance on, without losing more than you chose.",
+      },
+    },
+    example: {
+      setup: "Your account is $10,000.00, and you'll risk 1% a trade, or $100.00. A stock closes at $80.00 and you'd set a stop-loss at $76.00.",
+      steps: [
+        "Distance to the stop: $80.00 − $76.00 = $4.00 a share. Shares: $100.00 ÷ $4.00 = 25 shares.",
+        "The position costs 25 × $80.00 = $2,000.00, or 20% of the account, but only $100.00 of it is at risk if the stop fills at its level.",
+        "With a tighter stop at $78.00, the distance is $2.00, so you'd buy 50 shares for $4,000.00. Same risk, bigger position.",
+        "If the distance were $3.00, $100.00 ÷ $3.00 is 33.3, so you buy 33 shares, risking 33 × $3.00 = $99.00.",
+        "Now suppose bad news gaps the stock to a close of $72.00. The stop fills there: 25 × ($80.00 − $72.00) = $200.00, or 2% of the account, twice the plan.",
+      ],
+      result: "Sizing from the stop kept the planned loss to 1%, whatever the stock or stop. The gap shows its limit: the plan is only as good as the price the stop actually fills at.",
+    },
+    reading: [
+      { label: "Risking 0.5% to 1% a trade", meaning: "Conservative, and common among professionals. A long losing streak is a setback, not a disaster." },
+      { label: "Risking 2% to 3%", meaning: "Aggressive. Ten losers in a row cost a fifth of the account or more." },
+      { label: "Risking 10% or more", meaning: "A few bad trades can end the account. Few experienced traders do this." },
+      { label: "A position bigger than your cash allows", meaning: "The stop is too tight for the risk amount. Lower the risk, or widen the stop and buy fewer." },
+    ],
+    realWorld: [
+      "Fixed-fraction sizing, risking a set share of the account each time, is standard in trading books and among professional traders. As the account grows or shrinks, the dollar risk follows.",
+      "Funds size positions too, though usually by [[volatility]]: a jumpy stock gets a smaller weight so each holding adds about the same risk. That's the idea behind [[riskParity|risk parity]].",
+      "The Kelly criterion, from a 1956 paper by John Kelly, works out the size that grows wealth fastest for a known edge. In practice the edge is uncertain, so traders who use it usually bet a fraction of what it says.",
+    ],
+    mistakes: [
+      "Sizing by how much cash you have, or by how sure you feel, instead of by the distance to the stop.",
+      "Moving the stop further away after sizing the trade, which quietly raises the risk.",
+      "Forgetting gaps. A stop fills at the close that reaches it, so the real loss can be bigger than the plan.",
+      "Opening many positions in the same kind of stock, each risking 1%. If they fall together, it's one big bet. See [[correlation]].",
+    ],
+    inMarketLab: [
+      { label: "Coca-Cola's trade card", href: "/stocks/KO#trade", text: "Open \"Protect it\" when buying, set a stop-loss, and type an amount into \"Risk at most ($)\". The helper divides it by the distance to the stop and fills in the shares. Its suggested amount is 1% of your cash." },
+    ],
+    related: ["stopOrder", "bracketOrder", "maxDrawdown", "volatility"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What sets the number of shares in risk-based position sizing?",
+        choices: [
+          "How much cash you have",
+          "The amount you'll risk divided by the distance to your stop",
+          "How confident you feel",
+          "The stock's price alone",
+        ],
+        answer: 1,
+        explanation: "You choose the most you'll lose, and the stop distance tells you how many shares keep the loss to that.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You'll risk $150. You'd buy at $60 with a stop at $55. How many shares?",
+        choices: ["15", "25", "30", "150"],
+        answer: 2,
+        explanation: "The stop is $5 away, so $150 ÷ $5 = 30 shares.",
+      },
+      {
+        kind: "Using it",
+        prompt: "In MarketLab you sized a trade to risk $100 with a stop $2 below your price. The stock gaps to a close $5 below your price. Roughly what do you lose?",
+        choices: ["$100", "$200", "$250", "Nothing: the stop protects you"],
+        answer: 2,
+        explanation: "50 shares were bought. The stop fills at the close, $5 below, so the loss is 50 × $5 = $250.",
+      },
+      {
+        kind: "Real world",
+        prompt: "Why do many traders risk only about 1% of their account a trade?",
+        choices: [
+          "Brokers forbid more",
+          "So a long streak of losses, which every trader has, stays survivable",
+          "Because it guarantees profits",
+        ],
+        answer: 1,
+        explanation: "Losing streaks are normal. At 1% a trade, ten losses cost about 10% of the account; at 10% a trade, they'd cost most of it.",
+      },
+    ],
+  },
+
+  shortSelling: {
+    why: [
+      "Buying a stock is a bet that it will rise. Short selling is the opposite: a way to profit when a price falls. Funds use it to bet against companies they think are overvalued, and to hedge, offsetting some of the risk of what they own.",
+      "It's also riskier than buying in a way that's easy to miss. A stock you buy can at worst go to zero. A stock you're short can rise without any limit, so the loss has no ceiling, and the costs of staying short add up every day.",
+    ],
+    how: {
+      paragraphs: [
+        "To sell short, you borrow shares and sell them now, then buy them back later and return them. If the price fell in between, you keep the difference. In MarketLab you choose Short on a stock's trade card, and a later buy covers it: buying the shares back closes the short.",
+        "The sale's proceeds go into your cash, but you can't spend them. MarketLab sets aside 150% of the short's value at the latest price: the proceeds plus half as much again from your own money. That set-aside reduces your buying power, and it grows if the price rises. If it rises far enough, a [[margin|margin call]] buys the shares back for you.",
+        "While you're short you pay to borrow: a fee of 3% a year, charged at each close on the short's value at that close, divided by 252 trading days. If the stock pays a [[dividend]], you pay it, since the lender would have received it. A [[split|stock split]] scales the short just as it would shares you own.",
+        "You can't sell a stock short while you own shares of it; sell those first. Shorts are allowed in season (competition) portfolios too.",
+      ],
+      formula: {
+        expression: "profit = shares × (sale price − buy-back price) − borrow fees − dividends paid",
+        reading: "You gain what the price fell, less what it cost to stay short.",
+      },
+    },
+    example: {
+      setup: "A stock closes at $50.00. You sell 100 shares short.",
+      steps: [
+        "The sale puts $5,000.00 into your cash. MarketLab sets aside 150% of it, $7,500.00: the proceeds plus $2,500.00 of your own money, so your buying power falls by $2,500.00.",
+        "Borrow fee for a close with the price still at $50.00: 3% × $5,000.00 ÷ 252 = $0.60.",
+        "The price falls to $40.00 and you buy the shares back for $4,000.00. That's $1,000.00 gained before fees.",
+        "Say you were short for 21 closes, at an average value of $4,500.00. The fees come to 21 × 3% × $4,500.00 ÷ 252 = $11.25, leaving $988.75.",
+        "Had the price risen to $65.00 instead, buying back would cost $6,500.00, a loss of $1,500.00, and the amount set aside would have grown to 150% × $6,500.00 = $9,750.00.",
+      ],
+      result: "A 20% fall made about $1,000, but a 30% rise lost $1,500, and a stock can keep rising. Shorts gain less from a fall than they can lose from a rise.",
+    },
+    reading: [
+      { label: "Price falls after you short", meaning: "You gain the fall, less the borrow fee for each close and any dividends." },
+      { label: "Price rises after you short", meaning: "You lose the rise, more is set aside, and buying power shrinks. There's no upper limit." },
+      { label: "Buying power drops when you short", meaning: "Normal: half the short's value from your own money is set aside on top of the proceeds." },
+      { label: "A dividend while short", meaning: "Taken from your cash, since you owe it to the lender of the shares." },
+    ],
+    realWorld: [
+      "Real brokers lend shares from other customers' accounts. Popular shorts can be hard to borrow and cost far more than 3% a year, sometimes over 50%, and a lender can recall the shares.",
+      "When many shorts rush to buy back at once, their buying pushes the price higher still: a short squeeze. GameStop's rise of over 1,000% in January 2021 forced large losses on funds that were short.",
+      "Short sellers have exposed frauds such as Enron and Wirecard, and studies find heavily shorted stocks tend to do poorly afterwards. Many funds use shorts mainly to hedge, as in [[pairsTrading|pairs trading]].",
+    ],
+    mistakes: [
+      "Forgetting the loss is unlimited, and making a short as big as a long you'd be comfortable with.",
+      "Ignoring the borrow fee and dividends, which add up on a short held for months.",
+      "Shorting a stock just because it has risen a lot. Rising stocks often keep rising for a while; see [[momentum]].",
+    ],
+    inMarketLab: [
+      { label: "Tesla's trade card", href: "/stocks/TSLA#trade", text: "Choose Short on the trade card to sell shares you don't own. To close the short, buy the shares back from the same card. A volatile stock shows how fast a short can go against you." },
+      { label: "Holdings", href: "/portfolio#holdings", text: "A short shows as a negative number of shares, with its value, its gain or loss, and the borrow fees and dividends it has paid in your activity." },
+    ],
+    related: ["margin", "bracketOrder", "dividend", "pairsTrading"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is short selling?",
+        choices: [
+          "Selling borrowed shares now to buy them back later",
+          "Selling shares you've held for less than a year",
+          "Buying a stock you expect to fall",
+          "Selling part of a position",
+        ],
+        answer: 0,
+        explanation: "You sell shares you've borrowed and must buy them back later. You gain if the price falls in between.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You short 50 shares at $80 and buy them back at $70. Ignoring fees, what's your profit?",
+        choices: ["$50", "$500", "$700", "−$500"],
+        answer: 1,
+        explanation: "50 × ($80 − $70) = $500. Fees and any dividends would come out of that.",
+      },
+      {
+        kind: "Using it",
+        prompt: "In MarketLab you short shares worth $2,000. How much of your cash is set aside in total?",
+        choices: ["$2,000", "$1,000", "$3,000", "Nothing"],
+        answer: 2,
+        explanation: "150% of the short's value is set aside: the $2,000 of proceeds plus $1,000 more of your own money.",
+      },
+      {
+        kind: "Real world",
+        prompt: "What is a short squeeze?",
+        choices: [
+          "A broker lowering the borrow fee",
+          "Short sellers rushing to buy back, pushing the price even higher",
+          "A company buying back its shares",
+        ],
+        answer: 1,
+        explanation: "Shorts cover by buying, so when a heavily shorted stock rises, their buying can drive it up further, as with GameStop in 2021.",
+      },
+    ],
+  },
+
+  margin: {
+    why: [
+      "When you sell short, you owe shares you don't have. The broker needs to know you can buy them back, so it holds money aside as security: margin. As long as your account is worth enough compared with what you owe, nothing happens.",
+      "When it isn't, the broker acts without asking. A margin call is the forced buy-back that follows, at whatever the price is that day. It turns a paper loss into a real one, often at the worst moment, so it's worth understanding before you go short.",
+    ],
+    how: {
+      paragraphs: [
+        "Your equity is what the account is worth: cash, plus the stocks you own, minus the value of your shorts, with any options at their latest marks. Selling short doesn't change equity on the day: the proceeds add to cash exactly what the short subtracts.",
+        "MarketLab checks equity at every close. If it has fallen below 30% of the shorts' value, the maintenance margin, it buys shorts back at that close, largest first and in whole shares, just until equity is back to 30%. If there isn't enough cash, it sells stocks you own first to raise it. These trades show in your activity, marked as a margin call.",
+        "The buy-back doesn't raise equity, since it swaps cash for a smaller short at the market price. It works by shrinking the shorts, and so the 30% you need. Separately, each short also has 150% of its value set aside when you open it (see [[shortSelling|short selling]]), which limits how big a short you can start.",
+        "As the price rises, the short's value grows and equity falls at the same time, so a big enough rise always triggers a call. You can work out the price that would do it in advance.",
+      ],
+      formula: {
+        expression: "equity = cash + longs − shorts; margin call if equity < 30% × shorts",
+        reading: "Once what you're worth falls below 30% of what you owe in shares, shorts are bought back until it isn't.",
+      },
+    },
+    example: {
+      setup: "You have $10,000.00 in cash and sell 300 shares short at $50.00. Your cash becomes $25,000.00, and you're short $15,000.00 of stock. Leave borrow fees aside.",
+      steps: [
+        "Equity: $25,000.00 − $15,000.00 = $10,000.00, unchanged. A call comes once $25,000.00 − 300 × price is under 30% of 300 × price, which happens above $25,000.00 ÷ 390 = $64.10.",
+        "The stock jumps and closes at $70.00. The shorts are now worth 300 × $70.00 = $21,000.00, so equity is $25,000.00 − $21,000.00 = $4,000.00. The 30% required is $6,300.00.",
+        "A short of S shares stays within the rule if $4,000.00 ≥ 30% × $70.00 × S, so at most 190 shares. MarketLab buys back 110 shares at $70.00, for $7,700.00.",
+        "Afterwards: cash $17,300.00, a short of 190 shares worth $13,300.00, and equity still $4,000.00. The requirement is now 30% × $13,300.00 = $3,990.00, so the account is back within the rule.",
+      ],
+      result: "A 40% rise turned $10,000 into $4,000, and the margin call locked in the loss on 110 shares at the day's close. If the stock falls back later, those shares are no longer short.",
+    },
+    reading: [
+      { label: "Equity well above 30% of shorts", meaning: "Room to spare. Work out the price that would trigger a call, and how far away it is." },
+      { label: "Equity near 30% of shorts", meaning: "A small rise triggers a forced buy-back. Covering some yourself lets you choose which and when." },
+      { label: "A margin call in your activity", meaning: "Shorts were bought back at that close, the largest first, just enough to restore 30%." },
+      { label: "Buying power below zero", meaning: "The 150% set aside for shorts has grown past your cash as prices rose. You can't buy more until it's back above zero." },
+    ],
+    realWorld: [
+      "In the US, Regulation T requires 150% for opening a short: the proceeds plus 50%. Exchange rules set a minimum maintenance margin of 30% for most shorts, and brokers often ask for more on volatile stocks.",
+      "Real brokers usually send a margin call first and give a little time to add cash, but they may also sell without warning, and they choose what to sell.",
+      "Margin also means borrowing to buy stocks. In 1929, many investors had bought with mostly borrowed money; as prices fell, margin calls forced selling that drove prices lower still.",
+    ],
+    mistakes: [
+      "Not knowing the price that would trigger a call until it happens.",
+      "Assuming a stock that has risen must come back before you're forced out. A margin call doesn't wait.",
+      "Thinking buying back raises your equity. It only shrinks what you're required to hold.",
+    ],
+    inMarketLab: [
+      { label: "Holdings", href: "/portfolio#holdings", text: "The portfolio shows your cash, your buying power after what's set aside for shorts, and each short's value at the latest close." },
+      { label: "Activity", href: "/portfolio#activity", text: "Any margin-call buy-backs, and stocks sold to pay for them, are listed in your activity with a note." },
+    ],
+    related: ["shortSelling", "positionSizing", "maxDrawdown"],
+    quiz: [
+      {
+        kind: "Terminology",
+        prompt: "What is a margin call in MarketLab?",
+        choices: [
+          "A fee for borrowing shares",
+          "Shorts bought back at a close because equity fell below 30% of their value",
+          "A message asking you to deposit cash",
+          "An order you place to sell short",
+        ],
+        answer: 1,
+        explanation: "When equity falls below the 30% maintenance margin at a close, shorts are bought back at that close until it's restored.",
+      },
+      {
+        kind: "Using it",
+        prompt: "You have $12,000 in cash, own no stock, and are short shares worth $10,000. What's your equity?",
+        choices: ["$22,000", "$12,000", "$2,000", "$10,000"],
+        answer: 2,
+        explanation: "Equity = cash + longs − shorts = $12,000 + $0 − $10,000 = $2,000, which is below 30% of $10,000, so a call would follow.",
+      },
+      {
+        kind: "Using it",
+        prompt: "Why doesn't a margin call's buy-back raise your equity?",
+        choices: [
+          "It does: it adds cash",
+          "It swaps cash for a smaller short at the same price, so equity is unchanged",
+          "Because fees are charged",
+        ],
+        answer: 1,
+        explanation: "Paying $70 to cancel a $70 short leaves equity the same. What changes is the 30% requirement, which shrinks with the short.",
+      },
+      {
+        kind: "Real world",
+        prompt: "How did margin calls make the 1929 crash worse?",
+        choices: [
+          "They forced investors who'd bought with borrowed money to sell, pushing prices lower",
+          "They stopped all trading",
+          "They raised interest rates",
+        ],
+        answer: 0,
+        explanation: "Falling prices triggered calls, the forced selling pushed prices down further, and that triggered more calls.",
       },
     ],
   },

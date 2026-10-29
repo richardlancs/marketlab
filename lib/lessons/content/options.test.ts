@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { tradePrice } from "../../option-trading";
 import { blackScholes, impliedVolatility, profitAtExpiry, type Leg } from "../demos";
 import type { Lesson } from "../types";
 import { OPTIONS_LESSONS } from "./options";
@@ -9,6 +10,7 @@ const exampleText = (lesson: Lesson | undefined) => {
   return [lesson.example.setup, ...lesson.example.steps, lesson.example.result].join(" ");
 };
 const money = (v: number) => `$${v.toFixed(2)}`;
+const usd = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 /** The lessons' example: a $100 stock, 3 months, 20% volatility, a 4% rate. */
 const base = { spot: 100, strike: 100, years: 0.25, volatility: 0.2, rate: 0.04 };
 
@@ -80,5 +82,31 @@ describe("options worked examples", () => {
     expect(text).toContain(money(100 + a + c));
     // "$0.58 × 4 = $2.32" a year of puts, in the real-world notes.
     expect(d * 4).toBeCloseTo(2.32, 10);
+  });
+
+  it("writing options: a covered call and a cash-secured put, at the chain price less the half-spread", () => {
+    const text = exampleText(OPTIONS_LESSONS.writingOptions);
+    const call = Number(blackScholes("call", { ...base, strike: 110 }).price.toFixed(2));
+    const put = Number(blackScholes("put", base).price.toFixed(2));
+    expect(text).toContain(`$110 call at ${money(call)}`);
+    expect(text).toContain(`$100 put at ${money(put)}`);
+    const callSold = tradePrice(call, "sell");
+    const putSold = tradePrice(put, "sell");
+    expect(call * 0.02).toBeLessThan(0.05);
+    expect(text).toContain(`${money(call)} − $0.05 = ${money(callSold)} a share, or ${usd(callSold * 100)}`);
+    expect(text).toContain(`about ${money(put * 0.02)}, so you receive ${money(putSold)} a share, or ${usd(putSold * 100)}`);
+    expect(text).toContain(`${usd(100 * 100)} of your buying power`);
+    // The call at $120: settle at $10 a share; shares up $2,000.
+    expect(text).toContain(`$120.00 − $110.00 = $10.00 a share: ${usd(1_000)}`);
+    const callTotal = 100 * (120 - 100) + callSold * 100 - 100 * (120 - 110);
+    expect(text).toContain(`${usd(2_000)} + ${usd(callSold * 100)} − ${usd(1_000)} = ${usd(callTotal)}`);
+    expect(callTotal).toBeCloseTo(100 * (110 - 100 + callSold), 6);
+    // The put at $92: pay $800, less the premium; the same as buying at strike − premium.
+    expect(text).toContain(`$100.00 − $92.00 = $8.00 a share, so you pay ${usd(800)} and are down ${usd(800 - putSold * 100)}`);
+    expect(text).toContain(`$100.00 − ${money(putSold)} = ${money(100 - putSold)}`);
+    expect(100 * (100 - putSold - 92)).toBeCloseTo(800 - putSold * 100, 6);
+    expect(text).toContain(`keep the ${usd(putSold * 100)}: ${((putSold * 100) / 10_000 * 100).toFixed(2)}%`);
+    // Quiz: writing at a $2.00 chain price gets $1.95.
+    expect(tradePrice(2, "sell")).toBe(1.95);
   });
 });

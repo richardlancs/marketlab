@@ -40,6 +40,81 @@ describe("orders and trading worked examples", () => {
     expect(text).toContain(`another ${usd(10 * 100 - 10 * 80 - 10 * (100 - 90))}`);
   });
 
+  it("trailing stop", () => {
+    const text = exampleText(ORDERS_AND_TRADING_LESSONS.trailingStop);
+    const trail = (high: number) => high * (1 - 0.1);
+    expect(text).toContain(`at ${usd(trail(50))}`);
+    expect(text).toContain(`rises to ${usd(trail(55))}`);
+    expect(text).toContain(`rises to ${usd(trail(60))}`);
+    expect(text).toContain(`20 × $60.00 = ${usd(20 * 60)}`);
+    expect(57).toBeGreaterThan(trail(60));
+    expect(53).toBeLessThanOrEqual(trail(60));
+    expect(text).toContain(`20 × $53.00 = ${usd(20 * 53)}, a profit of ${usd(20 * 53 - 20 * 50)}`);
+    expect(text).toContain(`= ${usd(20 * trail(60) - 20 * 50)}`);
+  });
+
+  it("bracket order", () => {
+    const text = exampleText(ORDERS_AND_TRADING_LESSONS.bracketOrder);
+    const risk = 50 * (40 - 38);
+    const reward = 50 * (46 - 40);
+    expect(text).toContain(usd(50 * 40));
+    expect(text).toContain(`= ${usd(risk)}`);
+    expect(text).toContain(`= ${usd(reward)}, or ${reward / risk} to 1`);
+    expect(text).toContain(pct(risk / (risk + reward), 0));
+    expect(46.8).toBeGreaterThanOrEqual(46);
+    expect(text).toContain(`50 × $46.80 = ${usd(50 * 46.8)}, a profit of ${usd(50 * 46.8 - 50 * 40)}`);
+    expect(text).toContain(`= ${usd(50 * (40 - 37.5))}`);
+  });
+
+  it("position sizing", () => {
+    const text = exampleText(ORDERS_AND_TRADING_LESSONS.positionSizing);
+    const risk = 0.01 * 10_000;
+    expect(text).toContain(`or ${usd(risk)}`);
+    expect(text).toContain(`$100.00 ÷ $4.00 = ${risk / (80 - 76)} shares`);
+    expect(text).toContain(`25 × $80.00 = ${usd(25 * 80)}, or ${pct((25 * 80) / 10_000, 0)}`);
+    expect(text).toContain(`${risk / (80 - 78)} shares for ${usd((risk / (80 - 78)) * 80)}`);
+    expect(text).toContain(`${(risk / 3).toFixed(1)}, so you buy ${Math.floor(risk / 3)} shares`);
+    expect(text).toContain(`= ${usd(Math.floor(risk / 3) * 3)}`);
+    expect(text).toContain(`= ${usd(25 * (80 - 72))}, or ${pct((25 * (80 - 72)) / 10_000, 0)}`);
+  });
+
+  it("short selling", () => {
+    const text = exampleText(ORDERS_AND_TRADING_LESSONS.shortSelling);
+    const proceeds = 100 * 50;
+    expect(text).toContain(usd(proceeds));
+    expect(text).toContain(usd(1.5 * proceeds));
+    expect(text).toContain(`plus ${usd(0.5 * proceeds)}`);
+    expect(text).toContain(`÷ 252 = ${usd((0.03 * proceeds) / 252)}`);
+    expect(text).toContain(`for ${usd(100 * 40)}. That's ${usd(proceeds - 100 * 40)}`);
+    const fees = (21 * 0.03 * 4_500) / 252;
+    expect(text).toContain(`= ${usd(fees)}, leaving ${usd(proceeds - 100 * 40 - fees)}`);
+    expect(text).toContain(`cost ${usd(100 * 65)}, a loss of ${usd(100 * 65 - proceeds)}`);
+    expect(text).toContain(`= ${usd(1.5 * 100 * 65)}`);
+  });
+
+  it("margin call", () => {
+    const text = exampleText(ORDERS_AND_TRADING_LESSONS.margin);
+    const cash = 10_000 + 300 * 50;
+    expect(text).toContain(usd(cash));
+    expect(text).toContain(usd(300 * 50));
+    expect(text).toContain(`÷ 390 = ${usd(cash / (300 * (1 + 0.3)))}`);
+    const shorts = 300 * 70;
+    const equity = cash - shorts;
+    expect(text).toContain(`300 × $70.00 = ${usd(shorts)}`);
+    expect(text).toContain(`= ${usd(equity)}`);
+    expect(text).toContain(`required is ${usd(0.3 * shorts)}`);
+    // The same rule as lib/processing.ts: buy back ceil(deficit ÷ price) shares.
+    const bought = Math.ceil((shorts - equity / 0.3) / 70 - 1e-9);
+    const left = 300 - bought;
+    expect(left).toBe(Math.floor(equity / (0.3 * 70)));
+    expect(text).toContain(`at most ${left} shares`);
+    expect(text).toContain(`buys back ${bought} shares at $70.00, for ${usd(bought * 70)}`);
+    expect(text).toContain(`cash ${usd(cash - bought * 70)}, a short of ${left} shares worth ${usd(left * 70)}`);
+    expect(cash - bought * 70 - left * 70).toBe(equity);
+    expect(text).toContain(`= ${usd(0.3 * left * 70)}`);
+    expect(0.3 * left * 70).toBeLessThanOrEqual(equity);
+  });
+
   it("trading costs", () => {
     const text = exampleText(ORDERS_AND_TRADING_LESSONS.tradingCosts);
     const slip = 5 / 10_000;

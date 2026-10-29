@@ -152,6 +152,36 @@ export const GLOSSARY = {
     more: "A stop decides when to act, not the price: after a sudden drop it fills at the next price available, which can be well below the stop.",
     group: "Orders and trading",
   },
+  trailingStop: {
+    title: "Trailing stop",
+    short: "A stop that follows the price up (or, covering a short, down), staying a set distance from the best close, and never moves back.",
+    more: "A 10% trailing stop on a stock bought at $50 starts at $45; if the stock climbs to $60 it follows to $54, locking in part of the gain. If the price then falls to it, it sells. It lets winners run while capping how much of a gain can slip away, but a choppy stock can trip it on an ordinary dip.",
+    group: "Orders and trading",
+  },
+  bracketOrder: {
+    title: "Bracket order",
+    short: "An order that, once it fills, places a stop-loss below and a take-profit above, and whichever fills first cancels the other.",
+    more: "It decides the exit before the entry: how much you're willing to lose and what you'd be happy to take. The two exit orders are \"one-cancels-other\", so you can never end up selling twice. For a short, the stop-loss sits above the price and the take-profit below.",
+    group: "Orders and trading",
+  },
+  positionSizing: {
+    title: "Position sizing",
+    short: "Choosing how many shares to buy from how much you're willing to lose, rather than from how much you could afford.",
+    more: "Risk $100 with a stop-loss $2 below the price and you buy 50 shares: if the stop fills at its level, you lose about $100. Many traders risk around 1% of their account a trade, so a run of losses hurts but doesn't sink them. A gap past the stop can still lose more.",
+    group: "Orders and trading",
+  },
+  shortSelling: {
+    title: "Short selling",
+    short: "Selling borrowed shares now to buy them back later, so you gain if the price falls and lose if it rises.",
+    more: "Sell 100 shares short at $50 and buy them back at $40: you keep $1,000, less fees. But a stock can rise without limit, so a short's possible loss has no ceiling. While short you pay a borrow fee and any dividends the stock pays.",
+    group: "Orders and trading",
+  },
+  margin: {
+    title: "Margin and margin calls",
+    short: "Money set aside to back a short (or a loan), and the forced buy-back when the account's equity falls too low.",
+    more: "Here a short needs 150% of its value set aside: the sale's proceeds plus half as much again. If the price rises until equity (cash plus what you own, less what you're short) is under 30% of the shorts' value, shorts are bought back at that close until it's restored, at whatever the price is then. Brokers' rules are similar.",
+    group: "Orders and trading",
+  },
   tradingCosts: {
     title: "Trading costs",
     short: "What each trade costs on top of the price: commissions, and slippage from not getting quite the price you saw.",
@@ -270,6 +300,12 @@ export const GLOSSARY = {
     title: "Option strategies",
     short: "Combining options with each other or with shares to shape the payoff: covered calls, protective puts, spreads and straddles.",
     more: "Each combination trades one thing for another. A covered call earns a premium but caps the upside; a protective put limits the loss at a cost; a spread is cheaper but caps the gain; a straddle bets on a big move in either direction.",
+    group: "Options",
+  },
+  writingOptions: {
+    title: "Writing options",
+    short: "Selling an option to collect its premium: a covered call against shares you own, or a cash-secured put with the cash to buy at the strike.",
+    more: "A covered call pays you now, but gives up the stock's rise above the strike. A cash-secured put pays you now, but if the stock falls below the strike you pay the difference, like buying it there. Selling options without that backing can lose far more, so MarketLab only allows these two.",
     group: "Options",
   },
   buyAndHold: {
