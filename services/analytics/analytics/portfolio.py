@@ -3,8 +3,11 @@ Portfolio analytics for one owner's current holdings, from stored daily bars:
 what drives its risk, how bad a bad day or a crash could be, what a range of
 futures looks like, and how other weightings of the same stocks compare.
 
-Inputs are today's holdings (dollar values) and cash; everything assumes the
-weights stay as they are now. Cash earns nothing and never moves.
+Inputs are today's holdings (dollar values, negative for a short) and cash;
+everything assumes the weights stay as they are now. Cash earns nothing and
+never moves. Weights are shares of equity (cash + longs − shorts), so a
+short has a negative weight, and cash holding a short's proceeds can weigh
+more than 100%. Optimisation is over the stocks owned (long-only).
 
 - Risk: annualised volatility from the last year of daily returns
   (covariance x 252), each holding's share of it (risk contribution:
@@ -99,8 +102,8 @@ def portfolio_analysis(
     market: pd.DataFrame | None,
     seed_text: str,
 ) -> dict[str, Any]:
-    symbols = [s for s, v in holdings.items() if v > 0 and s in bars and len(bars[s]) >= 60]
-    left_out = [s for s, v in holdings.items() if v > 0 and s not in symbols]
+    symbols = [s for s, v in holdings.items() if v != 0 and s in bars and len(bars[s]) >= 60]
+    left_out = [s for s, v in holdings.items() if v != 0 and s not in symbols]
     invested = float(sum(holdings[s] for s in symbols))
     total = invested + max(cash, 0.0)
     if not symbols or total <= 0:
@@ -148,7 +151,7 @@ def portfolio_analysis(
             stresses.append({
                 "name": f"The market's fall from {pd.Timestamp(peak, unit='ms'):%b %Y} to {pd.Timestamp(trough, unit='ms'):%b %Y}",
                 "kind": "historical", "start": peak, "end": trough, "market": _n(-depth),
-                "portfolio": _n(change), "coverage": _n(float(w[covered].sum() / w.sum()) if len(covered) else 0.0, 4),
+                "portfolio": _n(change), "coverage": _n(float(np.abs(w[covered]).sum() / np.abs(w).sum()) if len(covered) else 0.0, 4),
             })
     for scenario in HYPOTHETICAL:
         change = sum(w[i] * (scenario["sectors"].get(sectors.get(s) or "", 0.0) + (betas.get(s) if betas.get(s) is not None else 1.0) * scenario["market"]) for i, s in enumerate(symbols))
@@ -179,14 +182,16 @@ def portfolio_analysis(
 
     # Optimisation over the invested stocks (cash left as it is).
     optimisation = None
-    if len(symbols) >= 2:
-        three = _returns(bars, symbols, 3 * TRADING_DAYS)
+    owned = [i for i, x in enumerate(w) if x > 0]
+    if len(owned) >= 2:
+        longs = [symbols[i] for i in owned]
+        three = _returns(bars, longs, 3 * TRADING_DAYS)
         mu = shrink_returns(three)
         shrunk = shrunk_covariance(three)
-        cap = default_cap(len(symbols))
+        cap = default_cap(len(longs))
         result = optimise(mu, shrunk, cap)
         describe = result.pop("describe")
-        optimisation = {**result, "current": describe(w / w.sum()), "cap": _n(cap, 4), "estimationSessions": int(len(three))}
+        optimisation = {**result, "current": describe(w[owned] / w[owned].sum()), "cap": _n(cap, 4), "estimationSessions": int(len(three)), "symbols": longs if len(longs) < len(symbols) else None}
 
     return {
         "asOf": int(year.index[-1]),
@@ -199,7 +204,7 @@ def portfolio_analysis(
             "beta": _n(portfolio_beta, 4),
             "var95": _n(-float(np.quantile(daily, 0.05))),
             "expectedShortfall95": _n(-float(np.mean(sorted_daily[:tail]))),
-            "diversificationRatio": _n(float(w @ vols) / vol if vol > 0 else None, 4),
+            "diversificationRatio": _n(float(np.abs(w) @ vols) / vol if vol > 0 else None, 4),
             "holdingVolatility": [_n(v) for v in vols],
             "holdingBeta": [_n(betas.get(s), 4) for s in symbols],
             "riskContribution": [_n(c, 4) for c in contributions],

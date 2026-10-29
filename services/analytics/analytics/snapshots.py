@@ -36,13 +36,16 @@ def _accounts(db: Database, ids: list[str]) -> dict[str, dict[str, Any]]:
         return {}
     marks = ",".join("?" for _ in ids)
     out: dict[str, dict[str, Any]] = {
-        r["user_id"]: {"cash": float(r["cash"]), "holdings": [], "trades": [], "events": [], "createdAt": int(r["created_at"] or 0)}
+        r["user_id"]: {"cash": float(r["cash"]), "holdings": [], "trades": [], "events": [], "options": [], "createdAt": int(r["created_at"] or 0)}
         for r in db.query(f"SELECT user_id, cash, created_at FROM portfolio WHERE user_id IN ({marks})", ids)
     }
     for r in db.query(f"SELECT user_id, symbol, shares FROM holding WHERE user_id IN ({marks})", ids):
         out[r["user_id"]]["holdings"].append({"symbol": r["symbol"], "shares": float(r["shares"])})
-    for r in db.query(f"SELECT user_id, symbol, side, shares, price, time FROM trade WHERE user_id IN ({marks}) ORDER BY time DESC", ids):
-        out[r["user_id"]]["trades"].append({"symbol": r["symbol"], "side": r["side"], "shares": float(r["shares"]), "price": float(r["price"]), "time": int(r["time"])})
+    for r in db.query(f"SELECT user_id, symbol, side, shares, price, time, option_kind, strike, expiry FROM trade WHERE user_id IN ({marks}) ORDER BY time DESC", ids):
+        option = {"kind": r["option_kind"], "strike": float(r["strike"]), "expiry": int(r["expiry"])} if r["option_kind"] else None
+        out[r["user_id"]]["trades"].append({"symbol": r["symbol"], "side": r["side"], "shares": float(r["shares"]), "price": float(r["price"]), "time": int(r["time"]), "option": option})
+    for r in db.query(f"SELECT user_id, symbol, kind, strike, expiry, contracts, mark FROM option_position WHERE user_id IN ({marks})", ids):
+        out[r["user_id"]]["options"].append({"symbol": r["symbol"], "kind": r["kind"], "strike": float(r["strike"]), "expiry": int(r["expiry"]), "contracts": float(r["contracts"]), "mark": None if r["mark"] is None else float(r["mark"])})
     for r in db.query(f"SELECT user_id, kind, symbol, time, shares, cash FROM account_event WHERE user_id IN ({marks}) ORDER BY time DESC", ids):
         out[r["user_id"]]["events"].append({"kind": r["kind"], "symbol": r["symbol"], "time": int(r["time"]), "shares": float(r["shares"]), "cash": float(r["cash"])})
     return out
@@ -86,7 +89,7 @@ def run(db: Database, source: str, budget_ms: int = 8000) -> dict[str, Any]:
             left = len(due) - i
             break
         accounts = _accounts(db, due[i : i + BATCH])
-        closes = _closes(db, source, (h["symbol"] for a in accounts.values() for h in a["holdings"]), latest)
+        closes = _closes(db, source, (s for a in accounts.values() for s in [*(h["symbol"] for h in a["holdings"]), *(o["symbol"] for o in a["options"])]), latest)
         rows = []
         for user, account in accounts.items():
             try:

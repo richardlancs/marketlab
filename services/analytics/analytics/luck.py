@@ -262,7 +262,9 @@ def account_luck(
 ) -> dict[str, Any]:
     """
     `trips`: round trips with an entry (closed, or open with exit None = still
-    held), each with symbol, entry, exit, shares and entryPrice. `times`: the
+    held), each with symbol, entry, exit, shares and entryPrice. A short's
+    (side "short") gains when the price falls, and so do its random versions;
+    options are left out. `times`: the
     sessions since the first trade. `values` and `index_values`: the account's
     and the index's daily values on those sessions, for the Sharpe range.
     """
@@ -270,6 +272,9 @@ def account_luck(
 
     rng = np.random.default_rng(int(hashlib.sha256(seed_text.encode()).hexdigest()[:16], 16))
     notes: list[str] = []
+    if any(t.get("option") for t in trips):
+        notes.append("Option trades aren't included: only trades in shares are compared.")
+        trips = [t for t in trips if not t.get("option")]
     symbols = sorted(set(universe) | {t["symbol"] for t in trips})
     column = {s: i for i, s in enumerate(symbols)}
     # Sessions × stocks, carried forward over gaps, NaN before a stock's first price.
@@ -283,7 +288,7 @@ def account_luck(
         a, b = session(t["entry"]), session(t["exit"]) if t.get("exit") is not None else len(times) - 1
         j = column[t["symbol"]]
         if np.isfinite(grid[a, j]) and np.isfinite(grid[b, j]) and grid[a, j] > 0:
-            usable.append((j, a, b, float(t["shares"]) * float(t["entryPrice"])))
+            usable.append((j, a, b, float(t["shares"]) * float(t["entryPrice"]), -1.0 if t.get("side") == "short" else 1.0))
     timing = picking = None
     if len(times) < MIN_SESSIONS:
         notes.append(f"Your account needs at least {MIN_SESSIONS} sessions of trading history to compare; keep going.")
@@ -292,23 +297,23 @@ def account_luck(
     else:
         money = np.array([u[3] for u in usable])
         total_money = money.sum()
-        actual = sum(m * (grid[b, j] / grid[a, j] - 1) for j, a, b, m in usable) / total_money
+        actual = sum(m * d * (grid[b, j] / grid[a, j] - 1) for j, a, b, m, d in usable) / total_money
         # Timing: same stock and length, random start (on or after the stock's first price).
         gains = np.zeros(TRIALS)
-        for j, a, b, m in usable:
+        for j, a, b, m, d in usable:
             length = b - a
             column_prices = grid[:, j]
             first = int(np.argmax(np.isfinite(column_prices)))
             latest = len(times) - 1 - length
             starts = rng.integers(first, max(first, latest) + 1, size=TRIALS)
-            gains += m * (column_prices[np.minimum(starts + length, len(times) - 1)] / column_prices[starts] - 1)
+            gains += m * d * (column_prices[np.minimum(starts + length, len(times) - 1)] / column_prices[starts] - 1)
         timing = _comparison("timing", float(actual), gains / total_money)
         # Picking: same days and money, a random stock with prices on both days.
         gains = np.zeros(TRIALS)
-        for j, a, b, m in usable:
+        for j, a, b, m, d in usable:
             valid = np.nonzero(np.isfinite(grid[a]) & np.isfinite(grid[b]) & (grid[a] > 0))[0]
             chosen = rng.choice(valid, size=TRIALS)
-            gains += m * (grid[b, chosen] / grid[a, chosen] - 1)
+            gains += m * d * (grid[b, chosen] / grid[a, chosen] - 1)
         picking = _comparison("picking", float(actual), gains / total_money)
 
     sharpe = None

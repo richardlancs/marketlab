@@ -36,6 +36,14 @@ same start.
 By reason. Each round trip carries the reason given when its shares were
 bought (trade notes), and the closed ones are grouped by it.
 
+Shorts and options (Phase 19). A short's round trip runs from the sale that
+opened it to the buy that closed it, matched first in, first out the same
+way, and gains when the price fell. Options are matched per contract (a
+contract is 100 shares), long or written. Both appear among the round trips,
+marked by side and instrument; "after you sold" and the disposition effect
+stay about selling shares you owned. Stops: for sales filled by a stop-loss
+or trailing stop, what the stock did next.
+
 Prices are passed in two ways: `history`, each stock's closes as traded
 (trade prices and costs are in those), and `adjusted`, adjusted closes from
 the price store, for returns over time.
@@ -71,10 +79,16 @@ def _n(value: Any, digits: int = 6) -> float | None:
 
 @dataclass
 class Lot:
-    shares: float
+    shares: float  # negative for a short (or a written option)
     price: float
     time: int | None  # None: held from the start
     reason: str | None = None  # why it was bought, if the trade said
+
+
+def instrument(trade: Mapping[str, Any]) -> str:
+    """What a trade is in: the stock's symbol, or for an option its contract."""
+    option = trade.get("option")
+    return f"{trade['symbol']} {option['kind']} {option['strike']:g} @{option['expiry']}" if option else trade["symbol"]
 
 
 def chronological(account: Mapping[str, Any]) -> list[tuple[int, str, Mapping[str, Any]]]:
@@ -91,7 +105,7 @@ def starting_state(account: Mapping[str, Any]) -> tuple[float, dict[str, float]]
         return float(account["cash"]), {h["symbol"]: float(h["shares"]) for h in account.get("holdings", [])}
     first = steps[0][0]
     state = performance.holdings_timeline(account, [first - 1, first])[0]
-    return state.cash, {s: n for s, n in state.shares.items() if n > 1e-9}
+    return state.cash, {s: n for s, n in state.shares.items() if abs(n) > 1e-9}
 
 
 def starting_costs(account: Mapping[str, Any], start: Mapping[str, float]) -> dict[str, float | None]:
@@ -106,10 +120,18 @@ def starting_costs(account: Mapping[str, Any], start: Mapping[str, float]) -> di
     steps = chronological(account)
     out: dict[str, float | None] = {}
     for symbol, n0 in start.items():
+        if n0 < 0:
+            # A short from the start: its average price is what the first buy to cover recorded, or the holding's now.
+            cover = next((item for _, kind, item in steps if kind == "trade" and not item.get("option") and item["symbol"] == symbol and item["side"] == "buy" and item.get("realizedGain") is not None), None)
+            if cover is not None:
+                out[symbol] = cover["price"] + cover["realizedGain"] / cover["shares"]
+            else:
+                out[symbol] = float(holdings[symbol]["averageCost"]) if symbol in holdings and holdings[symbol].get("averageCost") is not None else None
+            continue
         shares, bought = n0, 0.0
         cost_then: float | None = None
         for _, kind, item in steps:
-            if item["symbol"] != symbol:
+            if item["symbol"] != symbol or item.get("option"):
                 continue
             if kind == "event":
                 if item["kind"] == "split" and item.get("sharesAfter") is not None:
@@ -150,6 +172,8 @@ def round_trips(account: Mapping[str, Any], history: Mapping[str, Sequence[tuple
         price = costs.get(symbol) or _price_on(history.get(symbol), 0)
         if price is not None:
             lots[symbol] = deque([Lot(n, price, None)])
+    # Shares actually held, by stock (a lot can be missing when a starting cost is unknown): what tells a short from a sale.
+    position = dict(start)
     closed: list[dict[str, Any]] = []
     sales: list[dict[str, Any]] = []
     counts = {"realisedGains": 0, "realisedLosses": 0, "paperGains": 0, "paperLosses": 0}
@@ -166,21 +190,34 @@ def round_trips(account: Mapping[str, Any], history: Mapping[str, Sequence[tuple
                 for lot in lots.get(item["symbol"], ()):
                     lot.shares *= ratio
                     lot.price /= ratio
+                position[item["symbol"]] = float(item["sharesAfter"])
+            i += 1
+            continue
+        key = instrument(item)
+        held_now = position.get(key, 0.0)
+        signed = float(item["shares"]) * (1 if item["side"] == "buy" else -1)
+        if not item.get("option"):
+            position[key] = held_now + signed
+        if item.get("option") or held_now < -1e-9 or (item["side"] == "sell" and held_now <= 1e-9):
+            # Options, shorts and buys to cover: matched against the opposite lots, without the disposition counts.
+            _match(lots.setdefault(key, deque()), item, key, signed, moment, closed)
             i += 1
             continue
         if item["side"] == "buy":
-            lots.setdefault(item["symbol"], deque()).append(Lot(float(item["shares"]), float(item["price"]), moment, item.get("reason")))
+            lots.setdefault(key, deque()).append(Lot(float(item["shares"]), float(item["price"]), moment, item.get("reason")))
             i += 1
             continue
         # A run of sales on the same calendar day (UTC): one disposition day.
         day = moment // 86_400_000
         j = i
-        while j < len(steps) and steps[j][1] == "trade" and steps[j][2]["side"] == "sell" and steps[j][0] // 86_400_000 == day:
+        while j < len(steps) and steps[j][1] == "trade" and steps[j][2]["side"] == "sell" and not steps[j][2].get("option") and steps[j][0] // 86_400_000 == day and (j == i or position.get(steps[j][2]["symbol"], 0.0) > 1e-9):
+            if j > i:
+                position[steps[j][2]["symbol"]] -= float(steps[j][2]["shares"])
             j += 1
         sold_today = {steps[k][2]["symbol"] for k in range(i, j)}
         for symbol, held in lots.items():
             shares = sum(l.shares for l in held)
-            if shares <= 1e-9 or symbol in sold_today:
+            if shares <= 1e-9 or symbol in sold_today or " " in symbol:
                 continue
             price = _price_on(history.get(symbol), moment)
             if price is None:
@@ -203,7 +240,7 @@ def round_trips(account: Mapping[str, Any], history: Mapping[str, Sequence[tuple
                     "symbol": sale["symbol"], "entry": lot.time, "exit": steps[k][0], "shares": _n(take, 4),
                     "entryPrice": _n(lot.price, 4), "exitPrice": _n(sale["price"], 4),
                     "gain": _n((sale["price"] - lot.price) * take, 2), "return": _n(sale["price"] / lot.price - 1),
-                    "reason": lot.reason, "exitReason": sale.get("reason"),
+                    "reason": lot.reason, "exitReason": sale.get("reason"), "side": "long",
                 })
                 cost_total += take * lot.price
                 used += take
@@ -213,7 +250,7 @@ def round_trips(account: Mapping[str, Any], history: Mapping[str, Sequence[tuple
                     held.popleft()
             if used > 0:
                 outcome[sale["symbol"]] = outcome.get(sale["symbol"], 0.0) + (sale["price"] * used - cost_total)
-            sales.append({"symbol": sale["symbol"], "time": steps[k][0], "price": float(sale["price"])})
+            sales.append({"symbol": sale["symbol"], "time": steps[k][0], "price": float(sale["price"]), "id": sale.get("id")})
         for gain in outcome.values():
             if gain > 0:
                 counts["realisedGains"] += 1
@@ -223,24 +260,59 @@ def round_trips(account: Mapping[str, Any], history: Mapping[str, Sequence[tuple
         i = j
 
     still_open = []
-    for symbol, held in lots.items():
-        price = _price_on(history.get(symbol), now)
+    for key, held in lots.items():
+        if " " in key:
+            continue  # options: their value now is in the portfolio, not here
+        price = _price_on(history.get(key), now)
         for lot in held:
-            if lot.shares > 1e-9 and price is not None:
+            if abs(lot.shares) > 1e-9 and price is not None:
                 still_open.append({
-                    "symbol": symbol, "entry": lot.time, "shares": _n(lot.shares, 4), "entryPrice": _n(lot.price, 4), "price": _n(price, 4),
-                    "gain": _n((price - lot.price) * lot.shares, 2), "return": _n(price / lot.price - 1), "reason": lot.reason,
+                    "symbol": key, "entry": lot.time, "shares": _n(abs(lot.shares), 4), "entryPrice": _n(lot.price, 4), "price": _n(price, 4),
+                    "gain": _n((price - lot.price) * lot.shares, 2), "return": _n((price / lot.price - 1) * (1 if lot.shares > 0 else -1)), "reason": lot.reason,
+                    "side": "long" if lot.shares > 0 else "short",
                 })
     return {"closed": closed, "open": still_open, "sales": sales, "disposition": counts, "sellDays": len(sell_days)}
 
 
+def _match(held: deque[Lot], trade: Mapping[str, Any], key: str, signed: float, moment: int, closed: list[dict[str, Any]]) -> None:
+    """
+    A trade against lots of the other sign closes them, first in, first out;
+    whatever's left opens a lot of its own. Gains are per share times shares
+    (times 100 for an option), positive when a long rose or a short fell.
+    """
+    option = trade.get("option")
+    size = 100 if option else 1
+    price = float(trade["price"])
+    remaining = signed
+    while abs(remaining) > 1e-9 and held and (held[0].shares > 0) != (remaining > 0):
+        lot = held[0]
+        take = min(abs(lot.shares), abs(remaining))
+        long = lot.shares > 0
+        gain = (price - lot.price) * take * size * (1 if long else -1)
+        change = (price / lot.price - 1) if lot.price > 0 else None
+        closed.append({
+            "symbol": trade["symbol"], "entry": lot.time, "exit": moment, "shares": _n(take, 4),
+            "entryPrice": _n(lot.price, 4), "exitPrice": _n(price, 4), "gain": _n(gain, 2),
+            "return": _n(change if long else -change) if change is not None else None,
+            "reason": lot.reason, "exitReason": trade.get("reason"), "side": "long" if long else "short",
+            **({"option": {"kind": option["kind"], "strike": option["strike"], "expiry": option["expiry"]}} if option else {}),
+        })
+        lot.shares += take if not long else -take
+        remaining += take if remaining < 0 else -take
+        if abs(lot.shares) <= 1e-9:
+            held.popleft()
+    if abs(remaining) > 1e-9:
+        held.append(Lot(remaining, price, moment, trade.get("reason")))
+
+
 def summarise(closed: Sequence[Mapping[str, Any]], days_held: Sequence[int | None]) -> dict[str, Any]:
     gains = np.array([t["gain"] for t in closed], dtype=float)
-    returns = np.array([t["return"] for t in closed], dtype=float)
+    returns = np.array([t["return"] if t["return"] is not None else np.nan for t in closed], dtype=float)
     wins, losses = gains[gains > 0], gains[gains < 0]
     known_days = [d for d in days_held if d is not None]
-    best = int(np.argmax(returns)) if len(returns) else None
-    worst = int(np.argmin(returns)) if len(returns) else None
+    known = np.isfinite(returns)
+    best = int(np.nanargmax(returns)) if known.any() else None
+    worst = int(np.nanargmin(returns)) if known.any() else None
     return {
         "roundTrips": len(closed),
         "wins": int(len(wins)),
@@ -375,7 +447,9 @@ def review(
     adjusted: Mapping[str, pd.Series],
     index: Sequence[tuple[int, float]],
     market: pd.Series | None,
+    stops: Sequence[str] = (),
 ) -> dict[str, Any]:
+    """`stops`: the ids of sales a stop-loss or trailing stop filled."""
     if not account.get("trades"):
         return {"status": "no-trades"}
     times = [t for t, _ in index]
@@ -391,11 +465,18 @@ def review(
         "status": "ok",
         "asOf": now,
         "method": "fifo",
-        "summary": {**summarise(closed, [t["days"] for t in closed]), "averageCostRealised": _n(sum(t.get("realizedGain") or 0 for t in account["trades"] if t["side"] == "sell"), 2)},
+        "summary": {**summarise(closed, [t["days"] for t in closed]), "averageCostRealised": _n(sum(t.get("realizedGain") or 0 for t in account["trades"]), 2)},
         "roundTrips": sorted(closed, key=lambda t: -t["exit"])[:SHOWN],
         "open": sorted(trips["open"], key=lambda t: (t["symbol"], t["entry"] or 0)),
         "byReason": by_reason(closed),
         "afterSales": after_sales(trips["sales"], adjusted, market),
         "disposition": disposition(trips["disposition"], trips["sellDays"]),
         "compared": compared(account, history, adjusted, index),
+        "stops": stopped(trips["sales"], set(stops), adjusted, market),
     }
+
+
+def stopped(sales: Sequence[Mapping[str, Any]], ids: set[str], adjusted: Mapping[str, pd.Series], market: pd.Series | None) -> dict[str, Any] | None:
+    """What stocks did after a stop sold them: the after-sales numbers for those sales only."""
+    hits = [s for s in sales if s.get("id") in ids]
+    return after_sales(hits, adjusted, market) if hits else None

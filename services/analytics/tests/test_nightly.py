@@ -72,7 +72,7 @@ def test_the_runner_does_every_part_and_reports_each(db):
     universe = [f"S{k:02d}" for k in range(12)]
     db.execute("INSERT INTO price_alert (id, user_id, symbol, direction, price, condition, created_at) VALUES ('a1', 'u1', 'S01', 'above', 0, ?, ?)", [json.dumps({"kind": "move", "percent": 0.1}), T0 + 300 * DAY])
     result = jobs.run_nightly(db, "mock", universe, 20_000)
-    assert set(result["parts"]) == {"alerts", "snapshots", "profiles", "factors"}
+    assert set(result["parts"]) == {"alerts", "marks", "snapshots", "profiles", "factors"}
     assert result["parts"]["alerts"]["triggered"] == 1
     assert result["parts"]["snapshots"]["backfilled"] == 1
     assert result["parts"]["factors"]["status"] == "computed"

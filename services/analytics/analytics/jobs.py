@@ -78,20 +78,21 @@ def run_stock_profiles(db: Database, source: str, symbols: Sequence[str] | None 
     return summary
 
 
-#: The nightly parts, in order: alerts first (the emails and pushes that follow send what they trigger), then the rest.
-NIGHTLY_PARTS = ("alerts", "snapshots", "profiles", "factors")
+#: The nightly parts, in order: alerts first (the emails and pushes that follow send what they trigger),
+#: option marks before the snapshots that value options at them, then the rest.
+NIGHTLY_PARTS = ("alerts", "marks", "snapshots", "profiles", "factors")
 
 
 def run_nightly(db: Database, source: str, universe: Sequence[str], budget_ms: int = 20_000, parts: Sequence[str] = NIGHTLY_PARTS) -> dict:
     """
     Every nightly calculation, in order, within one time budget: indicator
-    alerts (alerts.py), portfolio snapshots (snapshots.py), stock profiles
+    alerts (alerts.py), option marks (option_marks.py), portfolio snapshots (snapshots.py), stock profiles
     (run_stock_profiles) and factors (factors.py). Each part is safe to run
     again and skips what hasn't changed, so a run that stops early is simply
     continued by the next one. Returns what each part did, or why it failed;
     `unfinished` lists the parts with work left.
     """
-    from . import alerts, factors, snapshots
+    from . import alerts, factors, option_marks, snapshots
 
     start = time.monotonic()
     left = lambda: budget_ms - (time.monotonic() - start) * 1000  # noqa: E731
@@ -106,6 +107,10 @@ def run_nightly(db: Database, source: str, universe: Sequence[str], budget_ms: i
             if part == "alerts":
                 result = alerts.evaluate(db, source, int(left()))
                 if result["unfinished"]:
+                    unfinished.append(part)
+            elif part == "marks":
+                result = option_marks.run(db, source, int(min(left(), 5000)))
+                if result["remaining"]:
                     unfinished.append(part)
             elif part == "snapshots":
                 result = snapshots.run(db, source, int(left()))

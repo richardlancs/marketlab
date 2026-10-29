@@ -14,6 +14,14 @@ There are no deposits or withdrawals in the simulator, so the value only
 changes with prices: the plain start-to-end return is already the fair
 ("time-weighted") one.
 
+Shorts are negative share counts, so they need nothing special. Options
+(Phase 19) are rebuilt the same way from their trades, a contract being 100
+shares: at the latest close they're valued at their stored marks, and on
+earlier days at what they'd settle for at that close (no time value), so
+past values are a little low while options are held. The nightly snapshots
+(snapshots.py) record the marked values, and take precedence where they
+exist.
+
 Arithmetic follows the Next.js trading code exactly (lib/trading.ts): cents
 are rounded the way JavaScript's Math.round does (halves up), not Python's
 round() (halves to even), so every value matches what the site shows.
@@ -34,10 +42,25 @@ def round_cents(value: float) -> float:
     return math.floor(value * 100 + 0.5) / 100
 
 
+Contract = tuple[str, str, float, int]
+"""(symbol, kind, strike, expiry)."""
+
+
 @dataclass(frozen=True)
 class DayState:
     cash: float
     shares: dict[str, float]
+    options: dict[Contract, float] | None = None
+
+
+def contract_of(symbol: str, option: Mapping[str, Any]) -> Contract:
+    return (symbol, option["kind"], float(option["strike"]), int(option["expiry"]))
+
+
+def settle_value(contract: Contract, close: float) -> float:
+    """What one share of an option is worth at expiry for this close."""
+    _, kind, strike, _ = contract
+    return max(0.0, close - strike) if kind == "call" else max(0.0, strike - close)
 
 
 def relevant_symbols(account: Mapping[str, Any]) -> list[str]:
@@ -45,6 +68,8 @@ def relevant_symbols(account: Mapping[str, Any]) -> list[str]:
     seen: dict[str, None] = {}
     for h in account.get("holdings", []):
         seen.setdefault(h["symbol"], None)
+    for o in account.get("options", []) or []:
+        seen.setdefault(o["symbol"], None)
     for t in account.get("trades", []):
         seen.setdefault(t["symbol"], None)
     return list(seen)
@@ -70,6 +95,7 @@ def holdings_timeline(account: Mapping[str, Any], times: Sequence[int]) -> list[
     steps.sort(key=lambda s: s[0], reverse=True)
     cash = float(account["cash"])
     shares: dict[str, float] = {h["symbol"]: float(h["shares"]) for h in account.get("holdings", [])}
+    held_options: dict[Contract, float] = {contract_of(o["symbol"], o): float(o["contracts"]) for o in account.get("options", []) or []}
     states: list[DayState] = [DayState(0.0, {})] * len(times)
     nxt = 0
     for i in range(len(times) - 1, -1, -1):
@@ -83,6 +109,14 @@ def holdings_timeline(account: Mapping[str, Any], times: Sequence[int]) -> list[
                 if item["kind"] == "split":
                     shares[item["symbol"]] = item["shares"]
                 continue
+            if item.get("option"):
+                # Undoing an option trade: its premium (100 shares a contract), and the contracts.
+                key = contract_of(item["symbol"], item["option"])
+                total = round_cents(item["shares"] * 100 * item["price"])
+                sign = 1 if item["side"] == "buy" else -1
+                cash += sign * total
+                held_options[key] = held_options.get(key, 0.0) - sign * item["shares"]
+                continue
             total = round_cents(item["shares"] * item["price"])
             held = shares.get(item["symbol"], 0.0)
             if item["side"] == "buy":
@@ -91,7 +125,7 @@ def holdings_timeline(account: Mapping[str, Any], times: Sequence[int]) -> list[
             else:
                 cash -= total
                 shares[item["symbol"]] = held + item["shares"]
-        states[i] = DayState(round_cents(cash), dict(shares))
+        states[i] = DayState(round_cents(cash), dict(shares), {k: v for k, v in held_options.items() if v} or None)
     return states
 
 
@@ -123,12 +157,16 @@ def value_series(account: Mapping[str, Any], history: Mapping[str, Sequence[tupl
                 j += 1
             values.append(last)
         price_at[symbol] = values
+    marks = {contract_of(o["symbol"], o): float(o["mark"]) for o in account.get("options", []) or [] if o.get("mark") is not None}
     out: list[float] = []
     for i, state in enumerate(states):
         value = state.cash
         for symbol, count in state.shares.items():
             if count:
                 value = value + count * price_at[symbol][i]
+        for key, contracts in (state.options or {}).items():
+            each = marks[key] if i == len(states) - 1 and key in marks else settle_value(key, price_at[key[0]][i])
+            value = value + contracts * 100 * each
         out.append(value)
     return out
 

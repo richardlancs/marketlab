@@ -41,7 +41,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 from pydantic.alias_generators import to_camel
 
 from . import db as database
-from . import analysis, correlation, engine, factors, fundamentals, jobs, luck, ml, options, overfitting, pairs, performance, plan, portfolio, review, saved, screener, screens, snapshots, store, walkforward
+from . import analysis, correlation, engine, factors, fundamentals, jobs, luck, ml, option_marks, options, overfitting, pairs, performance, plan, portfolio, review, saved, screener, screens, snapshots, store, walkforward
 
 #: The largest request body accepted: 6 series of MAX_POINTS points with room to spare.
 MAX_BODY_BYTES = 2_000_000
@@ -662,7 +662,8 @@ def stock_profiles(body: JobRequest, db: Annotated[database.Database, Depends(ge
 
 class PortfolioHolding(Model):
     symbol: Symbol
-    value: Annotated[float, Field(ge=0, le=1e12, allow_inf_nan=False)]
+    value: Annotated[float, Field(ge=-1e12, le=1e12, allow_inf_nan=False)]
+    """Negative for a short."""
     sector: Annotated[str, Field(max_length=60)] | None = None
 
 
@@ -714,30 +715,50 @@ class WalkForwardRequest(Model):
     test_months: Literal[3, 6, 12] = 6
 
 
+class ContractIn(Model):
+    kind: Literal["call", "put"]
+    strike: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    expiry: int
+
+
 class TradeIn(Model):
+    id: Annotated[str, Field(max_length=200)] | None = None
     time: int
     symbol: Symbol
     side: Literal["buy", "sell"]
     shares: Annotated[float, Field(gt=0, allow_inf_nan=False)]
-    price: Annotated[float, Field(gt=0, allow_inf_nan=False)]
+    """Shares, or for an option, contracts (100 shares each)."""
+    price: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    """Zero only for an option that expired worthless."""
     realized_gain: Annotated[float, Field(allow_inf_nan=False)] | None = None
-    """Sells: the gain against the average cost, as the account recorded it (the review recovers starting costs from it)."""
+    """Trades that close a position: the gain against the average cost, as the account recorded it (the review recovers starting costs from it)."""
     reason: Literal["value", "momentum", "news", "dip", "rebalance", "other"] | None = None
+    option: ContractIn | None = None
 
 
 class EventIn(Model):
     time: int
-    kind: Literal["dividend", "split"]
+    kind: Literal["dividend", "split", "borrow-fee", "margin-call", "expiry"]
     symbol: Symbol
-    shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    shares: Annotated[float, Field(allow_inf_nan=False)]
+    """Negative for a short."""
     cash: Annotated[float, Field(allow_inf_nan=False)]
-    shares_after: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
+    shares_after: Annotated[float, Field(allow_inf_nan=False)] | None = None
 
 
 class HoldingIn(Model):
     symbol: Symbol
-    shares: Annotated[float, Field(ge=0, allow_inf_nan=False)]
+    shares: Annotated[float, Field(allow_inf_nan=False)]
+    """Negative for a short."""
     average_cost: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
+
+
+class OptionIn(ContractIn):
+    symbol: Symbol
+    contracts: Annotated[float, Field(allow_inf_nan=False)]
+    """Negative for written options."""
+    average_premium: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
+    mark: Annotated[float, Field(ge=0, allow_inf_nan=False)] | None = None
 
 
 class AccountIn(Model):
@@ -747,6 +768,7 @@ class AccountIn(Model):
     holdings: Annotated[list[HoldingIn], Field(max_length=200)]
     trades: Annotated[list[TradeIn], Field(max_length=1000)]
     events: Annotated[list[EventIn], Field(max_length=2000)] = []
+    options: Annotated[list[OptionIn], Field(max_length=50)] = []
 
 
 class ClosesIn(Model):
@@ -780,6 +802,8 @@ class ReviewRequest(Model):
     """Each relevant stock's closes as traded (not adjusted)."""
     index: ClosesIn
     """The S&P 500's closes, at least from the oldest trade on: the sessions everything is counted in."""
+    stops: Annotated[list[Annotated[str, Field(max_length=200)]], Field(max_length=100)] = []
+    """The ids of sales a stop-loss or trailing stop filled."""
 
 
 def _review_inputs(body: ReviewRequest, db: database.Database, extra: Sequence[str] = ()) -> tuple[dict, dict, dict, list[tuple[int, float]], pd.Series | None]:
@@ -796,7 +820,7 @@ def _review_inputs(body: ReviewRequest, db: database.Database, extra: Sequence[s
 def portfolio_review(body: ReviewRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
     """The account's own trading reviewed: FIFO round trips, after-sale returns, the disposition effect, and doing nothing instead (review.py)."""
     account, history, adjusted, index, market = _review_inputs(body, db)
-    return {"review": review.review(account, history, adjusted, index, market)}
+    return {"review": review.review(account, history, adjusted, index, market, body.stops)}
 
 
 class AccountLuckRequest(ReviewRequest):
@@ -928,6 +952,17 @@ def option_chain(body: ChainRequest, db: Annotated[database.Database, Depends(ge
         return {"chain": options.chain(float(bars["close"].iloc[-1]), vol, int(bars.index[-1]), q=q)}
     except options.OptionError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
+
+
+class MarksRequest(Model):
+    source: Source
+    owner_id: Annotated[str, Field(min_length=1, max_length=64)]
+
+
+@app.post("/v1/options/marks", dependencies=[Depends(require_token)])
+def option_marks_for_owner(body: MarksRequest, db: Annotated[database.Database, Depends(get_database)]) -> dict:
+    """Values one owner's option positions at the latest close (option_marks.py), storing and returning the marks."""
+    return option_marks.run(db, body.source, 5000, owner=body.owner_id)
 
 
 Positive = Annotated[float, Field(gt=0, le=1e7, allow_inf_nan=False)]
@@ -1096,7 +1131,7 @@ class NightlyRequest(Model):
     source: Source
     universe: Annotated[list[Symbol], Field(min_length=10, max_length=500)]
     budget_ms: Annotated[int, Field(ge=1000, le=50_000)] = 20_000
-    parts: list[Literal["alerts", "snapshots", "profiles", "factors"]] | None = None
+    parts: list[Literal["alerts", "marks", "snapshots", "profiles", "factors"]] | None = None
 
 
 @app.post("/v1/jobs/nightly", dependencies=[Depends(require_token)])
