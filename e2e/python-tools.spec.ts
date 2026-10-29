@@ -25,10 +25,11 @@ test("a stock page and the portfolio show what drives them", async ({ page }) =>
   test.slow(); // the first visit stores every stock's prices and builds the factors
   await page.goto("/stocks/NVDA#analysis");
   await expect(page.getByRole("heading", { name: "What drives it" })).toBeVisible({ timeout: 90_000 });
-  await expect(page.getByText(/NVDA moves/)).toBeVisible({ timeout: 90_000 });
+  // Visible ones only, and the first: a streamed section briefly has a hidden copy too.
+  await expect(page.getByText(/NVDA moves/).filter({ visible: true }).first()).toBeVisible({ timeout: 90_000 });
 
   await page.goto("/portfolio#risk");
-  await expect(page.getByText(/Your portfolio moves/)).toBeVisible({ timeout: 90_000 });
+  await expect(page.getByText(/Your portfolio moves/).filter({ visible: true }).first()).toBeVisible({ timeout: 90_000 });
 });
 
 test("the goal planner shows the chance of reaching a target", async ({ page }) => {
@@ -109,9 +110,9 @@ test("the portfolio and the watchlist show how many independent bets they hold",
 test("a stock page forecasts how much the stock might move", async ({ page }) => {
   await page.goto("/stocks/AAPL#analysis");
   const card = page.locator('[aria-labelledby="volatility-forecast"]');
-  await expect(card.getByText("Next month", { exact: true })).toBeVisible({ timeout: 90_000 });
-  await expect(card.getByText("Today against its own history")).toBeVisible();
-  await expect(card.getByText(/stayed inside the 90% range on/)).toBeVisible();
+  await expect(card.getByText("Next month", { exact: true }).filter({ visible: true }).first()).toBeVisible({ timeout: 90_000 });
+  await expect(card.getByText("Today against its own history").filter({ visible: true }).first()).toBeVisible();
+  await expect(card.getByText(/stayed inside the 90% range on/).filter({ visible: true }).first()).toBeVisible();
 });
 
 test("a trade keeps its reason, and the Review tab reviews the account", async ({ page }) => {
