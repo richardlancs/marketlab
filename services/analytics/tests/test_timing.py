@@ -317,7 +317,7 @@ class TestLedger:
 
 
 def test_the_readmes_worked_example():
-    """services/analytics/README.md, "A worked example": keep the two in step."""
+    """A 2/4 crossover on ten closes, checked by hand."""
     prices = [10.0, 10.0, 10.0, 10.0, 12.0, 13.0, 11.0, 9.0, 9.0, 10.0]
     cfg = config(fast=2, slow=4, initial_cash=1000.0, end=T0 + 9 * DAY, costs=Costs(commission=1.0, slippage_bps=10.0))
     run = engine.run_config(cfg, {"AAPL": series("AAPL", prices)}).run
