@@ -1,10 +1,13 @@
 "use client";
 
 import { useId, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useAccount } from "@/components/account/account-provider";
 import { Card } from "@/components/ui/card";
+import { Explain } from "@/components/ui/explain";
 import { ServiceError, useServiceData } from "@/components/ui/service-data";
 import { Tabs } from "@/components/ui/tabs";
 import { formatCurrency, formatDate, formatShare } from "@/lib/format";
+import { contractId, expiryTime, MAX_CONTRACTS, tradePrice } from "@/lib/option-trading";
 import { STRATEGIES, type ChainExpiry, type Greeks, type Leg, type OptionChain, type OptionKind, type Payoff, type StrategyKey } from "@/lib/options/types";
 
 const inputClass = "mt-1 h-10 w-full rounded-lg border border-border bg-transparent px-3 text-base outline-none focus-visible:border-accent sm:text-sm";
@@ -202,7 +205,73 @@ function OptionDetail({ chain, expiry, pick, symbol }: { chain: OptionChain; exp
           </div>
         ))}
       </dl>
+      <OptionTrade symbol={symbol} kind={pick.kind} strike={pick.strike} expiry={expiry.expiry} price={g.price} />
     </Card>
+  );
+}
+
+/**
+ * Paper-trade the chosen option: buy at the chain's price plus half the
+ * spread, or sell at it less half (lib/option-trading.ts). Selling one you
+ * don't own writes it, which is allowed only as a covered call or a
+ * cash-secured put.
+ */
+function OptionTrade({ symbol, kind, strike, expiry, price }: { symbol: string; kind: OptionKind; strike: number; expiry: string; price: number }) {
+  const id = useId();
+  const { account, book, placeOptionOrder } = useAccount();
+  const [contractsText, setContractsText] = useState("1");
+  const [status, setStatus] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  if (!account) return null;
+  const contracts = Number(contractsText);
+  const valid = Number.isInteger(contracts) && contracts >= 1 && contracts <= MAX_CONTRACTS;
+  const held = account.options?.find((o) => o.id === contractId(symbol, { kind, strike, expiry: expiryTime(expiry) }))?.contracts ?? 0;
+  const ask = tradePrice(price, "buy");
+  const bid = tradePrice(price, "sell");
+  const seasonBook = book.seasonId !== null;
+
+  async function trade(side: "buy" | "sell") {
+    setBusy(true);
+    const result = await placeOptionOrder({ symbol, kind, strike, expiry, side, contracts });
+    setBusy(false);
+    const each = side === "buy" ? ask : bid;
+    setStatus(result.ok ? { tone: "success", text: `${side === "buy" ? "Bought" : "Sold"} ${contracts} ${contracts === 1 ? "contract" : "contracts"} at ${formatCurrency(each)} a share (${formatCurrency(each * 100 * contracts)}). See it on your Portfolio.` } : { tone: "error", text: result.message });
+  }
+
+  return (
+    <div className="mt-5 border-t border-border pt-4">
+      <h3 className="flex items-center gap-1.5 text-sm font-semibold">
+        Paper-trade it <Explain term="writingOptions" />
+      </h3>
+      {seasonBook ? (
+        <p className="mt-1 text-xs text-muted">Season portfolios trade shares only. Switch to your practice portfolio to trade options.</p>
+      ) : (
+        <>
+          <p className="mt-1 text-xs text-muted">
+            Buy at {formatCurrency(ask)} or sell at {formatCurrency(bid)} a share: the price above, plus or minus half a spread. Settled in cash at expiry.
+            {held !== 0 && ` You ${held > 0 ? "own" : "wrote"} ${Math.abs(held)}.`}
+            {held <= 0 && ` Selling ${held < 0 ? "more " : ""}writes it: ${kind === "call" ? "a covered call, needing 100 shares you own per contract" : "a cash-secured put, setting aside the strike × 100 per contract"}.`}
+          </p>
+          <div className="mt-2 flex items-end gap-2">
+            <div className="w-24">
+              <label htmlFor={`${id}-contracts`} className={labelClass}>
+                Contracts
+              </label>
+              <input id={`${id}-contracts`} type="number" inputMode="numeric" min={1} max={MAX_CONTRACTS} step={1} value={contractsText} onChange={(e) => setContractsText(e.target.value)} className={inputClass} />
+            </div>
+            <button type="button" disabled={!valid || busy} onClick={() => trade("buy")} className="h-10 flex-1 rounded-full bg-accent-fill text-sm font-medium text-white enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40">
+              Buy · {formatCurrency(ask * 100 * (valid ? contracts : 1))}
+            </button>
+            <button type="button" disabled={!valid || busy} onClick={() => trade("sell")} className="h-10 flex-1 rounded-full bg-loss-fill text-sm font-medium text-white enabled:hover:opacity-90 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent disabled:opacity-40">
+              Sell · {formatCurrency(bid * 100 * (valid ? contracts : 1))}
+            </button>
+          </div>
+        </>
+      )}
+      <p role="status" className={`mt-2 min-h-4 text-xs ${status?.tone === "error" ? "text-loss" : "text-gain"}`}>
+        {status?.text}
+      </p>
+    </div>
   );
 }
 

@@ -9,12 +9,12 @@ Next.js 16 · React 19 · Tailwind 4 · Better Auth · Drizzle + Turso · Python
 ## Features
 
 - Markets: dashboard, stock pages and search across ~95 US stocks
-- Paper trading with market, limit and stop orders, and a private trade journal
+- Paper trading: market, limit, stop and trailing stop orders, brackets, short selling, options, and a private trade journal
 - Portfolio analytics, risk, forecasts and a review of your own trades
 - Backtesting with luck and overfitting checks
 - Screener, options lab, pairs lab and an ML sandbox
 - Price and indicator alerts, by email or push
-- 51 short lessons, monthly competitions and a leaderboard
+- 57 short lessons, monthly competitions and a leaderboard
 
 ## Quick start
 

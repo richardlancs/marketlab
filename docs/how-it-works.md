@@ -17,6 +17,9 @@
 - Dividends and splits apply on the ex-date.
 - `lib/processing.ts` catches an account up with the market. It's safe to run twice.
 - Trades can carry a private reason and note.
+- A buy or short sale can carry a bracket: a stop-loss and a take-profit, one cancelling the other. Trailing stops follow the best close.
+- Shorts set aside 150% of their value, pay a 3% yearly borrow fee and dividends, and are bought back at a close if equity falls below 30% of them.
+- Options come from the options lab's simulated chain: buy calls and puts, or write covered calls and cash-secured puts. They're valued nightly and settled in cash at expiry. Not in season portfolios.
 
 ## Accounts
 

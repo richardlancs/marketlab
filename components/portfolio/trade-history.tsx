@@ -113,11 +113,12 @@ export function TradeHistory() {
                   <span className="block text-xs">{formatTime(row.trade.time)}</span>
                 </td>
                 <td className="py-2 whitespace-nowrap">
-                  <span className={`font-medium ${row.trade.side === "buy" ? "text-accent" : "text-loss"}`}>{row.trade.side === "buy" ? "Buy" : "Sell"}</span>{" "}
+                  <span className={`font-medium ${row.trade.side === "buy" ? "text-accent" : "text-loss"}`}>{tradeVerb(row.trade)}</span>{" "}
                   {row.trade.shares}{" "}
                   <Link href={`/stocks/${row.trade.symbol}`} className="font-semibold hover:text-accent">
                     {row.trade.symbol}
                   </Link>
+                  {row.trade.option && ` ${formatCurrency(row.trade.option.strike)} ${row.trade.option.kind}${row.trade.shares === 1 ? "" : "s"}, ${formatDate(row.trade.option.expiry)}`}
                   <span className="block max-w-56 truncate text-xs whitespace-nowrap text-muted sm:max-w-72" title={row.trade.note}>
                     {row.trade.reason && <span className="font-medium text-foreground">{REASON_NAMES[row.trade.reason]}</span>}
                     {row.trade.reason && row.trade.note && " · "}
@@ -135,7 +136,7 @@ export function TradeHistory() {
                   </span>
                 </td>
                 <td className="py-2 pl-4 text-right">{formatCurrency(row.trade.price)}</td>
-                <td className="py-2 pl-4 text-right">{formatCurrency(row.trade.shares * row.trade.price)}</td>
+                <td className="py-2 pl-4 text-right">{formatCurrency(row.trade.shares * row.trade.price * (row.trade.option ? 100 : 1))}</td>
                 <td className="hidden py-2 pl-4 text-right sm:table-cell">
                   {row.trade.realizedGain === undefined ? (
                     <span className="text-muted">—</span>
@@ -178,13 +179,49 @@ export function TradeHistory() {
   );
 }
 
-/** A dividend ("Dividend 40 AAPL · $0.25 a share") or a split, in the activity table. */
+/**
+ * What a trade did. A trade doesn't record whether it opened a short, but the
+ * account's rules tell: a sale of shares owned always has a realised gain,
+ * so a sale without one opened a short; and a buy with one covered a short.
+ */
+function tradeVerb(t: Trade): string {
+  if (t.option) return t.side === "buy" ? (t.realizedGain !== undefined ? "Buy back" : "Buy") : t.realizedGain !== undefined ? "Sell" : "Write";
+  if (t.side === "buy") return t.realizedGain !== undefined ? "Buy to cover" : "Buy";
+  return t.realizedGain !== undefined ? "Sell" : "Sell short";
+}
+
+const EVENT_NAMES: Record<AccountEvent["kind"], string> = { dividend: "Dividend", split: "Split", "borrow-fee": "Borrow fee", "margin-call": "Margin call", expiry: "Expiry" };
+
+/** A dividend ("Dividend 40 AAPL · $0.25 a share"), a split, a short's borrow fee, a margin call or an option expiring, in the activity table. */
 function EventRow({ event }: { event: AccountEvent }) {
+  if (event.kind === "borrow-fee" || event.kind === "margin-call" || event.kind === "expiry") {
+    const text =
+      event.kind === "borrow-fee"
+        ? `${-event.shares} short this month, at ${(event.value * 100).toFixed(0)}% a year`
+        : event.kind === "margin-call"
+          ? `${event.shares} bought back at ${formatCurrency(event.value)}: equity fell below 30% of your shorts`
+          : `${Math.abs(event.shares)} ${event.shares < 0 ? "written" : ""} ${Math.abs(event.shares) === 1 ? "contract" : "contracts"} settled at ${formatCurrency(event.value)} a share`;
+    return (
+      <tr>
+        <td className="py-2 pr-4 whitespace-nowrap text-muted">{formatDate(event.time)}</td>
+        <td className="py-2">
+          <span className={`font-medium ${event.kind === "margin-call" ? "text-loss" : "text-muted"}`}>{EVENT_NAMES[event.kind]}</span>{" "}
+          <Link href={`/stocks/${event.symbol}`} className="font-semibold hover:text-accent">
+            {event.symbol}
+          </Link>
+          <span className="block text-xs text-muted">{text}</span>
+        </td>
+        <td className="py-2 pl-4 text-right">—</td>
+        <td className="py-2 pl-4 text-right">{event.cash < 0 ? formatSignedCurrency(event.cash) : "—"}</td>
+        <td className="hidden py-2 pl-4 text-right text-muted sm:table-cell">—</td>
+      </tr>
+    );
+  }
   return (
     <tr>
       <td className="py-2 pr-4 whitespace-nowrap text-muted">{formatDate(event.time)}</td>
       <td className="py-2 whitespace-nowrap">
-        <span className="font-medium text-gain">{event.kind === "dividend" ? "Dividend" : "Split"}</span>{" "}
+        <span className={`font-medium ${event.cash < 0 ? "text-loss" : "text-gain"}`}>{EVENT_NAMES[event.kind]}</span>{" "}
         {event.kind === "dividend" ? (
           <>
             {event.shares}{" "}
@@ -202,7 +239,7 @@ function EventRow({ event }: { event: AccountEvent }) {
         )}
       </td>
       <td className="py-2 pl-4 text-right">{event.kind === "dividend" ? `${formatCurrency(event.value)}/sh` : "—"}</td>
-      <td className="py-2 pl-4 text-right">{event.cash > 0 ? `+${formatCurrency(event.cash)}` : "—"}</td>
+      <td className="py-2 pl-4 text-right">{event.cash !== 0 ? formatSignedCurrency(event.cash) : "—"}</td>
       <td className="hidden py-2 pl-4 text-right text-muted sm:table-cell">—</td>
     </tr>
   );

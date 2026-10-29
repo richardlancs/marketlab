@@ -86,6 +86,7 @@ export function TradeReview() {
         <>
           {state.result.compared && <Compared c={state.result.compared} />}
           <AfterSales r={state.result} />
+          {state.result.stops && <Stops stops={state.result.stops} />}
           <Habits r={state.result} />
           <AccountLuckCard />
           <RoundTrips r={state.result} />
@@ -382,6 +383,31 @@ function AccountLuckCard() {
   );
 }
 
+/** What stocks did after a stop-loss or trailing stop sold them: did the stop save money, or sell before a rebound? */
+function Stops({ stops }: { stops: NonNullable<Review["stops"]> }) {
+  const month = stops.summary["21"];
+  const all = stops.sales.length;
+  return (
+    <Card aria-labelledby="stops-heading">
+      <h2 id="stops-heading" className="flex items-center gap-1.5 text-lg font-semibold tracking-tight">
+        Your stops <Explain term="trailingStop" />
+      </h2>
+      <p className="mt-1 text-sm">
+        {all} {all === 1 ? "sale was" : "sales were"} filled by a stop-loss or trailing stop.{" "}
+        {month.sales === 0
+          ? "They're too recent to judge: this needs a month of prices after each."
+          : month.average === null
+            ? ""
+            : month.average > 0.005
+              ? `Over the next month the stock rose ${formatShare(month.average)} on average (after ${share(month.rose)} of them): your stops tended to sell before a rebound. Wider stops, or fewer, might have kept you in.`
+              : month.average < -0.005
+                ? `Over the next month the stock fell a further ${formatShare(-month.average)} on average: your stops tended to get you out before more losses.`
+                : "Over the next month the stock moved little on average: your stops neither saved nor cost much."}
+      </p>
+    </Card>
+  );
+}
+
 function RoundTrips({ r }: { r: Review }) {
   const [all, setAll] = useState(false);
   const trips = all ? r.roundTrips : r.roundTrips.slice(0, FIRST);
@@ -397,7 +423,7 @@ function RoundTrips({ r }: { r: Review }) {
           <thead className="text-xs text-muted">
             <tr className="border-b border-border">
               <th scope="col" className="pb-1.5 text-left font-medium">Stock</th>
-              <th scope="col" className="pb-1.5 pl-3 text-left font-medium">Bought → sold</th>
+              <th scope="col" className="pb-1.5 pl-3 text-left font-medium">Opened → closed</th>
               <th scope="col" className="hidden pb-1.5 pl-3 text-right font-medium sm:table-cell">Days</th>
               <th scope="col" className="pb-1.5 pl-3 text-right font-medium">Return</th>
               <th scope="col" className="hidden pb-1.5 pl-3 text-right font-medium sm:table-cell">Gain</th>
@@ -426,7 +452,7 @@ function RoundTrips({ r }: { r: Review }) {
                     {l.symbol}
                   </Link>{" "}
                   <span className="text-muted">
-                    {l.shares} from {l.entry === null ? "the start" : formatDate(l.entry)} at {formatCurrency(l.entryPrice)}
+                    {l.shares} {l.side === "short" ? "short " : ""}from {l.entry === null ? "the start" : formatDate(l.entry)} at {formatCurrency(l.entryPrice)}
                     {l.reason && ` · ${REASON_NAMES[l.reason]}`}
                   </span>
                 </span>
@@ -449,8 +475,10 @@ function TripRow({ t }: { t: RoundTrip }) {
         <Link href={`/stocks/${t.symbol}`} className="font-semibold hover:text-accent">
           {t.symbol}
         </Link>
+        {t.option && ` ${formatCurrency(t.option.strike)} ${t.option.kind}`}
         <span className="block text-xs text-muted">
-          {t.shares} {t.shares === 1 ? "share" : "shares"}
+          {t.shares} {t.option ? (t.shares === 1 ? "contract" : "contracts") : t.shares === 1 ? "share" : "shares"}
+          {t.side === "short" && (t.option ? " · written" : " · short")}
           {t.reason && ` · ${REASON_NAMES[t.reason]}`}
         </span>
       </td>

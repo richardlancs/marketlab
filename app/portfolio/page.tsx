@@ -5,6 +5,7 @@ import { PortfolioSummary } from "@/components/dashboard/portfolio-summary";
 import { FactorCard } from "@/components/portfolio/factor-card";
 import { LeaderboardCard } from "@/components/portfolio/leaderboard-card";
 import { OpenOrders } from "@/components/portfolio/open-orders";
+import { OptionPositions } from "@/components/portfolio/option-positions";
 import { PerformanceCard } from "@/components/portfolio/performance-card";
 import { PortfolioStats } from "@/components/portfolio/portfolio-stats";
 import { RiskAnalysis } from "@/components/portfolio/risk-analysis";
@@ -36,8 +37,9 @@ export default function PortfolioPage() {
             label: "Holdings",
             content: (
               <div className="grid grid-cols-1 gap-4 lg:grid-cols-12 lg:gap-6">
-                <div className="lg:col-span-8">
+                <div className="flex flex-col gap-4 lg:col-span-8 lg:gap-6">
                   <PortfolioSummary showDetailsLink={false} />
+                  <OptionPositions />
                 </div>
                 <div className="flex flex-col gap-4 lg:col-span-4 lg:gap-6">
                   <PortfolioStats />
@@ -46,7 +48,7 @@ export default function PortfolioPage() {
               </div>
             ),
           },
-          { id: "orders", label: "Orders", content: <OpenOrders />, empty: "No orders yet. Place a limit or stop order from any stock's page." },
+          { id: "orders", label: "Orders", content: <OpenOrders />, empty: "No orders yet. Place a limit, stop or trailing stop order from any stock's page." },
           { id: "performance", label: "Performance", content: <PerformanceCard /> },
           {
             id: "risk",
