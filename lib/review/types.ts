@@ -7,7 +7,7 @@
  * Returns are fractions (0.021 = 2.1%), gains dollars, times ms.
  */
 import { parseComparison, parseSharpeRange, type LuckComparison, type SharpeRange } from "../backtest/luck";
-import { isTradeReason, type TradeReason } from "../trading";
+import { isTradeReason, type OptionContract, type TradeReason } from "../trading";
 
 
 export interface RoundTrip {
@@ -24,6 +24,10 @@ export interface RoundTrip {
   days: number | null;
   reason: TradeReason | null;
   exitReason: TradeReason | null;
+  /** "short": sold first, bought back later, gaining when the price fell. Missing on old results (long). */
+  side?: "long" | "short";
+  /** An option's round trip: which contract (prices are per share, gains for 100 shares a contract). */
+  option?: OptionContract;
 }
 
 export interface OpenLot {
@@ -36,6 +40,7 @@ export interface OpenLot {
   return: number;
   days: number | null;
   reason: TradeReason | null;
+  side?: "long" | "short";
 }
 
 export interface AfterSale {
@@ -48,6 +53,11 @@ export interface AfterSale {
   market5: number | null;
   market21: number | null;
   market63: number | null;
+}
+
+export interface AfterSales {
+  sales: AfterSale[];
+  summary: Record<"5" | "21" | "63", { sales: number; average: number | null; rose: number | null; averageVsMarket: number | null }>;
 }
 
 export interface TradeReview {
@@ -75,10 +85,9 @@ export interface TradeReview {
   roundTrips: RoundTrip[];
   open: OpenLot[];
   byReason: { reason: TradeReason | "none"; roundTrips: number; hitRate: number | null; averageReturn: number | null; gain: number | null }[];
-  afterSales: {
-    sales: AfterSale[];
-    summary: Record<"5" | "21" | "63", { sales: number; average: number | null; rose: number | null; averageVsMarket: number | null }>;
-  };
+  afterSales: AfterSales;
+  /** The same for sales a stop-loss or trailing stop filled; null without any (missing on old results). */
+  stops?: AfterSales | null;
   disposition: {
     realisedGains: number;
     realisedLosses: number;
@@ -126,6 +135,13 @@ function trip(v: unknown, open = false): boolean {
   return fields.every((k) => isNum(t[k])) && (open || reasonOrNull(t.exitReason));
 }
 
+function afterSalesOk(value: unknown): boolean {
+  const after = obj(value);
+  const summary = obj(after?.summary);
+  if (!after || !summary || !Array.isArray(after.sales) || !["5", "21", "63"].every((k) => obj(summary[k]) && isNum(obj(summary[k])!.sales))) return false;
+  return after.sales.every((x) => obj(x) && typeof (x as Record<string, unknown>).symbol === "string" && ["after5", "after21", "after63", "market5", "market21", "market63"].every((k) => numOrNull((x as Record<string, unknown>)[k])));
+}
+
 /** The review if `value` has its shape, or null. */
 export function parseReview(value: unknown): ReviewResult | null {
   const v = obj(value);
@@ -137,10 +153,7 @@ export function parseReview(value: unknown): ReviewResult | null {
   if ((s.best !== null && !trip(s.best)) || (s.worst !== null && !trip(s.worst))) return null;
   if (!Array.isArray(v.roundTrips) || !v.roundTrips.every((t) => trip(t)) || !Array.isArray(v.open) || !v.open.every((t) => trip(t, true))) return null;
   if (!Array.isArray(v.byReason) || !v.byReason.every((g) => obj(g) && (isTradeReason((g as Record<string, unknown>).reason) || (g as Record<string, unknown>).reason === "none") && isNum((g as Record<string, unknown>).roundTrips))) return null;
-  const after = obj(v.afterSales);
-  const afterSummary = obj(after?.summary);
-  if (!after || !afterSummary || !Array.isArray(after.sales) || !["5", "21", "63"].every((k) => obj(afterSummary[k]) && isNum(obj(afterSummary[k])!.sales))) return null;
-  if (!after.sales.every((x) => obj(x) && typeof (x as Record<string, unknown>).symbol === "string" && ["after5", "after21", "after63", "market5", "market21", "market63"].every((k) => numOrNull((x as Record<string, unknown>)[k])))) return null;
+  if (!afterSalesOk(v.afterSales) || (v.stops !== undefined && v.stops !== null && !afterSalesOk(v.stops))) return null;
   const d = obj(v.disposition);
   if (!d || typeof d.enough !== "boolean" || !["realisedGains", "realisedLosses", "paperGains", "paperLosses", "sellDays", "minimumDays"].every((k) => isNum(d[k])) || !["pgr", "plr", "difference"].every((k) => numOrNull(d[k]))) return null;
   if (v.compared !== null) {

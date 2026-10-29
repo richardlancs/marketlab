@@ -25,7 +25,8 @@ export const MAX_NAMED = 4;
  */
 export function sectorAllocation(summary: PortfolioSummary, sectorOf: (symbol: string) => string | null | undefined): Segment[] {
   const bySector = new Map<string, number>();
-  for (const p of summary.positions) {
+  // Stocks owned by sector; a short is a debt, so it comes off the cash (which holds its proceeds) instead.
+  for (const p of summary.positions.filter((x) => x.marketValue > 0)) {
     const sector = sectorOf(p.symbol) ?? "Unknown sector";
     bySector.set(sector, (bySector.get(sector) ?? 0) + p.marketValue);
   }
@@ -42,6 +43,9 @@ export function sectorAllocation(summary: PortfolioSummary, sectorOf: (symbol: s
     const value = rest.reduce((sum, [, v]) => sum + v, 0);
     segments.push({ key: "other", label: `Other (${rest.length} sectors)`, value, share: share(value), color: null });
   }
-  segments.push({ key: "cash", label: "Cash", value: summary.cash, share: share(summary.cash), color: null });
+  if (summary.optionsValue > 0) segments.push({ key: "options", label: "Options", value: summary.optionsValue, share: share(summary.optionsValue), color: null });
+  const shorts = summary.positions.reduce((sum, p) => (p.marketValue < 0 ? sum + p.marketValue : sum), 0) + Math.min(0, summary.optionsValue);
+  const cash = Math.max(0, summary.cash + shorts);
+  segments.push({ key: "cash", label: shorts < 0 ? "Cash, less shorts" : "Cash", value: cash, share: share(cash), color: null });
   return segments;
 }

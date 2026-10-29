@@ -2,7 +2,7 @@ import { accounts } from "@/lib/db";
 import { getMarket, getStockDetail } from "@/lib/market";
 import { currentBook } from "@/lib/books";
 import { currentOwner } from "@/lib/owner";
-import { relevantSymbols } from "@/lib/portfolio-history";
+import { analyticsAccount, relevantSymbols } from "@/lib/portfolio-history";
 import { PythonEngineError, post, SERVICE_DOWN } from "@/lib/backtest/python-client";
 import { sliceTimeframe } from "@/lib/chart";
 import { TIMEFRAMES, type Timeframe } from "@/lib/types";
@@ -41,12 +41,7 @@ export async function GET(request: Request) {
     result = await post(
       "v1/portfolio/performance",
       {
-        account: {
-          cash: account.cash,
-          holdings: account.holdings.map(({ symbol, shares }) => ({ symbol, shares })),
-          trades: account.trades.map(({ time, symbol, side, shares, price }) => ({ time, symbol, side, shares, price })),
-          events: (account.events ?? []).map(({ time, kind, symbol, shares, cash }) => ({ time, kind, symbol, shares, cash })),
-        },
+        account: analyticsAccount(account),
         history,
         index: { times: days.map((p) => p.time), prices: days.map((p) => p.price) },
         // Whose nightly snapshots to use for past closes (verified here: the session or guest cookie).

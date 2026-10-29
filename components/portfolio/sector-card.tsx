@@ -30,7 +30,7 @@ export function SectorCard() {
   }
 
   const sectors = new Map(listings.map((l) => [l.symbol, l.sector]));
-  const segments = sectorAllocation(summarizePortfolio(account.holdings, Object.values(quotes), account.cash), (s) => sectors.get(s));
+  const segments = sectorAllocation(summarizePortfolio(account.holdings, Object.values(quotes), account.cash, account.options), (s) => sectors.get(s));
 
   return (
     <Card aria-labelledby="sectors" className="h-full">

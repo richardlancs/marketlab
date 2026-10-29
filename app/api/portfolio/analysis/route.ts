@@ -26,7 +26,7 @@ export async function GET() {
   // The portfolio being traded in: practice, or a season's (lib/books.ts).
   const book = await currentBook(owner);
   const account = (owner && (await accounts.load(book?.accountId ?? owner.id))) || (await visitorAccount());
-  const held = account.holdings.filter((h) => h.shares > 0);
+  const held = account.holdings.filter((h) => h.shares !== 0); // shorts count, as negative values
   if (held.length === 0) return json({ empty: true });
 
   // Values at the latest close; a stock whose prices can't be loaded is left out (and listed).

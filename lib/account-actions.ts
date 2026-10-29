@@ -16,13 +16,15 @@ import { accounts, guests } from "./db";
 import { addAlert, markAlertsSeen, removeAlert } from "./alerts";
 import { getListing, getProcessingData, getStockDetail } from "./market";
 import { isSymbolFormat, normalizeSymbol } from "./market/symbols";
-import { cancelPendingOrder, placePendingOrder, type NewOrder } from "./orders";
+import { bracketOrders, bracketProblem, cancelPendingOrder, placePendingOrder, type NewOrder } from "./orders";
+import { contractPrice, getChain, refreshOptionMarks } from "./options/server";
+import { expiryTime, tradePrice } from "./option-trading";
 import { symbolsToProcess } from "./processing";
 import { checkBadgesLater } from "./badge-check";
 import { bookView, currentBook } from "./books";
 import { clearGuestCookie, currentOwner } from "./owner";
 import { isStartingPreset } from "./starting-account";
-import { annotateTrade, annotation, isNote, isTradeReason, MAX_HOLDINGS, MAX_WATCHLIST, NOTE_LENGTH, parseAccount, type Account, type TradeReason } from "./trading";
+import { annotateTrade, annotation, isNote, isTradeReason, MAX_HOLDINGS, MAX_WATCHLIST, NOTE_LENGTH, parseAccount, type Account, type Bracket, type Trail, type TradeReason } from "./trading";
 import { visitorAccount } from "./visitor-account";
 
 /** What the browser gets back: the account after the change, or a message to show. */
@@ -91,6 +93,7 @@ export async function processAccountAction(): Promise<ActionResult> {
   });
   return forCurrentUser("book", async (userId) => {
     const result = await accounts.update(userId, await processingDataFor(userId), (account) => ({ ok: true, account }));
+    if (result.ok && (await refreshOptionMarks(userId, result.account))) return { ok: true, account: (await accounts.load(userId)) ?? result.account };
     return result.ok ? { ok: true, account: result.account } : result;
   });
 }
@@ -107,29 +110,50 @@ function parseJournal(value: unknown): { reason?: TradeReason; note?: string } |
 
 const BAD_NOTE = { ok: false as const, message: `A note can be up to ${NOTE_LENGTH} characters.` };
 
-export async function placeOrderAction(input: unknown, side: unknown, shares: unknown, journal?: unknown): Promise<ActionResult> {
+/** An optional stop-loss and take-profit: numbers if given. Their levels are checked against the price later. */
+function parseBracket(value: unknown): Bracket | undefined | null {
+  if (value === undefined || value === null) return undefined;
+  if (typeof value !== "object") return null;
+  const { stop, target } = value as Record<string, unknown>;
+  if ((stop !== undefined && typeof stop !== "number") || (target !== undefined && typeof target !== "number")) return null;
+  return stop === undefined && target === undefined ? undefined : { ...(stop !== undefined && { stop }), ...(target !== undefined && { target }) };
+}
+
+/** A market order's extras: selling short, and a bracket. */
+export interface OrderOptions {
+  short?: boolean;
+  bracket?: Bracket;
+}
+
+export async function placeOrderAction(input: unknown, side: unknown, shares: unknown, journal?: unknown, options?: unknown): Promise<ActionResult> {
   if (typeof input !== "string" || (side !== "buy" && side !== "sell") || typeof shares !== "number") {
     return { ok: false, message: "That order isn't valid." };
   }
   const why = parseJournal(journal);
   if (!why) return BAD_NOTE;
+  const extras = (typeof options === "object" && options !== null ? options : {}) as Record<string, unknown>;
+  const short = side === "sell" && extras.short === true;
+  const bracket = parseBracket(extras.bracket);
+  if (bracket === null) return { ok: false, message: "That bracket isn't valid." };
   const owner = await currentOwner({ create: false });
   return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(input);
     if (!detail) return UNKNOWN;
     if (detail.status === "unavailable") return { ok: false, message: `Prices for ${detail.listing.symbol} are unavailable right now. Try again in a minute.` };
     const { stock } = detail;
+    const problem = bracketProblem(bracket, short, stock.price);
+    if (problem) return { ok: false, message: problem };
+    const id = crypto.randomUUID();
+    const time = Date.now();
     // The same rules as guest mode (lib/trading.ts), inside a database transaction,
     // after bringing the account up to date (a dividend or a fill may have changed the cash).
-    const result = await accounts.placeOrder(userId, {
-      symbol: stock.symbol,
-      side,
-      shares,
-      price: stock.price,
-      id: crypto.randomUUID(),
-      time: Date.now(),
-      ...why,
-    }, await processingDataFor(userId, [stock.symbol]));
+    // A bracket's stop-loss and take-profit are placed in the same transaction as the fill.
+    const result = await accounts.placeOrder(
+      userId,
+      { symbol: stock.symbol, side, shares, price: stock.price, id, time, ...(short && { short }), ...why },
+      await processingDataFor(userId, [stock.symbol]),
+      bracket ? (account) => ({ ...account, orders: [...bracketOrders({ id, symbol: stock.symbol, shares, short, bracket }, time), ...(account.orders ?? [])] }) : undefined,
+    );
     if (result.ok && owner?.kind === "user") checkBadgesLater(owner.id); // a trade counts towards a streak
     return result.ok ? { ok: true, account: result.account } : { ok: false, message: result.message };
   });
@@ -150,16 +174,71 @@ async function change(userId: string, extra: string[], fn: Parameters<typeof acc
 
 export async function placePendingOrderAction(input: unknown): Promise<ActionResult> {
   if (typeof input !== "object" || input === null) return { ok: false, message: "That order isn't valid." };
-  const { symbol, side, type, shares, price, duration, reason, note } = input as Record<string, unknown>;
+  const { symbol, side, type, shares, price, duration, reason, note, short, trail, bracket } = input as Record<string, unknown>;
   if (typeof symbol !== "string" || typeof shares !== "number" || typeof price !== "number") return { ok: false, message: "That order isn't valid." };
   const why = parseJournal({ reason, note });
   if (!why) return BAD_NOTE;
+  const levels = parseBracket(bracket);
+  if (levels === null) return { ok: false, message: "That bracket isn't valid." };
+  const distance = typeof trail === "object" && trail !== null ? (trail as Trail) : undefined;
   return forCurrentUser("book", async (userId) => {
     const detail = await getStockDetail(symbol);
     if (!detail) return UNKNOWN;
     const listing = detail.status === "ok" ? detail.stock : detail.listing;
-    const order = { symbol: listing.symbol, side, type, shares, price, duration, ...why } as NewOrder; // each field is checked by placePendingOrder
-    return change(userId, [listing.symbol], (account) => placePendingOrder(account, order, crypto.randomUUID(), Date.now()));
+    // Each field is checked by placePendingOrder; a trailing stop starts from today's price.
+    const order = {
+      symbol: listing.symbol,
+      side,
+      type,
+      shares,
+      price,
+      duration,
+      ...(short === true && { short: true }),
+      ...(distance && { trail: { kind: distance.kind, value: distance.value } }),
+      ...(levels && { bracket: levels }),
+      ...why,
+    } as NewOrder;
+    const marketPrice = detail.status === "ok" ? detail.stock.price : undefined;
+    return change(userId, [listing.symbol], (account) => placePendingOrder(account, order, crypto.randomUUID(), Date.now(), marketPrice));
+  });
+}
+
+/**
+ * Buys or sells option contracts from the simulated chain, at its price at
+ * the latest close plus or minus the half-spread (lib/option-trading.ts).
+ * Season portfolios trade shares only.
+ */
+export async function placeOptionOrderAction(input: unknown): Promise<ActionResult> {
+  if (typeof input !== "object" || input === null) return { ok: false, message: "That order isn't valid." };
+  const { symbol, kind, strike, expiry, side, contracts } = input as Record<string, unknown>;
+  if (typeof symbol !== "string" || (kind !== "call" && kind !== "put") || typeof strike !== "number" || typeof expiry !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(expiry)) {
+    return { ok: false, message: "That option isn't valid." };
+  }
+  if ((side !== "buy" && side !== "sell") || typeof contracts !== "number") return { ok: false, message: "That order isn't valid." };
+  const owner = await currentOwner({ create: false });
+  if (await currentBook(owner)) return { ok: false, message: "Season portfolios trade shares only. Switch to your practice portfolio to trade options." };
+  const real = await realSymbol(symbol);
+  if (!real) return UNKNOWN;
+  return forCurrentUser("book", async (userId) => {
+    // A new position must be in today's chain; one already held can always be closed, at the chain's pricing.
+    const chain = await getChain(real);
+    if (!chain.ok) return { ok: false, message: chain.message };
+    const listed = chain.chain.expiries.some((e) => e.expiry === expiry && e.strikes.some((s) => s.strike === strike));
+    const held = (await accounts.load(userId))?.options?.some((o) => o.symbol === real && o.kind === kind && o.strike === strike && o.expiry === expiryTime(expiry));
+    if (!listed && !held) return { ok: false, message: "That option isn't in today's chain. Reload the page to see the latest one." };
+    const quoted = await contractPrice(real, kind, strike, expiry);
+    if (!quoted.ok) return { ok: false, message: quoted.message };
+    const mid = quoted.price;
+    if (!(mid > 0) && side === "buy") return { ok: false, message: "That option has no price to trade at." };
+    const market = await processingDataFor(userId, [real]);
+    const result = await accounts.placeOptionOrder(
+      userId,
+      { symbol: real, contract: { kind, strike, expiry: expiryTime(expiry) }, side, contracts, price: tradePrice(mid, side), id: crypto.randomUUID(), time: Date.now(), asOf: market.latest },
+      market,
+    );
+    if (!result.ok) return { ok: false, message: result.message };
+    // Value the new position at once, rather than at what was paid until tonight.
+    return { ok: true, account: (await refreshOptionMarks(userId, result.account)) ? ((await accounts.load(userId)) ?? result.account) : result.account };
   });
 }
 

@@ -51,7 +51,8 @@ export function createLeaderboardRepository(db: Db) {
     /**
      * The standings, valued and ranked in one query: each holding at its
      * stock's latest stored close (from the price store, `source`), or at
-     * what it cost if there's none, plus cash; best return since joining
+     * what it cost if there's none (a short's shares are negative), plus
+     * options at their marks and cash; best return since joining
      * first, ties to whoever joined first.
      */
     async standings(source: string, now: number): Promise<(Standing & { userId: string })[]> {
@@ -68,7 +69,9 @@ export function createLeaderboardRepository(db: Db) {
                    ), h.average_cost))
                    from holding h
                    where h.user_id = e.user_id
-                 ), 0) as value
+                 ), 0)
+                 -- Options at their latest mark (100 shares a contract), or what was paid until there's one.
+                 + coalesce((select sum(o.contracts * 100 * coalesce(o.mark, o.average_premium)) from option_position o where o.user_id = e.user_id), 0) as value
           from leaderboard_entry e
           left join portfolio p on p.user_id = e.user_id
         ),

@@ -16,13 +16,16 @@ function field(value: string | number): string {
   return /[",\r\n]/.test(safe) ? `"${safe.replace(/"/g, '""')}"` : safe;
 }
 
-const HEADER = ["Date", "Time (UTC)", "Symbol", "Side", "Shares", "Price", "Total", "Realized gain", "Reason", "Note"];
+const HEADER = ["Date", "Time (UTC)", "Symbol", "Side", "Shares", "Price", "Total", "Realized gain", "Reason", "Note", "Option"];
 
 /**
  * Trades, dividends and splits, newest first, like the activity list. Dates
  * are ISO (YYYY-MM-DD) so every spreadsheet reads them the same way. For a
  * dividend, Price is per share and Total is the cash paid; for a split, Price
- * is the ratio and Total is any cash paid for a fraction of a share.
+ * is the ratio and Total is any cash paid for a fraction of a share. An
+ * option trade's Shares are contracts, its Price the premium per share, its
+ * Total for 100 shares a contract, and Option names the contract
+ * ("call 60 2026-12-18").
  */
 export function tradesToCsv(trades: readonly Trade[], events: readonly AccountEvent[] = []): string {
   const at = (time: number) => {
@@ -30,8 +33,22 @@ export function tradesToCsv(trades: readonly Trade[], events: readonly AccountEv
     return [iso.slice(0, 10), iso.slice(11, 19)];
   };
   const rows = [
-    ...trades.map((t) => ({ time: t.time, row: [...at(t.time), t.symbol, t.side, t.shares, t.price, Math.round(t.shares * t.price * 100) / 100, t.realizedGain ?? "", t.reason ?? "", t.note ?? ""] })),
-    ...events.map((e) => ({ time: e.time, row: [...at(e.time), e.symbol, e.kind, e.shares, e.value, e.cash, "", "", ""] })),
+    ...trades.map((t) => ({
+      time: t.time,
+      row: [
+        ...at(t.time),
+        t.symbol,
+        t.side,
+        t.shares,
+        t.price,
+        Math.round(t.shares * t.price * (t.option ? 100 : 1) * 100) / 100,
+        t.realizedGain ?? "",
+        t.reason ?? "",
+        t.note ?? "",
+        t.option ? `${t.option.kind} ${t.option.strike} ${new Date(t.option.expiry).toISOString().slice(0, 10)}` : "",
+      ],
+    })),
+    ...events.map((e) => ({ time: e.time, row: [...at(e.time), e.symbol, e.kind, e.shares, e.value, e.cash, "", "", "", ""] })),
   ]
     .sort((a, b) => b.time - a.time)
     .map((r) => r.row);

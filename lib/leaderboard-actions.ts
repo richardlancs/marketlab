@@ -41,7 +41,7 @@ export async function joinLeaderboardAction(name: unknown): Promise<LeaderboardR
 
   const details = await Promise.all(account.holdings.map((h) => getStockDetail(h.symbol)));
   const quotes = details.flatMap((d) => (d?.status === "ok" ? [d.stock] : []));
-  const startValue = summarizePortfolio(account.holdings, quotes, account.cash).totalValue;
+  const startValue = summarizePortfolio(account.holdings, quotes, account.cash, account.options).totalValue;
   const entry = { displayName: checked.name, joinedAt: Date.now(), startValue };
   const result = await leaderboard.join(userId, { ...entry, nameKey: checked.key });
   if (result === "taken") return { ok: false, message: "That display name is taken. Try another." };

@@ -31,16 +31,19 @@ export async function POST(request: Request) {
   const owner = await currentOwner({ create: false });
   const book = await currentBook(owner);
   const account = (owner && (await accounts.load(book?.accountId ?? owner.id))) || (await visitorAccount());
-  const held = account.holdings.filter((h) => h.shares > 0);
+  const held = account.holdings.filter((h) => h.shares !== 0);
   const details = await Promise.all(held.map((h) => getStockDetail(h.symbol)));
-  const holdings = held.flatMap((h, i) => {
+  const priced = held.flatMap((h, i) => {
     const detail = details[i];
     return detail?.status === "ok" ? [{ symbol: h.symbol, value: h.shares * detail.stock.price }] : [];
   });
+  // The plan grows what's owned; a short is a debt, so it comes off the cash (which holds its proceeds).
+  const holdings = priced.filter((h) => h.value > 0);
+  const cash = Math.max(0, account.cash + priced.filter((h) => h.value < 0).reduce((sum, h) => sum + h.value, 0));
 
   try {
     if (holdings.length) await syncPrices(holdings.map((h) => h.symbol));
-    const data = await post("/v1/analytics/plan", { source: priceSource(), holdings, cash: account.cash, monthly, years, target, inflation }, "Goal plan");
+    const data = await post("/v1/analytics/plan", { source: priceSource(), holdings, cash, monthly, years, target, inflation }, "Goal plan");
     const plan = parseGoalPlan(data.plan);
     if (!plan) return json({ error: "The plan came back in a form MarketLab couldn't read." }, 502);
     return json({ plan });

@@ -1,3 +1,4 @@
+import type { OptionPosition } from "./trading";
 import type { Holding, PortfolioSummary, Position, Stock } from "./types";
 
 /**
@@ -9,6 +10,7 @@ export function summarizePortfolio(
   holdings: Holding[],
   stocks: Pick<Stock, "symbol" | "name" | "price" | "change">[],
   cash: number,
+  options: OptionPosition[] = [],
 ): PortfolioSummary {
   const positions: Position[] = holdings.map((holding) => {
     // A stock with no price yet (still loading, or unavailable right now) is
@@ -27,7 +29,8 @@ export function summarizePortfolio(
       marketValue,
       costBasis,
       gain,
-      gainPercent: costBasis === 0 ? 0 : gain / costBasis,
+      // Against what was put in (for a short, what it was sold for), so a short that fell shows a gain.
+      gainPercent: costBasis === 0 ? 0 : gain / Math.abs(costBasis),
       dayChange: holding.shares * stock.change,
       priced: quote !== undefined,
     };
@@ -35,8 +38,10 @@ export function summarizePortfolio(
 
   const sum = (pick: (p: Position) => number) => positions.reduce((total, p) => total + pick(p), 0);
 
-  const totalValue = cash + sum((p) => p.marketValue);
-  const costBasis = sum((p) => p.costBasis);
+  // Options at their latest mark from the analytics service, or what they cost until there's one.
+  const optionsValue = options.reduce((total, o) => total + o.contracts * 100 * (o.mark ?? o.averagePremium), 0);
+  const totalValue = cash + sum((p) => p.marketValue) + optionsValue;
+  const costBasis = sum((p) => Math.abs(p.costBasis));
   const totalGain = sum((p) => p.gain);
   const dayChange = sum((p) => p.dayChange);
   // Today's percentage is measured against yesterday's value, not today's.
@@ -45,6 +50,7 @@ export function summarizePortfolio(
   return {
     cash,
     positions,
+    optionsValue,
     totalValue,
     costBasis,
     totalGain,

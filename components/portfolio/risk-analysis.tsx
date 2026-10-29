@@ -273,7 +273,8 @@ function ProjectionView({ a, totalValue }: { a: PortfolioAnalysis; totalValue: n
 
 function OptimiseView({ a }: { a: PortfolioAnalysis }) {
   const o = a.optimisation;
-  if (!o) return <p className="text-sm text-muted">Hold two or more stocks to compare other ways of weighting them.</p>;
+  if (!o) return <p className="text-sm text-muted">Own two or more stocks to compare other ways of weighting them.</p>;
+  const owned = o.symbols ?? a.symbols;
   const columns: { name: string; w: Weighting; tone: string }[] = [
     { name: "Yours", w: o.current, tone: "fill-foreground" },
     { name: "Least risk", w: o.minimumVariance, tone: "fill-gain" },
@@ -293,7 +294,7 @@ function OptimiseView({ a }: { a: PortfolioAnalysis }) {
     <div>
       <p className="text-sm text-muted">
         <Explain term="riskParity" className="mr-1" />
-        The same stocks (your cash aside), weighted other ways: long only, at most {share(o.cap)} in one stock. Expected returns and risks are estimated from the last {Math.round(o.estimationSessions / 252)} years and deliberately
+        The same stocks (your cash{o.symbols ? " and shorts" : ""} aside), weighted other ways: long only, at most {share(o.cap)} in one stock. Expected returns and risks are estimated from the last {Math.round(o.estimationSessions / 252)} years and deliberately
         toned down, because past returns are a poor guide; treat this as a way to see trade-offs, not a recommendation.
       </p>
       <TestOverTime a={a} />
@@ -311,7 +312,7 @@ function OptimiseView({ a }: { a: PortfolioAnalysis }) {
               </tr>
             </thead>
             <tbody>
-              {a.symbols.map((s, i) => (
+              {owned.map((s, i) => (
                 <tr key={s} className="border-t border-border">
                   <th scope="row" className="py-1.5 text-left font-medium">{s}</th>
                   {columns.map((c) => (
@@ -384,6 +385,7 @@ const YEAR = 365.25 * 24 * 60 * 60 * 1000;
 function TestOverTime({ a }: { a: PortfolioAnalysis }) {
   const largest = a.symbols
     .map((symbol, i) => ({ symbol, weight: a.weights[i] ?? 0 }))
+    .filter((h) => h.weight > 0)
     .sort((x, y) => y.weight - x.weight)
     .slice(0, LIMITS.maxHoldings);
   const link = (objective: "min-variance" | "max-sharpe") =>

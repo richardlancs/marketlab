@@ -28,7 +28,7 @@ export function PortfolioStats() {
     );
   }
 
-  const portfolio = summarizePortfolio(account.holdings, Object.values(quotes), account.cash);
+  const portfolio = summarizePortfolio(account.holdings, Object.values(quotes), account.cash, account.options);
   const invested = portfolio.totalValue - portfolio.cash;
   const realized = totalRealizedGain(account);
   const rows = [

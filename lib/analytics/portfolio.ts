@@ -82,6 +82,8 @@ export interface PortfolioAnalysis {
     frontier: PortfolioPoint[];
     cap: number | null;
     estimationSessions: number;
+    /** With shorts, the stocks owned that it weights (long-only); otherwise null and the weights follow `symbols`. */
+    symbols?: string[] | null;
   } | null;
 }
 
@@ -116,7 +118,8 @@ export function parsePortfolioAnalysis(value: unknown): PortfolioAnalysis | null
   if (!["p5", "p25", "p50", "p75", "p95"].every((k) => numbers(bands[k])) || !numbers(mc.months)) return null;
   if (a.optimisation !== null) {
     const o = obj(a.optimisation);
-    if (!o || !["minimumVariance", "maximumSharpe", "riskParity", "current"].every((k) => weighting(o[k], n)) || !Array.isArray(o.frontier)) return null;
+    const owned = Array.isArray(o?.symbols) && o.symbols.every((x) => typeof x === "string") ? o.symbols.length : n;
+    if (!o || !["minimumVariance", "maximumSharpe", "riskParity", "current"].every((k) => weighting(o[k], owned)) || !Array.isArray(o.frontier)) return null;
   }
   return value as PortfolioAnalysis;
 }

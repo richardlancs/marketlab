@@ -119,6 +119,8 @@ export interface Position extends Holding {
 export interface PortfolioSummary {
   cash: number;
   positions: Position[];
+  /** Option positions at their marks. */
+  optionsValue: number;
   totalValue: number;
   costBasis: number;
   totalGain: number;

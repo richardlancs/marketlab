@@ -11,7 +11,7 @@ import { post, PythonEngineError } from "../backtest/python-client";
 import { getMarket, getStockDetail, priceSource } from "../market";
 import { CATALOG } from "../market/catalog";
 import { currentOwner } from "../owner";
-import { relevantSymbols } from "../portfolio-history";
+import { analyticsAccount, relevantSymbols, stopFills } from "../portfolio-history";
 import { visitorAccount } from "../visitor-account";
 import { parseAccountLuck, parseReview, type AccountLuck, type ReviewResult } from "./types";
 
@@ -37,14 +37,10 @@ async function reviewBody() {
   });
   const body = {
     source: priceSource(),
-    account: {
-      cash: account.cash,
-      holdings: account.holdings.map(({ symbol, shares, averageCost }) => ({ symbol, shares, averageCost })),
-      trades: account.trades.map(({ time, symbol, side, shares, price, realizedGain, reason }) => ({ time, symbol, side, shares, price, realizedGain: realizedGain ?? null, reason: reason ?? null })),
-      events: (account.events ?? []).map(({ time, kind, symbol, shares, cash, sharesAfter }) => ({ time, kind, symbol, shares, cash, sharesAfter: sharesAfter ?? null })),
-    },
+    account: analyticsAccount(account),
     history,
     index: { times: index.history.map((p) => p.time), prices: index.history.map((p) => p.price) },
+    stops: stopFills(account).slice(0, 100),
   };
   return { body, symbols };
 }

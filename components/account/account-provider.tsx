@@ -8,6 +8,7 @@ import {
   importBrowserAccountAction,
   markAlertsSeenAction,
   placeOrderAction,
+  placeOptionOrderAction,
   placePendingOrderAction,
   processAccountAction,
   removeAlertAction,
@@ -17,14 +18,14 @@ import {
   type ActionResult,
 } from "@/lib/account-actions";
 import { addAlert as applyAddAlert, markAlertsSeen as applySeen, removeAlert as applyRemoveAlert } from "@/lib/alerts";
-import { cancelPendingOrder, placePendingOrder as applyPendingOrder, type NewOrder } from "@/lib/orders";
+import { bracketOrders, cancelPendingOrder, placePendingOrder as applyPendingOrder, type NewOrder } from "@/lib/orders";
 import { needsProcessing } from "@/lib/processing";
 import type { StockTableRow } from "@/components/stocks/stock-table-rows";
 import { decodeAccount, STORAGE_KEY } from "@/lib/account-store";
 import { authClient } from "@/lib/auth-client";
 import type { StockListing } from "@/lib/market/universe";
 import { isStartingAccount, startingAccount, type StartingPreset } from "@/lib/starting-account";
-import { annotateTrade, placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Order, type PriceAlert, type AlertCondition, type TradeReason } from "@/lib/trading";
+import { annotateTrade, placeOrder as applyOrder, toggleWatchlist as applyToggle, WATCHLIST_FULL, watchlistIsFull, type Account, type Bracket, type Order, type PriceAlert, type AlertCondition, type TradeReason } from "@/lib/trading";
 
 /** A trade's optional reason and note (trade notes). */
 export type Journal = { reason?: TradeReason; note?: string };
@@ -64,12 +65,14 @@ interface AccountContextValue {
   /** True when any real ticker can be opened (Tiingo), not just catalog ones. */
   openTickers: boolean;
   toggleWatchlist(symbol: string): Promise<Outcome>;
-  /** Shown at the quote's price straight away; the server then trades at its own price. */
-  placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number, journal?: Journal): Promise<Outcome>;
+  /** Shown at the quote's price straight away; the server then trades at its own price. `extras`: selling short, and a bracket to place once it fills. */
+  placeOrder(quote: Pick<StockQuote, "symbol" | "price">, side: Order["side"], shares: number, journal?: Journal, extras?: { short?: boolean; bracket?: Bracket }): Promise<Outcome>;
   /** Adds, changes or clears a past trade's reason and note. */
   annotateTrade(id: string, journal: Journal): Promise<Outcome>;
-  /** A limit or stop order, filled later at a close (lib/orders.ts). */
-  placePendingOrder(order: NewOrder): Promise<Outcome>;
+  /** A limit, stop or trailing stop order, filled later at a close (lib/orders.ts). `marketPrice` starts a trailing stop in the instant view. */
+  placePendingOrder(order: NewOrder, marketPrice?: number): Promise<Outcome>;
+  /** Buys or sells option contracts at the chain's price (lib/option-trading.ts). Not shown until the server confirms. */
+  placeOptionOrder(order: { symbol: string; kind: "call" | "put"; strike: number; expiry: string; side: "buy" | "sell"; contracts: number }): Promise<Outcome>;
   cancelOrder(id: string): Promise<Outcome>;
   addAlert(alert: { symbol: string; direction: PriceAlert["direction"]; price: number; condition?: AlertCondition }): Promise<Outcome>;
   removeAlert(id: string): Promise<Outcome>;
@@ -215,7 +218,7 @@ export function AccountProvider({
   // doesn't send. Fetched again only when that set of symbols changes; a
   // symbol whose prices are unavailable is simply left out (shown as "—").
   const extraKey = account
-    ? [...new Set([...account.holdings.map((h) => h.symbol), ...account.watchlist])].filter((s) => !coreQuotes[s]).sort().join(",")
+    ? [...new Set([...account.holdings.map((h) => h.symbol), ...(account.options ?? []).map((o) => o.symbol), ...account.watchlist])].filter((s) => !coreQuotes[s]).sort().join(",")
     : "";
   // Rows from an earlier set of symbols are kept: they still help while the new set loads.
   const [extraRows, setExtraRows] = useState<Record<string, StockTableRow>>({});
@@ -239,6 +242,9 @@ export function AccountProvider({
     };
   }, [extraKey]);
   const quoteMap = useMemo(() => ({ ...extraRows, ...coreQuotes }), [extraRows, coreQuotes]);
+
+  /** Today's prices, to value short positions in the instant view. */
+  const quoteMarks = () => Object.fromEntries(Object.values(quoteMap).map((q) => [q.symbol, q.price]));
 
   /** Applies `apply` optimistically if it succeeds on the current account; the server re-checks it. */
   const tryOptimistic = (apply: (a: Account) => { ok: true; account: Account } | { ok: false }) => (a: Account) => {
@@ -265,13 +271,18 @@ export function AccountProvider({
       return runRemote((a) => applyToggle(a, symbol), () => toggleWatchlistAction(symbol));
     },
 
-    async placeOrder({ symbol, price }, side, shares, journal) {
+    async placeOrder({ symbol, price }, side, shares, journal, extras) {
       // Only for the optimistic view: the server makes its own ID and time, at its own price.
-      const order: Order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now(), ...journal };
+      const short = side === "sell" && extras?.short === true;
+      const order: Order = { symbol, side, shares, price, id: crypto.randomUUID(), time: Date.now(), ...(short && { short }), ...journal };
+      const withBracket = (a: Account) => (extras?.bracket ? { ...a, orders: [...bracketOrders({ id: order.id, symbol, shares, short, bracket: extras.bracket }, order.time), ...(a.orders ?? [])] } : a);
       // quiet: the trade form shows its own errors.
       return runRemote(
-        tryOptimistic((a) => applyOrder(a, order)),
-        () => placeOrderAction(symbol, side, shares, journal),
+        tryOptimistic((a) => {
+          const result = applyOrder(a, order, quoteMarks());
+          return result.ok ? { ok: true, account: withBracket(result.account) } : result;
+        }),
+        () => placeOrderAction(symbol, side, shares, journal, extras),
         { quiet: true },
       );
     },
@@ -280,14 +291,18 @@ export function AccountProvider({
       return runRemote((a) => annotateTrade(a, id, journal.reason, journal.note), () => annotateTradeAction(id, journal), { quiet: true });
     },
 
-    async placePendingOrder(input) {
+    async placePendingOrder(input, marketPrice) {
       const id = crypto.randomUUID();
       const now = Date.now();
       return runRemote(
-        tryOptimistic((a) => applyPendingOrder(a, input, id, now)),
+        tryOptimistic((a) => applyPendingOrder(a, input, id, now, marketPrice)),
         () => placePendingOrderAction(input),
         { quiet: true },
       );
+    },
+
+    async placeOptionOrder(input) {
+      return runRemote(null, () => placeOptionOrderAction(input), { quiet: true });
     },
 
     async cancelOrder(id) {
