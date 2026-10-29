@@ -1,5 +1,6 @@
 /**
- * The rules for the simulated account: buying, selling and the watchlist.
+ * The rules for the simulated account: buying, selling (and selling short)
+ * and the watchlist. Options are in lib/option-trading.ts.
  *
  * Every function here is pure: it takes an account and returns a new one,
  * without changing the input or touching storage. That's what lets the same
@@ -31,31 +32,37 @@ export interface Trade {
   id: string;
   symbol: string;
   side: "buy" | "sell";
-  /** Whole shares only, to keep the simulator simple. */
+  /** Whole shares only, to keep the simulator simple. For an option, contracts. */
   shares: number;
-  /** The price per share the trade was filled at. */
+  /** The price per share the trade was filled at. For an option, the premium per share (a contract is 100 shares). */
   price: number;
   /** Unix timestamp in milliseconds. */
   time: number;
-  /** For sells: profit or loss against the average cost. Absent for buys. */
+  /** For trades that close a position (a sale, a buy to cover, closing an option): profit or loss against the average cost. */
   realizedGain?: number;
+  /** An option trade: which contract. Absent for shares. */
+  option?: OptionContract;
   /** The trader's own reason and note, if they gave them. Private: never shown on public pages. */
   reason?: TradeReason;
   note?: string;
 }
 
-/** Something that happened to a holding without a trade: a dividend paid, or a split. */
+/**
+ * Something that happened to the account without a trade of its own: a
+ * dividend, a split, a short's borrow fee, a margin call (its buy-back is a
+ * trade too), or an option expiring.
+ */
 export interface AccountEvent {
   id: string;
-  kind: "dividend" | "split";
+  kind: "dividend" | "split" | "borrow-fee" | "margin-call" | "expiry";
   symbol: string;
-  /** The close of the ex-date: the event counts from that day. */
+  /** The close it happened at (a borrow fee: the latest close charged that month). */
   time: number;
-  /** Shares held when it happened. */
+  /** Shares held when it happened (negative for a short); a margin call: shares bought back; an expiry: contracts. */
   shares: number;
-  /** Dividend: dollars per share. Split: the ratio (2 = 2-for-1). */
+  /** Dividend: dollars per share. Split: the ratio (2 = 2-for-1). Borrow fee: the yearly rate. Margin call: the close. Expiry: what each share of the option was worth. */
   value: number;
-  /** Cash it added: the dividend, or for a split the payout for a fraction of a share. */
+  /** Cash it changed the account by: negative when paid (a short's dividend, a fee, a written option settling). A margin call's is 0: its trade carries the cash. */
   cash: number;
   /** Splits only: shares held afterward. */
   sharesAfter?: number;
@@ -66,10 +73,21 @@ export interface PendingOrder {
   id: string;
   symbol: string;
   side: "buy" | "sell";
-  /** Limit: at this price or better. Stop: once the price passes this level. */
-  type: "limit" | "stop";
+  /** Limit: at this price or better. Stop: once the price passes this level. Trailing: a stop that follows the price. */
+  type: "limit" | "stop" | "trailing";
   shares: number;
+  /** A trailing stop's current level, moved at each close. */
   price: number;
+  /** A sell that opens (or adds to) a short position. */
+  short?: boolean;
+  /** Trailing stops: how far behind the best close the stop follows. */
+  trail?: Trail;
+  /** Trailing stops: the best close so far (highest for a sell, lowest for a buy). */
+  extreme?: number;
+  /** An opening order's protective orders, placed when it fills: a stop-loss and a take-profit. */
+  bracket?: Bracket;
+  /** Orders that cancel each other: when one fills, the others in the group are cancelled. */
+  ocoGroup?: string;
   /** "day": only the next close; "gtc": good till cancelled (up to 90 days). */
   duration: "day" | "gtc";
   createdAt: number;
@@ -83,7 +101,42 @@ export interface PendingOrder {
   tradeNote?: string;
 }
 
-/** "Tell me when KO closes above $70." */
+export interface Trail {
+  kind: "percent" | "amount";
+  /** Percent (5 = 5%) or dollars. */
+  value: number;
+}
+
+export interface Bracket {
+  /** The stop-loss level. */
+  stop?: number;
+  /** The take-profit level. */
+  target?: number;
+}
+
+/** An option contract: European, 100 shares, settled in cash at expiry (lib/option-trading.ts). */
+export interface OptionContract {
+  kind: "call" | "put";
+  strike: number;
+  /** The expiry day's close (ms). */
+  expiry: number;
+}
+
+/** An option position. Written (sold) options have negative contracts. */
+export interface OptionPosition extends OptionContract {
+  /** `${symbol}:${kind}:${strike}:${expiry}`: one position per contract. */
+  id: string;
+  symbol: string;
+  contracts: number;
+  /** The average premium per share paid (or, for written options, received). */
+  averagePremium: number;
+  /** Its value per share at the latest close, from the analytics service, and when. */
+  mark?: number;
+  markedAt?: number;
+  /** Delta per share at the mark. */
+  delta?: number;
+}
+
 /**
  * What an indicator alert watches for, instead of a price (lib/alerts.ts).
  * `direction` on the alert says which way: "above" is RSI rising past the
@@ -125,6 +178,8 @@ export interface Account {
   /** Open orders, then recently closed ones (newest first). */
   orders?: PendingOrder[];
   alerts?: PriceAlert[];
+  /** Option positions (Phase 19). */
+  options?: OptionPosition[];
   /** The last close the account has been brought up to date with (dividends, splits, fills, alerts). */
   processedThrough?: number;
 }
@@ -137,6 +192,8 @@ export interface Order {
   /** Supplied by the caller, so this function stays pure (no random IDs or clock reads). */
   id: string;
   time: number;
+  /** A sell that opens (or adds to) a short position. Without it, a sale needs shares you own. */
+  short?: boolean;
   /** Why, if the trader said: kept on the trade. */
   reason?: TradeReason;
   note?: string;
@@ -163,7 +220,7 @@ export function annotateTrade(account: Account, id: string, reason: TradeReason 
   };
 }
 
-export type TradeError = "invalid-shares" | "invalid-price" | "insufficient-cash" | "insufficient-shares" | "too-many-holdings";
+export type TradeError = "invalid-shares" | "invalid-price" | "insufficient-cash" | "insufficient-shares" | "too-many-holdings" | "short-position" | "long-position";
 
 export type TradeResult = { ok: true; account: Account; trade: Trade } | { ok: false; error: TradeError; message: string };
 
@@ -182,8 +239,46 @@ export const roundCents = (value: number) => Math.round(value * 100) / 100;
 
 const fail = (error: TradeError, message: string): TradeResult => ({ ok: false, error, message });
 
-/** Fills an order at its price, or explains why it can't be filled. */
-export function placeOrder(account: Account, order: Order): TradeResult {
+// ---------------------------------------------------------------------------
+// Short selling and margin, kept simple (Reg T-like):
+// - A short sale's proceeds go into cash, but 150% of every short's value at
+//   the latest price is set aside, so it can't be spent: the proceeds plus
+//   half as much again.
+// - Each close, a short pays a borrow fee (3% a year) and any dividend.
+// - If equity (cash + longs − shorts) falls below 30% of the shorts' value at
+//   a close, shorts are bought back at that close until it's restored
+//   (a margin call; lib/processing.ts).
+// Written options set aside what they could cost: a covered call its 100
+// shares a contract, a cash-secured put its strike × 100 in cash.
+// ---------------------------------------------------------------------------
+
+export const SHORT_MARGIN = 1.5;
+export const MAINTENANCE_MARGIN = 0.3;
+export const BORROW_FEE = 0.03;
+
+/** Latest prices by symbol, where known. Positions without one are valued at their average cost. */
+export type Marks = Record<string, number>;
+
+const markOf = (h: Holding, marks: Marks | undefined) => marks?.[h.symbol] ?? h.averageCost;
+
+/** What the short positions are worth at `marks` (a positive number). */
+export const shortValue = (account: Pick<Account, "holdings">, marks?: Marks) =>
+  account.holdings.reduce((sum, h) => (h.shares < 0 ? sum - h.shares * markOf(h, marks) : sum), 0);
+
+/** Cash set aside for cash-secured puts. */
+export const putReserve = (account: Pick<Account, "options">) =>
+  (account.options ?? []).reduce((sum, o) => (o.kind === "put" && o.contracts < 0 ? sum - o.contracts * 100 * o.strike : sum), 0);
+
+/** Shares of `symbol` set aside for covered calls. */
+export const callReserve = (account: Pick<Account, "options">, symbol: string) =>
+  (account.options ?? []).reduce((sum, o) => (o.symbol === symbol && o.kind === "call" && o.contracts < 0 ? sum - o.contracts * 100 : sum), 0);
+
+/** Cash free to spend: cash, less what shorts and secured puts set aside. */
+export const buyingPower = (account: Pick<Account, "cash" | "holdings" | "options">, marks?: Marks) =>
+  roundCents(account.cash - SHORT_MARGIN * shortValue(account, marks) - putReserve(account));
+
+/** Fills an order at its price, or explains why it can't be filled. `marks` values any short positions (default: their average cost). */
+export function placeOrder(account: Account, order: Order, marks?: Marks): TradeResult {
   const { symbol, side, shares, price } = order;
   if (!Number.isInteger(shares) || shares <= 0 || shares > MAX_SHARES_PER_ORDER) {
     return fail("invalid-shares", `Enter a whole number of shares from 1 to ${MAX_SHARES_PER_ORDER.toLocaleString("en-US")}.`);
@@ -192,9 +287,33 @@ export function placeOrder(account: Account, order: Order): TradeResult {
 
   const total = roundCents(shares * price);
   const held = account.holdings.find((h) => h.symbol === symbol);
+  const prices = { ...marks, [symbol]: price };
+  const record = (realizedGain?: number): Trade => ({
+    id: order.id,
+    symbol,
+    side,
+    shares,
+    price,
+    time: order.time,
+    ...(realizedGain !== undefined && { realizedGain }),
+    ...annotation(order.reason, order.note),
+  });
+
+  if (side === "buy" && held && held.shares < 0) {
+    // Buying to cover a short: the shares bought back close it, at a gain if the price fell.
+    if (shares > -held.shares) {
+      return fail("short-position", `You're short ${-held.shares} ${symbol}: buy up to ${-held.shares} to cover, then buy again.`);
+    }
+    if (total > account.cash) return fail("insufficient-cash", "You don't have enough cash to buy these shares back.");
+    const holdings = held.shares + shares === 0 ? account.holdings.filter((h) => h !== held) : account.holdings.map((h) => (h === held ? { ...h, shares: h.shares + shares } : h));
+    const trade = record(roundCents(shares * held.averageCost - total));
+    return { ok: true, trade, account: { ...account, cash: roundCents(account.cash - total), holdings, trades: [trade, ...account.trades] } };
+  }
 
   if (side === "buy") {
-    if (total > account.cash) return fail("insufficient-cash", "You don't have enough cash for this order.");
+    if (total > buyingPower(account, prices)) {
+      return fail("insufficient-cash", shortValue(account) > 0 || putReserve(account) > 0 ? "You don't have enough buying power for this order: some cash is set aside for your shorts or puts." : "You don't have enough cash for this order.");
+    }
     if (!held && account.holdings.length >= MAX_HOLDINGS) {
       return fail("too-many-holdings", `You can hold up to ${MAX_HOLDINGS} different stocks. Sell one to make room.`);
     }
@@ -206,11 +325,31 @@ export function placeOrder(account: Account, order: Order): TradeResult {
             : h,
         )
       : [...account.holdings, { symbol, shares, averageCost: price }];
-    const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time, ...annotation(order.reason, order.note) };
+    const trade = record();
     return { ok: true, trade, account: { ...account, cash: roundCents(account.cash - total), holdings, trades: [trade, ...account.trades] } };
   }
 
-  if (!held || held.shares < shares) {
+  if (order.short) {
+    // Selling short: borrowed shares sold now, to be bought back later.
+    if (held && held.shares > 0) return fail("long-position", `You own ${held.shares} ${symbol}. Sell those first, then sell short.`);
+    if (!held && account.holdings.length >= MAX_HOLDINGS) {
+      return fail("too-many-holdings", `You can hold up to ${MAX_HOLDINGS} different stocks. Close one to make room.`);
+    }
+    const holdings = held
+      ? account.holdings.map((h) => (h === held ? { ...h, shares: h.shares - shares, averageCost: (-h.shares * h.averageCost + total) / (-h.shares + shares) } : h))
+      : [...account.holdings, { symbol, shares: -shares, averageCost: price }];
+    const after = { ...account, cash: roundCents(account.cash + total), holdings };
+    if (buyingPower(after, prices) < 0) {
+      return fail("insufficient-cash", `Selling short needs ${formatMoney(roundCents(total * (SHORT_MARGIN - 1)))} of buying power set aside beyond the proceeds, and you don't have enough.`);
+    }
+    const trade = record();
+    return { ok: true, trade, account: { ...after, trades: [trade, ...account.trades] } };
+  }
+
+  if (held && held.shares < 0) return fail("short-position", `You're short ${symbol}. Buy to cover it instead.`);
+  const free = (held?.shares ?? 0) - callReserve(account, symbol);
+  if (!held || free < shares) {
+    if (held && held.shares >= shares) return fail("insufficient-shares", `${held.shares - free} of your ${symbol} shares cover calls you wrote, so you can sell ${Math.max(0, free)}.`);
     return fail("insufficient-shares", held ? `You only own ${held.shares} shares of ${symbol}.` : `You don't own any ${symbol}.`);
   }
   // Selling doesn't change the average cost of the shares that are left.
@@ -218,10 +357,12 @@ export function placeOrder(account: Account, order: Order): TradeResult {
     held.shares === shares
       ? account.holdings.filter((h) => h !== held)
       : account.holdings.map((h) => (h === held ? { ...h, shares: h.shares - shares } : h));
-  const realizedGain = roundCents(total - shares * held.averageCost);
-  const trade: Trade = { id: order.id, symbol, side, shares, price, time: order.time, realizedGain, ...annotation(order.reason, order.note) };
+  const trade = record(roundCents(total - shares * held.averageCost));
   return { ok: true, trade, account: { ...account, cash: roundCents(account.cash + total), holdings, trades: [trade, ...account.trades] } };
 }
+
+/** "$1,234.50", without importing the browser formatting code here. */
+const formatMoney = (n: number) => `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
 export const WATCHLIST_FULL = `You can watch up to ${MAX_WATCHLIST} stocks. Remove one to make room.`;
 

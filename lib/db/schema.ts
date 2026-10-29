@@ -179,6 +179,10 @@ export const trade = sqliteTable(
     // The trader's own reason and note (lib/trading.ts TRADE_REASONS), private to them.
     reason: text("reason", { enum: ["value", "momentum", "news", "dip", "rebalance", "other"] }),
     note: text("note"),
+    // An option trade's contract (migration 0017): shares are then contracts, and price the premium per share.
+    optionKind: text("option_kind", { enum: ["call", "put"] }),
+    strike: real("strike"),
+    expiry: integer("expiry"),
   },
   // Trade history is always read per user, newest first.
   (table) => [index("trade_user_time_idx").on(table.userId, table.time)],
@@ -240,13 +244,13 @@ export const priceSnapshot = sqliteTable("price_snapshot", {
   createdAt: integer("created_at").notNull(),
 });
 
-/** Dividends and splits applied to the account. IDs are per user ("dividend:KO:<time>"), so the key includes the user. */
+/** Dividends, splits, borrow fees, margin calls and option expiries. IDs are per user ("dividend:KO:<time>"), so the key includes the user. */
 export const accountEvent = sqliteTable(
   "account_event",
   {
     userId: userId(),
     id: text("id").notNull(),
-    kind: text("kind", { enum: ["dividend", "split"] }).notNull(),
+    kind: text("kind", { enum: ["dividend", "split", "borrow-fee", "margin-call", "expiry"] }).notNull(),
     symbol: text("symbol").notNull(),
     time: integer("time").notNull(),
     shares: integer("shares").notNull(),
@@ -284,7 +288,7 @@ export const pendingOrder = sqliteTable(
     userId: userId(),
     symbol: text("symbol").notNull(),
     side: text("side", { enum: ["buy", "sell"] }).notNull(),
-    type: text("type", { enum: ["limit", "stop"] }).notNull(),
+    type: text("type", { enum: ["limit", "stop", "trailing"] }).notNull(),
     shares: integer("shares").notNull(),
     price: real("price").notNull(),
     duration: text("duration", { enum: ["day", "gtc"] }).notNull(),
@@ -296,8 +300,37 @@ export const pendingOrder = sqliteTable(
     // Copied to the trade when the order fills.
     reason: text("reason", { enum: ["value", "momentum", "news", "dip", "rebalance", "other"] }),
     tradeNote: text("trade_note"),
+    // Migration 0017: short sales, trailing stops, brackets and one-cancels-other groups (lib/orders.ts).
+    short: integer("short", { mode: "boolean" }),
+    trailKind: text("trail_kind", { enum: ["percent", "amount"] }),
+    trailValue: real("trail_value"),
+    extreme: real("extreme"),
+    bracketStop: real("bracket_stop"),
+    bracketTarget: real("bracket_target"),
+    ocoGroup: text("oco_group"),
   },
   (table) => [index("pending_order_user_idx").on(table.userId, table.createdAt)],
+);
+
+/** Option positions (migration 0017; lib/option-trading.ts). One row per user and contract; written options have negative contracts. */
+export const optionPosition = sqliteTable(
+  "option_position",
+  {
+    userId: userId(),
+    /** `${symbol}:${kind}:${strike}:${expiry}`. */
+    id: text("id").notNull(),
+    symbol: text("symbol").notNull(),
+    kind: text("kind", { enum: ["call", "put"] }).notNull(),
+    strike: real("strike").notNull(),
+    expiry: integer("expiry").notNull(),
+    contracts: integer("contracts").notNull(),
+    averagePremium: real("average_premium").notNull(),
+    /** Value per share at the latest close, written by the analytics service's nightly job and on demand. */
+    mark: real("mark"),
+    markedAt: integer("marked_at"),
+    delta: real("delta"),
+  },
+  (table) => [primaryKey({ columns: [table.userId, table.id] })],
 );
 
 export const priceAlert = sqliteTable(

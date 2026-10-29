@@ -237,3 +237,48 @@ describe("saving many orders and alerts at once", () => {
     expect(theirs).toMatchObject({ userId: other, symbol: "KO", price: 50 });
   });
 });
+
+describe("Phase 19: shorts, brackets, trailing stops and options", () => {
+  it("saves and reads back every new field exactly", async () => {
+    await repo.ensure(userId);
+    const expiry = Date.UTC(2026, 11, 18, 12);
+    const result = await repo.update(userId, null, (account) => ({
+      ok: true,
+      account: {
+        ...account,
+        holdings: [...account.holdings, { symbol: "TSLA", shares: -10, averageCost: 400 }],
+        trades: [
+          { id: `${userId}-opt`, symbol: "KO", side: "buy", shares: 2, price: 1.25, time: 1_760_000_000_000, option: { kind: "call", strike: 70, expiry } },
+          ...account.trades,
+        ],
+        orders: [
+          { id: `${userId}-trail`, symbol: "KO", side: "sell", type: "trailing", shares: 5, price: 61.2, duration: "gtc", createdAt: 1, status: "open", trail: { kind: "percent", value: 10 }, extreme: 68 },
+          { id: `${userId}-p:stop`, symbol: "AAPL", side: "sell", type: "stop", shares: 3, price: 180, duration: "gtc", createdAt: 2, status: "open", ocoGroup: `${userId}-p` },
+          { id: `${userId}-short`, symbol: "TSLA", side: "sell", type: "limit", shares: 1, price: 450, duration: "gtc", createdAt: 3, status: "open", short: true, bracket: { stop: 500, target: 380 } },
+        ],
+        options: [{ id: `KO:call:70:${expiry}`, symbol: "KO", kind: "call", strike: 70, expiry, contracts: 2, averagePremium: 1.25 }],
+        events: [{ id: "borrow-fee:TSLA:2026-10", kind: "borrow-fee", symbol: "TSLA", time: 5, shares: -10, value: 0.03, cash: -1.43 }],
+      },
+    }));
+    expect(result.ok).toBe(true);
+    const saved = await repo.load(userId);
+    expect(saved?.holdings.find((h) => h.symbol === "TSLA")).toEqual({ symbol: "TSLA", shares: -10, averageCost: 400 });
+    expect(saved?.trades[0]).toEqual({ id: `${userId}-opt`, symbol: "KO", side: "buy", shares: 2, price: 1.25, time: 1_760_000_000_000, option: { kind: "call", strike: 70, expiry } });
+    const byId = (list: Account["orders"]) => [...(list ?? [])].sort((a, b) => a.id.localeCompare(b.id));
+    expect(byId(saved?.orders)).toEqual(byId(result.ok ? result.account.orders : []));
+    expect(saved?.options).toEqual([{ id: `KO:call:70:${expiry}`, symbol: "KO", kind: "call", strike: 70, expiry, contracts: 2, averagePremium: 1.25 }]);
+
+    // A month's borrow fee grows in place, and marks are stored on the position.
+    await repo.update(userId, null, (account) => ({ ok: true, account: { ...account, events: account.events?.map((e) => ({ ...e, time: 6, cash: -2.86 })) } }));
+    await repo.setOptionMarks(userId, [{ id: `KO:call:70:${expiry}`, mark: 1.8, markedAt: 7, delta: 0.41 }]);
+    const later = await repo.load(userId);
+    expect(later?.events).toEqual([{ id: "borrow-fee:TSLA:2026-10", kind: "borrow-fee", symbol: "TSLA", time: 6, shares: -10, value: 0.03, cash: -2.86 }]);
+    expect(later?.options?.[0]).toMatchObject({ mark: 1.8, markedAt: 7, delta: 0.41 });
+
+    // Clearing a field clears its column.
+    await repo.update(userId, null, (account) => ({ ok: true, account: { ...account, orders: account.orders?.map(({ bracket, ...o }) => (void bracket, o)), options: [] } }));
+    const cleared = await repo.load(userId);
+    expect(cleared?.orders?.find((o) => o.id === `${userId}-short`)?.bracket).toBeUndefined();
+    expect(cleared?.options).toBeUndefined();
+  });
+});
