@@ -8,7 +8,7 @@
  * first request in the window, in one atomic statement (lib/db/rate-limits.ts).
  */
 import "server-only";
-import { and, like, lt } from "drizzle-orm";
+import { lt } from "drizzle-orm";
 import { headers } from "next/headers";
 import { db } from "./db";
 import { countRequest } from "./db/rate-limits";
@@ -25,7 +25,12 @@ export async function allow(name: string, max: number, windowSeconds: number): P
   return countRequest(db, `marketlab:${name}:${await clientIp()}`, max, windowSeconds * 1000, Date.now());
 }
 
-/** Deletes this app's counters whose window started before `before` (the daily job keeps the table small). */
+/**
+ * Deletes counters whose window started before `before`: this app's and
+ * Better Auth's (whose windows are a minute at most), so the table stays
+ * small and visitors' IP addresses in it are kept for a day at most, as the
+ * privacy policy says.
+ */
 export async function pruneRateLimits(before: number) {
-  await db.delete(rateLimit).where(and(like(rateLimit.key, "marketlab:%"), lt(rateLimit.lastRequest, before)));
+  await db.delete(rateLimit).where(lt(rateLimit.lastRequest, before));
 }

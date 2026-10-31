@@ -7,7 +7,8 @@
  *    (lib/processing.ts), which is safe to run twice, so the job and a visit
  *    can never apply anything twice.
  * 2. Deletes guests nobody has used for GUEST_LIFETIME, with everything they
- *    own, and other leftovers (including saved price snapshots no run uses).
+ *    own, and other leftovers (including saved price snapshots no run uses,
+ *    expired sessions, and rate-limit counters over a day old).
  * 3. Stores the latest prices and has the analytics service run its nightly
  *    parts (lib/analytics/server.ts): indicator alerts, portfolio snapshots,
  *    stock profiles and factors, within a slot of the time left.
@@ -44,6 +45,8 @@ export interface DailyDeps {
   deleteInactiveGuests(cutoff: number, limit: number): Promise<number>;
   deleteOrphanLearners(cutoff: number, limit: number): Promise<number>;
   pruneRateLimits(before: number): Promise<void>;
+  /** Deletes expired sign-in sessions and one-time sign-in values. Optional, so tests can leave it out. */
+  pruneExpiredSignIns?(now: number): Promise<void>;
   /** Deletes saved price snapshots no saved run refers to any more. */
   deleteOrphanSnapshots(limit: number): Promise<number>;
   /** Emails digests of newly triggered alerts, until `deadline` (ms). Optional, so tests can leave it out. */
@@ -114,6 +117,7 @@ export async function runDaily(deps: DailyDeps, { budgetMs = 50_000, batch = 50 
   const guestsDeleted = outOfTime() ? 0 : await deps.deleteInactiveGuests(cutoff, 500);
   const learnersDeleted = outOfTime() ? 0 : await deps.deleteOrphanLearners(cutoff, 500);
   await deps.pruneRateLimits(deps.now() - DAY);
+  await deps.pruneExpiredSignIns?.(deps.now());
   // After the guests: their saved runs (and so their snapshots' last references) went with them.
   const snapshotsDeleted = outOfTime() ? 0 : await deps.deleteOrphanSnapshots(500);
 

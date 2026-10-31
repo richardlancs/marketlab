@@ -5,7 +5,7 @@ import { SEASON_TAG } from "@/lib/season-data";
 import { runSeasons } from "@/lib/season-job";
 import { refreshAnalytics } from "@/lib/analytics/server";
 import { refreshFundamentals } from "@/lib/fundamentals";
-import { accounts, backtests, guests, jobs, learning } from "@/lib/db";
+import { accounts, backtests, guests, jobs, learning, personalData } from "@/lib/db";
 import { getMarket, getProcessingData } from "@/lib/market";
 import { runDaily } from "@/lib/maintenance";
 import { symbolsToProcess } from "@/lib/processing";
@@ -47,6 +47,7 @@ export async function GET(request: Request) {
       deleteInactiveGuests: (cutoff, limit) => guests.deleteInactive(cutoff, limit),
       deleteOrphanLearners: (cutoff, limit) => learning.deleteOrphans(cutoff, limit),
       pruneRateLimits,
+      pruneExpiredSignIns: (now) => personalData.pruneExpiredSignIns(now),
       deleteOrphanSnapshots: (limit) => backtests.deleteOrphanSnapshots(limit),
       sendAlertEmails: (deadline) => sendAlertDigests(deadline),
       sendAlertPushes: (deadline) => sendAlertPushes(deadline),

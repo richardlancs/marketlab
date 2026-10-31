@@ -8,7 +8,7 @@
  * float JavaScript uses, and lib/trading.ts rounds cash to cents.
  */
 import { sql } from "drizzle-orm";
-import { index, integer, primaryKey, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
+import { blob, index, integer, primaryKey, real, sqliteTable, text, uniqueIndex, type AnySQLiteColumn } from "drizzle-orm/sqlite-core";
 import type { AlertCondition } from "../trading";
 
 // ---------------------------------------------------------------------------
@@ -617,3 +617,22 @@ export const badge = sqliteTable(
   (table) => [primaryKey({ columns: [table.userId, table.kind, table.scope] })],
 );
 
+
+/**
+ * Profile pictures (migration 0018): one small square image per user, cropped
+ * and shrunk in the browser (components/account/avatar-editor.tsx) and checked
+ * again here (lib/profile.ts), served only to its owner by
+ * /api/account/avatar. `user.image` then points there, with `version` in the
+ * address so a new picture is never hidden by a cached old one.
+ */
+export const avatar = sqliteTable("avatar", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** "image/webp", "image/jpeg" or "image/png", from the file's own first bytes. */
+  type: text("type").notNull(),
+  data: blob("data", { mode: "buffer" }).notNull(),
+  /** A short hash of `data`. */
+  version: text("version").notNull(),
+  updatedAt: integer("updated_at").notNull(),
+});
