@@ -23,6 +23,7 @@ DATABASE_URL=libsql://… DATABASE_AUTH_TOKEN=… npm run db:migrate
 | `SMTP_USER`, `SMTP_PASS`, `EMAIL_FROM` | Optional: email |
 | `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` | Optional: push |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional: Google sign-in |
+| `PRIVACY_CONTACT_EMAIL` | Optional: the address the privacy policy gives for questions |
 | `TIINGO_API_KEY` | Never on a public deployment |
 
 ## Google sign-in

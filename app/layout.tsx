@@ -10,9 +10,9 @@ import { emailEnabled } from "@/lib/email";
 import { getMarket } from "@/lib/market";
 import { CATALOG } from "@/lib/market/catalog";
 import { marketMode } from "@/lib/market/mode";
+import { ConsentBanner, ConsentedAnalytics } from "@/components/privacy/consent";
+import Link from "next/link";
 import "./globals.css";
-import { Analytics } from "@vercel/analytics/next";
-import { SpeedInsights } from "@vercel/speed-insights/next";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -103,6 +103,17 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
               ? "Simulated prices, not real market data. Each stock starts from its real price on Oct 16, 2026; every move since (and the history before) is generated."
               : "End-of-day prices from Tiingo, for personal use only."}{" "}
             Nothing here is investment advice.
+            <nav aria-label="Legal" className="mt-3 flex flex-wrap gap-x-4 gap-y-1">
+              <Link href="/privacy" className="tap py-1 hover:text-foreground hover:underline">
+                Privacy policy
+              </Link>
+              <Link href="/privacy/cookies" className="tap py-1 hover:text-foreground hover:underline">
+                Cookie settings
+              </Link>
+              <Link href="/account/data" className="tap py-1 hover:text-foreground hover:underline">
+                Your data
+              </Link>
+            </nav>
           </footer>
         </AccountProvider>
         </TrendRangeProvider>
@@ -110,13 +121,13 @@ export default async function RootLayout({ children }: LayoutProps<"/">) {
         <Suspense fallback={<TabBar pathname={null} />}>
           <TabBarWithPath />
         </Suspense>
-        {/* Vercel Web Analytics and Speed Insights: cookieless, served from this site (allowed by the CSP). Only on Vercel, where those scripts exist. */}
-        {process.env.VERCEL && (
-          <>
-            <Analytics />
-            <SpeedInsights />
-          </>
-        )}
+        {/*
+         * Vercel Web Analytics and Speed Insights: cookieless, served from this
+         * site (allowed by the CSP). Only on Vercel, where those scripts exist,
+         * and only after a yes in the cookie banner (components/privacy/consent.tsx).
+         */}
+        <ConsentedAnalytics available={!!process.env.VERCEL} />
+        <ConsentBanner available={!!process.env.VERCEL} />
       </body>
     </html>
   );
