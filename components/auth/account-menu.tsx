@@ -3,12 +3,14 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useId } from "react";
+import { Avatar } from "@/components/account/avatar";
 import { forgetDevice } from "@/components/alerts/push-device";
 import { authClient } from "@/lib/auth-client";
 
 /**
  * "Sign in" when signed out; when signed in, a round button with the user's
- * initial that opens a small menu. The menu uses the browser's built-in
+ * picture (or initial) that opens a small menu: account settings, your data,
+ * signing out. The menu uses the browser's built-in
  * `popover` attribute: clicking outside or pressing Esc closes it with no
  * extra code.
  *
@@ -33,16 +35,18 @@ export function AccountMenu() {
     );
   }
 
-  const { name, email } = session.user;
+  const { name, email, image } = session.user;
+  const close = () => document.getElementById(menuId)?.hidePopover();
+  const itemClass = "block w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent";
   return (
     <>
       <button
         type="button"
         popoverTarget={menuId}
         aria-label={`Account: ${name}`}
-        className="grid size-9 place-items-center rounded-full bg-linear-to-br from-brand-start to-brand-end text-sm font-semibold text-white focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+        className="grid size-9 place-items-center rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
       >
-        {name.trim().charAt(0).toUpperCase() || "?"}
+        <Avatar name={name} image={image} size={36} className="text-sm" />
       </button>
       <div
         id={menuId}
@@ -56,6 +60,13 @@ export function AccountMenu() {
           {session.user.emailVerified && <p className="mt-1 text-xs font-medium text-gain">Email confirmed ✓</p>}
         </div>
         <div className="my-1 border-t border-border" />
+        <Link href="/account" onClick={close} className={itemClass}>
+          Account settings
+        </Link>
+        <Link href="/account/data" onClick={close} className={itemClass}>
+          Privacy and your data
+        </Link>
+        <div className="my-1 border-t border-border" />
         <button
           type="button"
           onClick={async () => {
@@ -64,7 +75,7 @@ export function AccountMenu() {
             await authClient.signOut();
             router.refresh();
           }}
-          className="w-full rounded-lg px-3 py-2 text-left text-sm transition-colors hover:bg-foreground/5 focus-visible:outline-2 focus-visible:outline-accent"
+          className={itemClass}
         >
           Sign out
         </button>
