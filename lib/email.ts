@@ -85,3 +85,25 @@ export function verificationEmail(to: string, name: string, url: string): Email 
     html: `<p>${escape(greeting)}</p><p>Confirm that this is your email address for MarketLab:</p><p><a href="${escape(url)}">Confirm my email</a></p><p style="color:#666">The link works for 24 hours. If you didn't sign up for MarketLab, you can ignore this email.</p>`,
   };
 }
+
+/** Sent to the current address when someone asks to move a confirmed account to another one: nothing changes until it's opened. */
+export function changeEmailConfirmation(to: string, name: string, newEmail: string, url: string): Email {
+  const greeting = name.trim() ? `Hi ${name.trim()},` : "Hi,";
+  return {
+    to,
+    subject: "Confirm your new email for MarketLab",
+    text: `${greeting}\n\nSomeone (hopefully you) asked to change your MarketLab account's email address to ${newEmail}. To go ahead, open this link:\n\n${url}\n\nWe'll then send a link to ${newEmail} to confirm it. The link works for 24 hours. If you didn't ask for this, ignore this email and change your password: your address stays the same.`,
+    html: `<p>${escape(greeting)}</p><p>Someone (hopefully you) asked to change your MarketLab account's email address to <strong>${escape(newEmail)}</strong>.</p><p><a href="${escape(url)}">Yes, change my email</a></p><p>We'll then send a link to ${escape(newEmail)} to confirm it.</p><p style="color:#666">The link works for 24 hours. If you didn't ask for this, ignore this email and change your password: your address stays the same.</p>`,
+  };
+}
+
+/** Sent after an account is deleted, so its owner hears about it even if they didn't do it. */
+export function accountDeletedEmail(to: string, name: string): Email {
+  const greeting = name.trim() ? `Hi ${name.trim()},` : "Hi,";
+  return {
+    to,
+    subject: "Your MarketLab account was deleted",
+    text: `${greeting}\n\nYour MarketLab account and everything in it (portfolio, trades, watchlist, alerts, saved backtests, lesson progress and competition entries) have been deleted. This can't be undone, and we won't email you again.\n\nIf you didn't do this, someone had your password or a signed-in device: you can make a new account at any time, with a different password.`,
+    html: `<p>${escape(greeting)}</p><p>Your MarketLab account and everything in it (portfolio, trades, watchlist, alerts, saved backtests, lesson progress and competition entries) have been deleted. This can't be undone, and we won't email you again.</p><p style="color:#666">If you didn't do this, someone had your password or a signed-in device: you can make a new account at any time, with a different password.</p>`,
+  };
+}

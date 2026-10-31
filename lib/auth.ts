@@ -11,9 +11,10 @@ import "server-only";
 import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { nextCookies } from "better-auth/next-js";
-import { db } from "./db";
-import { emailEnabled, sendEmail, verificationEmail } from "./email";
+import { db, personalData } from "./db";
+import { accountDeletedEmail, changeEmailConfirmation, emailEnabled, sendEmail, verificationEmail } from "./email";
 import * as schema from "./db/schema";
+import { isOwnAvatar } from "./profile";
 
 /**
  * The hosts sign-in may be used from, e.g. "marketlab.example.com" and a
@@ -79,6 +80,57 @@ export const auth = betterAuth({
       },
     },
   }),
+  user: {
+    // Changing the address: from the account page (lib/profile-actions.ts,
+    // which asks for the password first). An address that was never confirmed
+    // changes at once, and the new one gets a confirmation link; a confirmed
+    // one changes only after a link sent to the *old* address is opened, then
+    // one sent to the new address, so whoever holds a session can't move the
+    // account to an address of theirs without the owner's inbox.
+    ...(emailEnabled() && {
+      changeEmail: {
+        enabled: true,
+        updateEmailWithoutVerification: true,
+        async sendChangeEmailConfirmation({ user, newEmail, url }) {
+          await sendEmail(changeEmailConfirmation(user.email, user.name, newEmail, url));
+        },
+      },
+    }),
+    // Deleting the account: also only from the account page's action, which
+    // checks the password (or a fresh Google sign-in). All MarketLab data goes
+    // first; Better Auth then deletes the user, its sessions and sign-in methods.
+    deleteUser: {
+      enabled: true,
+      async beforeDelete(user) {
+        await personalData.eraseEverything(user.id);
+      },
+      async afterDelete(user) {
+        // A heads-up, so someone whose account was deleted by somebody else finds out. Never blocks the deletion.
+        if (emailEnabled() && user.emailVerified) await sendEmail(accountDeletedEmail(user.email, user.name)).catch((error) => console.error("[auth] couldn't send the deletion email:", error));
+      },
+    },
+  },
+  // Better Auth's own endpoints for these are switched off: the Server
+  // Actions in lib/profile-actions.ts call them on the server after their own
+  // checks (a password, the name rules, a picture we serve ourselves). Calls
+  // from the server (auth.api) aren't affected by this list.
+  disabledPaths: ["/update-user", "/change-email", "/delete-user", "/delete-user/callback"],
+  databaseHooks: {
+    user: {
+      // Google sign-in would store the Google account's photo address. It's
+      // never shown (the page only loads pictures from this site), so it isn't kept.
+      create: {
+        async before(user) {
+          return { data: { ...user, image: null } };
+        },
+      },
+      update: {
+        async before(user) {
+          if (user.image != null && !isOwnAvatar(user.image)) return { data: { ...user, image: undefined } };
+        },
+      },
+    },
+  },
   rateLimit: {
     // On in development too, so it can be tested. Stored in the database,
     // because online each server instance has its own memory.

@@ -42,6 +42,8 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/(.*)", headers: securityHeaders },
+      // Profile pictures are people's own uploads: as a page, they may run nothing at all. (Later rules win for the same header.)
+      { source: "/api/account/avatar", headers: [{ key: "Content-Security-Policy", value: "default-src 'none'; sandbox" }] },
       // The service worker (push notifications): always checked for a new version, so a fix reaches every device.
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }, { key: "Content-Type", value: "application/javascript; charset=utf-8" }] },
     ];
