@@ -253,3 +253,31 @@ describe("profile pictures and sign-ins", () => {
     expect((await db.select({ id: schema.verification.id }).from(schema.verification)).map((v) => v.id)).not.toContain(`${userId}-v1`);
   });
 });
+
+describe("profileStats", () => {
+  it("counts the whole history: trades, wins, best and worst sales, research, alerts, competitions", async () => {
+    await fill(userId);
+    // A profitable and a losing sale, written straight to the table (the whole history, not just what the account loads).
+    await db.insert(schema.trade).values([
+      { id: `${userId}-s1`, userId, symbol: "KO", side: "sell", shares: 1, price: 80, time: 10, realizedGain: 10, reason: "value" },
+      { id: `${userId}-s2`, userId, symbol: "PEP", side: "sell", shares: 1, price: 60, time: 20, realizedGain: -4.5 },
+    ]);
+    const stats = await data.profileStats(userId);
+    expect(stats?.isGuest).toBe(false);
+    expect(stats?.trades).toMatchObject({ total: 3, buys: 1, sells: 2, closed: 2, wins: 1, realized: 5.5, symbols: 2, journaled: 1, first: 5, last: 20 });
+    expect(stats?.trades.best).toEqual({ symbol: "KO", gain: 10, time: 10 });
+    expect(stats?.trades.worst).toEqual({ symbol: "PEP", gain: -4.5, time: 20 });
+    expect(stats).toMatchObject({ savedRuns: 1, alerts: { active: 1, triggered: 0 }, watching: 2 });
+    // Other tests' users entered the same season in this shared database.
+    expect(stats?.seasons).toEqual([{ seasonId: "2026-10", finalRank: null, finalValue: null, startValue: 100_000, entrants: expect.any(Number) }]);
+    expect(stats!.seasons[0].entrants).toBeGreaterThanOrEqual(1);
+    expect(stats?.leaderboard?.displayName).toBe(`Board ${userId}`);
+  });
+
+  it("is all zeros for someone who hasn't done anything, and null for nobody", async () => {
+    const stats = await data.profileStats(other);
+    expect(stats?.trades).toMatchObject({ total: 0, closed: 0, realized: 0, first: null, best: null, worst: null });
+    expect(stats).toMatchObject({ savedRuns: 0, watching: 0, seasons: [], leaderboard: null });
+    expect(await data.profileStats("nobody")).toBeNull();
+  });
+});

@@ -11,7 +11,7 @@
  * foreign_keys setting. A new per-user table must be added here, to
  * USER_TABLES below, or the test in personal-data.test.ts fails.
  */
-import { and, eq, inArray, lt } from "drizzle-orm";
+import { and, count, desc, eq, inArray, lt, sql } from "drizzle-orm";
 import type { LibSQLDatabase } from "drizzle-orm/libsql";
 import { startingAccount } from "../starting-account";
 import type { AvatarType, DataKind } from "../profile";
@@ -200,6 +200,77 @@ export function createPersonalDataRepository(db: Db) {
 
     /** Erases all of the user's MarketLab data, leaving the user row, sessions and sign-in methods for Better Auth to delete. */
     eraseEverything: (userId: string) => transaction((tx) => eraseEverything(tx, userId)),
+
+    /**
+     * The numbers on the profile page (app/profile), from the whole history
+     * (the account the app loads keeps only the latest trades): trading,
+     * research, alerts and competitions. Lessons and badges come from their
+     * own repositories.
+     */
+    async profileStats(userId: string) {
+      const [[member], [trades], [best], [worst], [runs], [alerts], [watching], entries, [board]] = await Promise.all([
+        db.select({ createdAt: user.createdAt, isGuest: user.isGuest }).from(user).where(eq(user.id, userId)),
+        db
+          .select({
+            total: count(),
+            buys: sql<number>`coalesce(sum(case when ${trade.side} = 'buy' then 1 else 0 end), 0)`,
+            sells: sql<number>`coalesce(sum(case when ${trade.side} = 'sell' then 1 else 0 end), 0)`,
+            closed: sql<number>`count(${trade.realizedGain})`,
+            wins: sql<number>`coalesce(sum(case when ${trade.realizedGain} > 0 then 1 else 0 end), 0)`,
+            realized: sql<number>`coalesce(sum(${trade.realizedGain}), 0)`,
+            symbols: sql<number>`count(distinct ${trade.symbol})`,
+            journaled: sql<number>`count(${trade.reason})`,
+            first: sql<number | null>`min(${trade.time})`,
+            last: sql<number | null>`max(${trade.time})`,
+          })
+          .from(trade)
+          .where(eq(trade.userId, userId)),
+        db.select({ symbol: trade.symbol, gain: trade.realizedGain, time: trade.time }).from(trade).where(and(eq(trade.userId, userId), sql`${trade.realizedGain} > 0`)).orderBy(desc(trade.realizedGain)).limit(1),
+        db.select({ symbol: trade.symbol, gain: trade.realizedGain, time: trade.time }).from(trade).where(and(eq(trade.userId, userId), sql`${trade.realizedGain} < 0`)).orderBy(trade.realizedGain).limit(1),
+        db.select({ total: count() }).from(backtestRun).where(eq(backtestRun.userId, userId)),
+        db
+          .select({ active: sql<number>`coalesce(sum(case when ${priceAlert.triggeredAt} is null then 1 else 0 end), 0)`, triggered: sql<number>`count(${priceAlert.triggeredAt})` })
+          .from(priceAlert)
+          .where(eq(priceAlert.userId, userId)),
+        db.select({ total: count() }).from(watchlistItem).where(eq(watchlistItem.userId, userId)),
+        db
+          .select({ seasonId: seasonEntry.seasonId, finalRank: seasonEntry.finalRank, finalValue: seasonEntry.finalValue, startValue: seasonEntry.startValue })
+          .from(seasonEntry)
+          .where(eq(seasonEntry.userId, userId))
+          .orderBy(desc(seasonEntry.seasonId)),
+        db.select({ displayName: leaderboardEntry.displayName, joinedAt: leaderboardEntry.joinedAt }).from(leaderboardEntry).where(eq(leaderboardEntry.userId, userId)),
+      ]);
+      if (!member) return null;
+      const seasonIds = entries.map((e) => e.seasonId);
+      const sizes = seasonIds.length
+        ? await db.select({ seasonId: seasonEntry.seasonId, entrants: count() }).from(seasonEntry).where(inArray(seasonEntry.seasonId, seasonIds)).groupBy(seasonEntry.seasonId)
+        : [];
+      const entrants = new Map(sizes.map((s) => [s.seasonId, s.entrants]));
+      const n = (value: unknown) => Number(value ?? 0);
+      return {
+        memberSince: member.createdAt.getTime(),
+        isGuest: member.isGuest,
+        trades: {
+          total: n(trades.total),
+          buys: n(trades.buys),
+          sells: n(trades.sells),
+          closed: n(trades.closed),
+          wins: n(trades.wins),
+          realized: Math.round(n(trades.realized) * 100) / 100,
+          symbols: n(trades.symbols),
+          journaled: n(trades.journaled),
+          first: trades.first === null ? null : n(trades.first),
+          last: trades.last === null ? null : n(trades.last),
+          best: best && best.gain !== null ? { symbol: best.symbol, gain: best.gain, time: best.time } : null,
+          worst: worst && worst.gain !== null ? { symbol: worst.symbol, gain: worst.gain, time: worst.time } : null,
+        },
+        savedRuns: n(runs.total),
+        alerts: { active: n(alerts.active), triggered: n(alerts.triggered) },
+        watching: n(watching.total),
+        seasons: entries.map((e) => ({ ...e, entrants: entrants.get(e.seasonId) ?? 1 })),
+        leaderboard: board ?? null,
+      };
+    },
 
     /** Deletes a guest (never a real account) with all its data. */
     deleteGuest: (guestId: string) =>

@@ -19,7 +19,12 @@ import { cookies, headers } from "next/headers";
 import { isAPIError } from "better-auth/api";
 import { auth } from "./auth";
 import { BOOK_COOKIE } from "./books";
-import { personalData } from "./db";
+import { checkBadges } from "./badge-check";
+import { BADGES, type BadgeKind } from "./badges";
+import { learning, personalData, seasons } from "./db";
+import { getStandings } from "./leaderboard-data";
+import { LESSONS } from "./lessons";
+import { passedTerms } from "./lessons/progress";
 import { emailEnabled } from "./email";
 import { clearGuestCookie, currentOwner } from "./owner";
 import { AVATAR_BYTES, avatarUrl, cleanName, GUEST_DATA_KINDS, isDeletePhrase, NAME_LENGTH, parseDataKinds, RECENT_SIGN_IN, sniffImage } from "./profile";
@@ -32,6 +37,20 @@ export type AccountSettings =
   | { kind: "none" }
   | { kind: "guest" }
   | { kind: "user"; hasPassword: boolean; google: boolean; emailChange: boolean; signedInAt: number };
+
+type ProfileStats = NonNullable<Awaited<ReturnType<typeof personalData.profileStats>>>;
+
+/** Everything the profile page (app/profile) shows besides the portfolio, which the page values itself from the account. */
+export type ProfileOverview =
+  | { kind: "none" }
+  | {
+      kind: "user" | "guest";
+      stats: ProfileStats;
+      lessons: { passed: number; total: number };
+      badges: { kind: BadgeKind; label: string; detail: string; icon: string; scope: string; earnedAt: number }[];
+      /** Their place on the all-time leaderboard, if they're on it. */
+      standing: { rank: number; of: number; returnSinceJoining: number } | null;
+    };
 
 const NOT_SIGNED_IN: ProfileResult = { ok: false, message: "You're signed out. Sign in again, then try again." };
 const TOO_MANY: ProfileResult = { ok: false, message: "Too many attempts. Wait a minute, then try again." };
@@ -70,6 +89,30 @@ export async function accountSettingsAction(): Promise<AccountSettings> {
     google: methods.includes("google"),
     emailChange: emailEnabled(),
     signedInAt: new Date(session.session.createdAt).getTime(),
+  };
+}
+
+export async function profileOverviewAction(): Promise<ProfileOverview> {
+  const owner = await currentOwner({ create: false });
+  if (!owner) return { kind: "none" };
+  // Lesson and streak badges earned since the last check appear straight away.
+  await checkBadges(owner.id).catch(() => {});
+  const [stats, progress, earned] = await Promise.all([personalData.profileStats(owner.id), learning.load(owner.id), seasons.badgesOf(owner.id)]);
+  if (!stats) return { kind: "none" };
+  let standing: { rank: number; of: number; returnSinceJoining: number } | null = null;
+  if (stats.leaderboard) {
+    // The board is cached for a few minutes; a member who only just joined may not be on it yet.
+    const board = await getStandings().catch(() => []);
+    const mine = board.find((row) => row.displayName === stats.leaderboard!.displayName);
+    if (mine) standing = { rank: mine.rank, of: board.length, returnSinceJoining: mine.returnSinceJoining };
+  }
+  const lessons = Object.keys(LESSONS);
+  return {
+    kind: owner.kind,
+    stats,
+    lessons: { passed: passedTerms(progress).filter((term) => lessons.includes(term)).length, total: lessons.length },
+    badges: earned.map((b) => ({ ...b, ...BADGES[b.kind] })),
+    standing,
   };
 }
 

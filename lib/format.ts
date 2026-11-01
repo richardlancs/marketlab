@@ -18,6 +18,7 @@ const compactCurrency = new Intl.NumberFormat(LOCALE, {
 });
 const number = new Intl.NumberFormat(LOCALE, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const axisNumber = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 2 });
+const wholeNumber = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
 const compactNumber = new Intl.NumberFormat(LOCALE, { notation: "compact", maximumFractionDigits: 1 });
 const signedNumber = new Intl.NumberFormat(LOCALE, {
   minimumFractionDigits: 2,
@@ -49,6 +50,9 @@ export const formatCompactCurrency = (value: number) => compactCurrency.format(v
 export const formatNumber = (value: number) => number.format(value);
 
 /** 247.5 → "247.5", 22600 → "22,600" (for chart axis labels: no forced decimals) */
+/** 1234 → "1,234" (counts: trades, stocks, lessons) */
+export const formatCount = (value: number) => wholeNumber.format(value);
+
 export const formatAxisValue = (value: number) => axisNumber.format(value);
 
 /** 52_300_000 → "52.3M" (for volume) */

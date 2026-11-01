@@ -4,6 +4,7 @@ import {
   formatChange,
   formatCompactCurrency,
   formatCompactNumber,
+  formatCount,
   formatCurrency,
   formatDate,
   formatNumber,
@@ -27,6 +28,8 @@ describe("format", () => {
 
   it("formats plain and compact numbers", () => {
     expect(formatNumber(6712.4)).toBe("6,712.40");
+    expect(formatCount(1)).toBe("1");
+    expect(formatCount(1234)).toBe("1,234");
     expect(formatCompactNumber(52_300_000)).toBe("52.3M");
   });
 
