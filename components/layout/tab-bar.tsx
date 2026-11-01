@@ -30,7 +30,9 @@ const more: (Tab & { detail: string })[] = [
   { href: "/backtest", label: "Backtest", detail: "Test a strategy on past prices", icon: icon(<><path d="M3 12a9 9 0 1 0 3-6.7L3 8" /><path d="M3 3v5h5" /><path d="M12 7v5l3 3" /></>) },
   { href: "/options", label: "Options", detail: "Learn how options are priced, with a simulated chain", icon: icon(<><path d="M4 20h16" /><path d="M4 16l5-5 3 3 8-8" /><path d="M14 6h6v6" /></>) },
   { href: "/leaderboard", label: "Leaderboard", detail: "How portfolios compare", icon: icon(<><path d="M8 21h8M12 17v4" /><path d="M7 4h10v5a5 5 0 0 1-10 0z" /><path d="M17 5h3v2a3 3 0 0 1-3 3M7 5H4v2a3 3 0 0 0 3 3" /></>) },
-  { href: "/account", label: "Account", detail: "Your profile, privacy and data", icon: icon(<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>) },
+  { href: "/profile", label: "Profile", detail: "Your key stats, badges and competitions", icon: icon(<><circle cx="12" cy="8" r="4" /><path d="M4 21a8 8 0 0 1 16 0" /></>) },
+  { href: "/account", label: "Account", detail: "Your name, picture, email, password and data", icon: icon(<><circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z" /></>) },
+  { href: "/privacy", label: "Privacy", detail: "What we keep about you, and your choices", icon: icon(<><path d="M12 3 4 6v6c0 5 3.5 8 8 9 4.5-1 8-4 8-9V6z" /><path d="m9 12 2 2 4-4" /></>) },
 ];
 
 /** "/" matches only itself; any other link also matches the pages under it (/stocks → /stocks/AAPL). */
@@ -78,7 +80,7 @@ export function TabBar({ pathname }: { pathname: string | null }) {
         role="dialog"
         aria-label="More pages"
         // A popover is centered by default; this makes it a sheet along the bottom, above the tab bar.
-        className="fixed inset-x-0 top-auto bottom-0 m-0 w-full max-w-none animate-slide-up rounded-t-3xl border border-b-0 border-border bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-foreground shadow-2xl shadow-black/30 backdrop:bg-black/30"
+        className="fixed inset-x-0 top-auto bottom-0 m-0 max-h-[85dvh] w-full max-w-none animate-slide-up overflow-y-auto overscroll-contain rounded-t-3xl border border-b-0 border-border bg-surface p-3 pb-[calc(0.75rem+env(safe-area-inset-bottom))] text-foreground shadow-2xl shadow-black/30 backdrop:bg-black/30"
       >
         <div className="mx-auto mb-2 h-1 w-10 rounded-full bg-foreground/15" aria-hidden />
         <ul>

@@ -60,11 +60,17 @@ export function AccountMenu() {
           {session.user.emailVerified && <p className="mt-1 text-xs font-medium text-gain">Email confirmed ✓</p>}
         </div>
         <div className="my-1 border-t border-border" />
+        <Link href="/profile" onClick={close} className={itemClass}>
+          Your profile
+        </Link>
         <Link href="/account" onClick={close} className={itemClass}>
           Account settings
         </Link>
         <Link href="/account/data" onClick={close} className={itemClass}>
           Privacy and your data
+        </Link>
+        <Link href="/privacy" onClick={close} className={itemClass}>
+          Privacy policy
         </Link>
         <div className="my-1 border-t border-border" />
         <button
