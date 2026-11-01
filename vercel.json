@@ -16,7 +16,12 @@
     "analytics": {
       "root": "services/analytics/",
       "framework": "fastapi",
-      "entrypoint": "main:app"
+      "entrypoint": "main:app",
+      "functions": {
+        "main.py": {
+          "excludeFiles": "{tests/**,.pytest_cache/**,README.md}"
+        }
+      }
     }
   },
   "rewrites": [

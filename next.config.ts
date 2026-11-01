@@ -48,6 +48,12 @@ const nextConfig: NextConfig = {
       { source: "/sw.js", headers: [{ key: "Cache-Control", value: "no-cache" }, { key: "Content-Type", value: "application/javascript; charset=utf-8" }] },
     ];
   },
+  // libsql loads its native binary with require(`@libsql/${target}`), so tracing copies every installed one into
+  // each function. Vercel's build machine installs both the glibc and musl builds (~10 MB each); its functions run
+  // on glibc Linux, so the musl ones are never loaded.
+  outputFileTracingExcludes: {
+    "/*": ["node_modules/@libsql/*-musl*/**"],
+  },
   /* config options here */
   experimental: {
     agentFeedback: true,
