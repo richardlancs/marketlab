@@ -147,15 +147,14 @@ export function AuthForm({ mode, google = false }: { mode: "sign-in" | "sign-up"
         {pending ? (signUp ? "Creating account…" : "Signing in…") : signUp ? "Create account" : "Sign in"}
       </button>
 
-      {signUp && (
-        <p className="text-center text-xs text-muted">
-          What we keep and why:{" "}
-          <Link href="/privacy" className="text-accent hover:underline">
-            privacy policy
-          </Link>
-          . You can delete your account at any time.
-        </p>
-      )}
+      {/* On both forms: "Continue with Google" can create an account from either. */}
+      <p className="text-center text-xs text-muted">
+        What we keep and why:{" "}
+        <Link href="/privacy" className="text-accent hover:underline">
+          privacy policy
+        </Link>
+        . You can delete your account at any time.
+      </p>
 
       <p className="text-center text-sm text-muted">
         {signUp ? "Already have an account? " : "New to MarketLab? "}

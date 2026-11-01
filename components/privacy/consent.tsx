@@ -88,6 +88,10 @@ export function ConsentBanner({ available }: { available: boolean }) {
         <Link href="/privacy/cookies" className="text-accent underline-offset-2 hover:underline">
           Cookie settings
         </Link>
+        {" · "}
+        <Link href="/privacy" className="text-accent underline-offset-2 hover:underline">
+          Privacy policy
+        </Link>
       </p>
       <div className="mt-3 flex flex-wrap gap-2">
         <button type="button" onClick={() => saveConsent(true)} className={`${buttonClass} bg-accent-fill text-white hover:opacity-90`}>

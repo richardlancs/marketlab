@@ -28,7 +28,12 @@ test.describe("privacy pages", () => {
     await page.goto("/");
     await page.getByRole("navigation", { name: "Legal" }).getByRole("link", { name: "Privacy policy" }).click();
     await expect(page.getByRole("heading", { name: "Privacy policy", level: 1 })).toBeVisible();
-    await expect(page.getByRole("heading", { name: "How long we keep it" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "The short version" })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Your data at a glance" })).toBeVisible();
+    // The contents list jumps to each section.
+    await page.getByRole("navigation", { name: "The full policy" }).getByRole("link", { name: "How long we keep it" }).click();
+    await expect(page).toHaveURL(/#how-long$/);
+    await expect(page.getByRole("heading", { name: "How long we keep it" })).toBeInViewport();
     await page.getByRole("navigation", { name: "Legal" }).getByRole("link", { name: "Cookie settings" }).click();
     await expect(page.getByRole("heading", { name: "Cookie settings", level: 1 })).toBeVisible();
     await expect(page.getByRole("rowheader", { name: /marketlab_guest/ })).toBeVisible();
@@ -129,6 +134,22 @@ test.describe("your account", () => {
     await trade.getByLabel("Shares").fill("3");
     await trade.getByRole("button", { name: /^Buy 3 KO/ }).click();
     await expect(page.getByText(/3 shares/).filter({ visible: true }).first()).toBeVisible();
+
+    // The profile, from the account menu: key stats from the whole history. (In this test, not its own, to stay
+    // under the 3 sign-ups a minute the whole suite shares.)
+    await page.getByRole("button", { name: "Account: Leaving Soon" }).click();
+    await page.getByRole("link", { name: "Your profile" }).click();
+    await expect(page.getByRole("heading", { name: "Your profile", level: 1 })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "Leaving Soon" })).toBeVisible();
+    await expect(page.getByText(/^Member since /)).toBeVisible();
+    const stats = page.getByRole("region", { name: "Key stats" });
+    const stat = (label: string) => stats.locator("div", { has: page.locator("dt", { hasText: new RegExp(`^${label}$`) }) }).locator("dd").first();
+    await expect(stat("Trades")).toHaveText("1");
+    await expect(stat("Portfolio value")).toHaveText(/^\$[\d,]+\.\d{2}$/);
+    await expect(stat("Winning sales")).toHaveText("—");
+    await expect(stats.getByRole("progressbar", { name: "Lessons passed" })).toBeVisible();
+    await expect(page.getByRole("region", { name: "Trading" }).getByText("1 bought · 0 sold")).toBeVisible();
+    await expect(page.getByRole("link", { name: "Edit profile" })).toHaveAttribute("href", "/account");
 
     await page.goto("/account/data");
     const download = page.waitForEvent("download");
